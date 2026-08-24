@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ERP YAYASAN — Enterprise Management & Operations Portal</title>
+  <meta name="description" content="Sistem Mini ERP Terpadu Yayasan & Kantor: Pengajuan Cuti, Timesheet Proyek, Pengadaan Barang, Dapur Yayasan, dan Universal Approval Center.">
+  <link rel="icon" type="image/png" href="assets/logo-yayasan.png">
+  
+  <!-- Google Fonts: 100% Poppins Family (All Weights 100 to 900 + Italics) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css?v=20260824_9">
+</head>
+<body>
+
+  <!-- Subtle Ambient Noise Layer -->
+  <div class="noise-overlay" aria-hidden="true"></div>
+
+  <!-- Mobile Drawer Backdrop -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="App.toggleMobileSidebar(false)"></div>
+
+  <!-- Mobile Navigation Drawer -->
+  <aside id="app-sidebar" class="mobile-nav-drawer">
+    <div class="drawer-header">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <img src="assets/logo-yayasan.png" alt="Logo ERP Yayasan" class="brand-logo-img">
+        <div>
+          <div class="brand-title">ERP YAYASAN</div>
+          <div class="brand-subtitle">Enterprise Hub</div>
+        </div>
+      </div>
+      <button class="modal-close-btn" onclick="App.toggleMobileSidebar(false)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="drawer-content">
+      <ul class="drawer-nav-list">
+        <li>
+          <button class="drawer-nav-btn active" data-tab="dashboard" onclick="App.switchTab('dashboard')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>Dashboard</span>
+          </button>
+        </li>
+        <li>
+          <button class="drawer-nav-btn" data-tab="cuti" onclick="App.switchTab('cuti')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>Pengajuan Cuti & Izin</span>
+          </button>
+        </li>
+        <li>
+          <button class="drawer-nav-btn" data-tab="timesheet" onclick="App.switchTab('timesheet')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>Timesheet & Presensi</span>
+          </button>
+        </li>
+        <li>
+          <button class="drawer-nav-btn" data-tab="pengajuan" onclick="App.switchTab('pengajuan')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            <span>Pengajuan Barang (PR)</span>
+          </button>
+        </li>
+        <!-- HC Hub Accordion (Organisasi & HRIS) -->
+        <li id="mobile-drawer-hc" class="drawer-dropdown-group" style="display: none;">
+          <button type="button" class="drawer-nav-btn drawer-dropdown-trigger" id="btn-drawer-hc-hub" data-tab="hc-hub" onclick="App.toggleMobileDrawerAccordion('drawer-hc-sub')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span style="flex: 1;">HC Hub (Organisasi)</span>
+            <span class="drawer-chevron" id="chevron-drawer-hc">▾</span>
+          </button>
+          <div class="drawer-submenu" id="drawer-hc-sub" style="display: none;">
+            <button type="button" class="drawer-sub-btn" data-tab="hc-struktur" onclick="App.switchTab('hc-struktur')">
+              <span class="sub-icon">🏢</span>
+              <span>1. Struktur Perusahaan</span>
+            </button>
+            <button type="button" class="drawer-sub-btn" data-tab="hc-karyawan" onclick="App.switchTab('hc-karyawan')">
+              <span class="sub-icon">📋</span>
+              <span>2. Data Karyawan (HRIS)</span>
+            </button>
+            <button type="button" class="drawer-sub-btn" data-tab="hc-akun" onclick="App.switchTab('hc-akun')">
+              <span class="sub-icon">🔐</span>
+              <span>3. Pengelolaan Akun</span>
+            </button>
+            <button type="button" class="drawer-sub-btn" data-tab="hc-dokumen" onclick="App.switchTab('hc-dokumen')">
+              <span class="sub-icon">📚</span>
+              <span>4. Panduan & Dokumen</span>
+            </button>
+            <button type="button" class="drawer-sub-btn" data-tab="hc-timesheet" onclick="App.switchTab('hc-timesheet')">
+              <span class="sub-icon">📊</span>
+              <span>5. Export Timesheet</span>
+            </button>
+          </div>
+        </li>
+
+        <!-- Admin Hub Accordion (Dapur SPPG & Saldo VA) -->
+        <li id="mobile-drawer-admin-hub" class="drawer-dropdown-group" style="display: none;">
+          <button type="button" class="drawer-nav-btn drawer-dropdown-trigger" id="btn-drawer-admin-hub" data-tab="admin-hub" onclick="App.toggleMobileDrawerAccordion('drawer-admin-sub')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span id="mobile-drawer-admin-label" style="flex: 1;">Admin Hub</span>
+            <span class="drawer-chevron" id="chevron-drawer-admin">▾</span>
+          </button>
+          <div class="drawer-submenu" id="drawer-admin-sub" style="display: none;">
+            <button type="button" class="drawer-sub-btn" id="mobile-admin-sub-dapur" data-tab="admin-dapur" onclick="App.switchTab('admin-dapur')">
+              <span class="sub-icon">🍳</span>
+              <span>1. Daftar Dapur (Master SPPG)</span>
+            </button>
+            <button type="button" class="drawer-sub-btn" id="mobile-admin-sub-laporan" data-tab="dapur" onclick="App.switchTab('dapur')">
+              <span class="sub-icon">🍲</span>
+              <span>2. Laporan Dapur & Saldo VA</span>
+            </button>
+            <button type="button" class="drawer-sub-btn" id="mobile-admin-sub-kendala" data-tab="admin-kendala" onclick="App.switchTab('admin-kendala')">
+              <span class="sub-icon">🚨</span>
+              <span>3. Daftar Kendala Dapur SPPG</span>
+            </button>
+          </div>
+        </li>
+
+        <li id="mobile-drawer-workflow">
+          <button class="drawer-nav-btn" data-tab="approval" onclick="App.switchTab('approval')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            <span>Approval Center</span>
+            <span class="nav-badge-count mobile-badge-count" style="display: none;">0</span>
+          </button>
+        </li>
+      </ul>
+
+      <!-- Super Admin Role Switcher in Mobile Drawer -->
+      <div id="mobile-drawer-role-box" class="drawer-role-box" style="display: none;">
+        <span class="drawer-role-label">⚡ Super Admin Switcher</span>
+        <select id="mobile-drawer-role-select" class="drawer-role-select">
+          <option value="usr-superadmin">👑 Rochmad (Super Admin)</option>
+          <option value="usr-hc">👥 Dian Ekawati (Head of HC)</option>
+          <option value="usr-keuangan">💼 Rendy (Staff Keuangan)</option>
+          <option value="usr-maker">🍲 Bivaldie (Maker Dapur)</option>
+          <option value="usr-checker">🔍 M. Imam Adamy (Checker Dapur)</option>
+          <option value="usr-manager-area">🗺️ Tazkia Aulia (Manager Area)</option>
+          <option value="usr-dir-ops">⚡ M. Alfaqih (Direktur Operasional)</option>
+          <option value="usr-dir-keu">💰 Viona (Direktur Keuangan)</option>
+          <option value="usr-dirut">🏢 Kody Suryo (Direktur Utama)</option>
+          <option value="usr-ketua-pembina">⚖️ M. Arrasyid (Ketua Pembina)</option>
+        </select>
+      </div>
+    </div>
+  </aside>
+
+  <div id="app-container">
+    <!-- Top Ambient Glowing Aura -->
+    <div class="ambient-glow-top" aria-hidden="true"></div>
+
+    <!-- ==========================================================================
+         TOP-CENTER FLOATING NAVBAR (NALAR AESTHETICS - 3-POINT ALIGNED)
+         ========================================================================== -->
+    <header class="app-top-navbar">
+      <div class="top-navbar-container">
+        
+        <!-- Left: Brand Logo & Title -->
+        <div class="navbar-left">
+          <!-- Mobile Hamburger Toggle -->
+          <button class="btn-mobile-menu" onclick="App.toggleMobileSidebar(true)" aria-label="Buka Menu">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+
+          <a href="#" class="brand-link" onclick="App.switchTab('dashboard'); return false;">
+            <img src="assets/logo-yayasan.png" alt="Logo ERP Yayasan" class="brand-logo-img">
+            <div class="brand-info">
+              <span class="brand-title">ERP YAYASAN</span>
+              <span class="brand-subtitle">Enterprise Hub</span>
+            </div>
+          </a>
+        </div>
+
+        <!-- Center: Floating Navigation Pill (Nalar Style) -->
+        <nav class="navbar-center">
+          <div class="nav-center-pill">
+            <button class="nav-pill-item active" data-tab="dashboard" onclick="App.switchTab('dashboard')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              <span>Dashboard</span>
+            </button>
+
+            <button class="nav-pill-item" data-tab="cuti" onclick="App.switchTab('cuti')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span>Cuti & Izin</span>
+            </button>
+
+            <button class="nav-pill-item" data-tab="timesheet" onclick="App.switchTab('timesheet')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span>Timesheet</span>
+            </button>
+
+            <button class="nav-pill-item" data-tab="pengajuan" onclick="App.switchTab('pengajuan')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+              <span>Pengadaan PR</span>
+            </button>
+
+            <!-- Modul Khusus HC Hub dengan Breakdown Dropdown (Tidak Ada Halaman Sendiri) -->
+            <div class="nav-dropdown-wrapper" id="nav-item-hc-hub" style="display: none;">
+              <button type="button" class="nav-pill-item" id="nav-btn-hc-hub" data-tab="hc-hub" onclick="App.toggleHCDropdown(event)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span>HC Hub ▾</span>
+              </button>
+              
+              <div class="nav-dropdown-menu" id="hc-hub-dropdown-menu">
+                <button type="button" class="nav-dropdown-item" onclick="App.switchTab('hc-struktur')">
+                  <div class="dropdown-item-icon">🏢</div>
+                  <div>
+                    <div class="dropdown-item-title">1. Struktur Perusahaan</div>
+                    <div class="dropdown-item-desc">Ganti nama pejabat di setiap role</div>
+                  </div>
+                </button>
+
+                <button type="button" class="nav-dropdown-item" onclick="App.switchTab('hc-karyawan')">
+                  <div class="dropdown-item-icon">📋</div>
+                  <div>
+                    <div class="dropdown-item-title">2. Data Karyawan</div>
+                    <div class="dropdown-item-desc">Master HRIS (36 Field Lengkap)</div>
+                  </div>
+                </button>
+
+                <button type="button" class="nav-dropdown-item" onclick="App.switchTab('hc-akun')">
+                  <div class="dropdown-item-icon">🔐</div>
+                  <div>
+                    <div class="dropdown-item-title">3. Pengelolaan Akun</div>
+                    <div class="dropdown-item-desc">Buat, kelola username & password</div>
+                  </div>
+                </button>
+
+                <button type="button" class="nav-dropdown-item" onclick="App.switchTab('hc-dokumen')">
+                  <div class="dropdown-item-icon">📚</div>
+                  <div>
+                    <div class="dropdown-item-title">4. Panduan & Dokumen Yayasan</div>
+                    <div class="dropdown-item-desc">Upload & kelola file PDF / PPT</div>
+                  </div>
+                </button>
+
+                <button type="button" class="nav-dropdown-item" onclick="App.switchTab('hc-timesheet')">
+                  <div class="dropdown-item-icon" style="background: rgba(16, 185, 129, 0.18); color: #6EE7B7;">📊</div>
+                  <div>
+                    <div class="dropdown-item-title">5. Export Timesheet Karyawan</div>
+                    <div class="dropdown-item-desc">Download format Excel (.xlsx) rapi & tertata</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Modul Khusus Admin Hub (Khusus Staf Ahli Keuangan & Administrasi, Maker Yayasan, & Direksi) -->
+            <div class="nav-dropdown-wrapper" id="nav-item-admin-hub" style="display: none;">
+              <button type="button" class="nav-pill-item" id="nav-btn-admin-hub" data-tab="admin-hub" onclick="App.toggleAdminDropdown(event)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                <span>Admin Hub ▾</span>
+              </button>
+              
+              <div class="nav-dropdown-menu" id="admin-hub-dropdown-menu">
+                <button type="button" class="nav-dropdown-item" id="admin-dropdown-dapur" onclick="App.switchTab('admin-dapur')">
+                  <div class="dropdown-item-icon" style="background: rgba(245, 158, 11, 0.18); color: #FCD34D;">🍳</div>
+                  <div>
+                    <div class="dropdown-item-title">1. Daftar Dapur (Master SPPG)</div>
+                    <div class="dropdown-item-desc">Database dapur, lokasi lengkap & penempatan</div>
+                  </div>
+                </button>
+
+                <button type="button" class="nav-dropdown-item" id="admin-dropdown-laporan-va" onclick="App.switchTab('dapur')">
+                  <div class="dropdown-item-icon" style="background: rgba(239, 68, 68, 0.18); color: #F87171;">🍲</div>
+                  <div>
+                    <div class="dropdown-item-title">2. Laporan Dapur & Saldo VA</div>
+                    <div class="dropdown-item-desc">Belanja bahan, porsi santri & Virtual Account</div>
+                  </div>
+                </button>
+
+                <button type="button" class="nav-dropdown-item" id="admin-dropdown-kendala" onclick="App.switchTab('admin-kendala')">
+                  <div class="dropdown-item-icon" style="background: rgba(245, 158, 11, 0.18); color: #FCD34D;">🚨</div>
+                  <div>
+                    <div class="dropdown-item-title">3. Daftar Kendala Dapur SPPG</div>
+                    <div class="dropdown-item-desc">Rekap kendala harian, filter tanggal & status per dapur</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Universal Approval Hub -->
+            <button class="nav-pill-item" id="nav-item-approval" data-tab="approval" onclick="App.switchTab('approval')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              <span>Approval Hub</span>
+              <span id="approval-badge-count" class="nav-badge-count" style="display: none;">0</span>
+            </button>
+          </div>
+        </nav>
+
+        <!-- Right: Role Switcher & User Profile Pill -->
+        <div class="navbar-right">
+          <div class="navbar-user-chip">
+            <div id="sidebar-user-avatar" class="user-chip-avatar">SA</div>
+            <div class="user-chip-meta">
+              <div id="sidebar-user-name" class="user-chip-name">Super Administrator</div>
+              <div id="sidebar-user-role" class="user-chip-role">Master Oversight</div>
+            </div>
+
+            <!-- Role Selector Dropdown with Real Company Organizational Roles (Visible ONLY for Super Admin) -->
+            <select id="sidebar-role-select" class="navbar-role-select" title="Ganti Peran / Role Akses (Super Admin Mode)" style="display: none;">
+              <optgroup label="⚡ Master System">
+                <option value="ADM-001" selected>Super Administrator (Master Access)</option>
+              </optgroup>
+              <optgroup label="👑 Jajaran Direksi">
+                <option value="DU-001">Rochmad (Direktur Utama)</option>
+                <option value="DO-001">Muhammad Arrasyid (Direktur Operasional)</option>
+                <option value="DK-001">Kody Suryo Nugroho (Direktur Keuangan)</option>
+                <option value="DO-002">Muhammad Alfaqih (Direktur Operasional)</option>
+              </optgroup>
+              <optgroup label="🏢 Manajerial Area & Keuangan">
+                <option value="MK-001">Viona (Manager Keuangan)</option>
+                <option value="MA-001">Dian Ekawati (Manajer Area Jawa Tengah)</option>
+                <option value="MA-002">Bivaldie A.R. (Manajer Area Jakarta)</option>
+                <option value="MA-003">Rendy Seftiana (Manajer Area Jkt & Jabar)</option>
+              </optgroup>
+              <optgroup label="💰 Human Capital, Staf Ahli & FAT">
+                <option value="HC-001">Tazkia Aulia (Human Capital)</option>
+                <option value="SA-001">Sakhiyah Karomah Salam (Staf Ahli Keuangan)</option>
+                <option value="SA-002">Muhammad Syafiq Al Ghifari (Staf Ahli Keuangan)</option>
+                <option value="FAT-001">Muhammad Imam Adamy (FAT Officer)</option>
+              </optgroup>
+              <optgroup label="🔴 Staff Operasional Lapangan">
+                <option value="SO-001">Maulana Raka Pahlevi (Staff Operasional)</option>
+                <option value="SO-002">Irawan Dwi Laksono (Staff Operasional Jatim)</option>
+                <option value="SO-003">Wawan Hermawan, S.Ag (Staff Operasional Jabar)</option>
+                <option value="SO-004">Syifa Izzatina (Staff Operasional)</option>
+              </optgroup>
+              <optgroup label="📋 Surveyor (Alumni)">
+                <option value="SV-001">Ajjief Damar (Surveyor - Alumnus)</option>
+                <option value="SV-002">Hery Purwanto (Surveyor - Alumnus)</option>
+                <option value="SV-003">Teguh Widodo (Surveyor - Alumnus)</option>
+              </optgroup>
+              <optgroup label="🤝 Perwakilan Yayasan (Mitra SPPG)">
+                <option value="PY-001">Tri Utari (Perwakilan Yayasan - Tapos 1)</option>
+                <option value="PY-002">Khoirudin (Perwakilan Yayasan - Cipinang)</option>
+                <option value="PY-003">Tresna (Perwakilan Yayasan - Citaman)</option>
+                <option value="PY-004">Setiawati (Perwakilan Yayasan - Harjamukti)</option>
+                <option value="PY-005">Astri Listia (Perwakilan Yayasan - Jatiwaringin)</option>
+                <option value="PY-006">Childa Susanti (Perwakilan Yayasan - Kayu Manis)</option>
+                <option value="PY-007">Syahrir (Perwakilan Yayasan - Kelapa Dua Wetan)</option>
+                <option value="PY-008">Maman Sutarman (Perwakilan Yayasan - Kendan)</option>
+                <option value="PY-009">Jusman Ziliwu (Perwakilan Yayasan - Leles)</option>
+                <option value="PY-010">Achmad Sofyan Permadi (Perwakilan Yayasan - Mandalamekar)</option>
+                <option value="PY-011">Imam Baiturohim (Perwakilan Yayasan - Mandirancan)</option>
+                <option value="PY-012">Yulianti (Perwakilan Yayasan - Pisangan Baru)</option>
+                <option value="PY-013">Koko Kiswoko (Perwakilan Yayasan - Salaman)</option>
+                <option value="PY-014">Farissa Cahyainka (Perwakilan Yayasan - Tengaran)</option>
+                <option value="PY-015">Titi Hardyati (Perwakilan Yayasan - Utan Kayu)</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <button id="btn-header-cloud-config" class="btn-header-cloud is-online" onclick="App.openSupabaseConfig()" title="Pengaturan Server Supabase & Notifikasi Email">
+            <span class="cloud-pulse-dot"></span>
+            <svg class="cloud-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+            <span id="btn-header-cloud-label" class="cloud-status-text">Supabase Online</span>
+          </button>
+
+          <button id="btn-header-auth-action" class="btn-header-logout" onclick="App.handleLogout()" title="Keluar dari Sistem">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span id="btn-header-auth-label">Log Out</span>
+          </button>
+        </div>
+
+      </div>
+    </header>
+
+    <!-- ==========================================================================
+         MAIN CONTENT AREA (FULL CANVAS CONTAINER)
+         ========================================================================== -->
+    <main class="app-main-canvas">
+      <div class="page-content-wrapper">
+        <div id="main-content-area">
+          <!-- Rendered dynamically by JavaScript modules -->
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ==========================================================================
+       SPLIT-SCREEN MODERN LOGIN PAGE WITH ANIMATED NEURAL WAVE BACKGROUND
+       ========================================================================== -->
+  <div id="login-screen-overlay" class="split-login-overlay show active">
+    <!-- Animated Neural Sine Wave Canvas Background (Matching Main Dashboard) -->
+    <canvas id="login-neural-wave-canvas" class="login-bg-wave-canvas"></canvas>
+
+    <div class="split-login-card">
+      
+      <!-- LEFT PANE: Cinematic Hero Visual & Dynamic Showcase -->
+      <div class="split-login-left">
+        <!-- Overlay Dark Gradient for Contrast -->
+        <div class="split-login-left-overlay"></div>
+
+        <!-- Left Top Bar -->
+        <div class="split-left-top">
+          <div class="split-left-brand-tag">
+            <span class="pulse-spark">✦</span>
+            <span>Enterprise Suite</span>
+          </div>
+          <div class="split-left-actions">
+            <button type="button" class="btn-split-ghost" onclick="App.showSystemGuidelineDoc()">Panduan</button>
+          </div>
+        </div>
+
+        <!-- Left Center Tagline -->
+        <div class="split-left-center">
+          <div class="split-glow-text">Empowered Connections, Elevated Growth.</div>
+          <p class="split-glow-desc">
+            Platform operasional terpadu kepegawaian HRIS, pemantauan dapur program kemitraan SPPG, dan tata kelola persetujuan finansial bertingkat.
+          </p>
+        </div>
+
+        <!-- Left Bottom Interactive Showcase Card -->
+        <div class="split-left-bottom-pill" id="split-showcase-pill">
+          <div class="split-pill-user">
+            <div class="split-pill-avatar" id="split-hero-avatar">👑</div>
+            <div class="split-pill-meta">
+              <div class="split-pill-name" id="split-hero-title">Universal Approval Hub</div>
+              <div class="split-pill-desc" id="split-hero-desc">Persetujuan Cuti, Pengadaan PR & Kasbon Terpadu</div>
+            </div>
+          </div>
+          <div class="split-pill-arrows">
+            <button type="button" class="split-arrow-btn" onclick="App.prevLoginFeature()" title="Fitur Sebelumnya">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <button type="button" class="split-arrow-btn" onclick="App.nextLoginFeature()" title="Fitur Selanjutnya">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT PANE: Clean Crisp Modern Form Area (Strict Username & Password Authentication) -->
+      <div class="split-login-right">
+        
+        <!-- Right Header (Clean Branding) -->
+        <div class="split-right-header" style="justify-content: center; margin-bottom: 28px;">
+          <div class="split-logo-area">
+            <img src="assets/logo-yayasan.png" alt="Logo ERP Yayasan" class="split-logo-img">
+            <span class="split-logo-text">ERP<strong>YAYASAN</strong></span>
+          </div>
+        </div>
+
+        <!-- Right Form Body -->
+        <div class="split-right-body">
+          <div class="split-greeting-box" style="text-align: center; margin-bottom: 30px;">
+            <h1 class="split-main-greeting">Hi Team</h1>
+            <p class="split-greeting-sub">Welcome to ERP YAYASAN Enterprise Portal</p>
+          </div>
+
+          <form id="form-split-login" onsubmit="App.handleCredentialLogin(event)" class="split-login-form">
+            <div class="split-input-group" style="margin-bottom: 20px;">
+              <label for="login-input-username" class="split-label">Email / Username</label>
+              <div class="split-input-wrap">
+                <input type="text" id="login-input-username" class="split-input" placeholder="masukkan username mu" required autofocus>
+              </div>
+            </div>
+
+            <div class="split-input-group" style="margin-bottom: 30px;">
+              <label for="login-input-password" class="split-label">Password</label>
+              <div class="split-input-wrap">
+                <input type="password" id="login-input-password" class="split-input" placeholder="Masukkan password akun..." required>
+                <button type="button" class="split-toggle-eye" onclick="App.togglePasswordVisibility('login-input-password')" title="Lihat / Sembunyikan Password">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Primary Red/Orange Pill Submit Button -->
+            <button type="submit" class="btn-split-primary-login" style="margin-top: 8px;">
+              Login
+            </button>
+          </form>
+        </div>
+
+        <!-- Empty spacer to maintain vertical alignment -->
+        <div style="height: 12px;"></div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL POPUPS
+       ========================================================================== -->
+
+  <!-- Modal 0: Konfirmasi Logout -->
+  <div id="modal-logout-confirm" class="modal-backdrop">
+    <div class="modal-box" style="max-width: 440px; text-align: center; padding: 28px 24px; border-color: rgba(239, 68, 68, 0.3);">
+      <div style="width: 58px; height: 58px; border-radius: 50%; background: rgba(239, 68, 68, 0.12); border: 1.5px solid rgba(239, 68, 68, 0.35); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto; color: #EF4444; box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </div>
+
+      <h3 style="font-size: 19px; font-weight: 700; color: #FFFFFF; margin-bottom: 6px;">Konfirmasi Keluar Sistem</h3>
+      <p style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 18px;">
+        Apakah Anda yakin ingin keluar dari akun <strong id="logout-confirm-user-name" style="color: #FFFFFF;">-</strong>?
+      </p>
+
+      <!-- Active User Card Preview -->
+      <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 22px; display: flex; align-items: center; gap: 12px; text-align: left;">
+        <div id="logout-confirm-avatar" class="role-avatar" style="background: linear-gradient(135deg, #EF4444, #F59E0B); width: 40px; height: 40px; font-size: 14px; font-weight: 700;">-</div>
+        <div style="min-width: 0; flex: 1;">
+          <div id="logout-confirm-name" style="font-weight: 600; font-size: 13.5px; color: #FFFFFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">-</div>
+          <div id="logout-confirm-role" style="font-size: 11px; color: var(--brand-orange); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">-</div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button type="button" class="btn-nalar-secondary" style="flex: 1; padding: 11px 18px; border-radius: 999px;" onclick="App.closeModal('modal-logout-confirm')">
+          Batal
+        </button>
+        <button type="button" class="btn-split-primary-login" style="flex: 1.2; padding: 11px 18px; font-size: 13.5px; border-radius: 999px;" onclick="App.confirmLogout()">
+          Ya, Keluar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 1: Pengajuan Cuti -->
+  <div id="modal-cuti" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">Form Pengajuan Cuti & Izin</h3>
+        <button class="modal-close-btn" onclick="App.closeModal('modal-cuti')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="form-cuti">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Jenis Cuti / Izin</label>
+            <select id="leave-type" class="form-control" required>
+              <option value="Cuti Tahunan">Cuti Tahunan (Potong Saldo Kuota)</option>
+              <option value="Izin Sakit">Izin Sakit (Upload Surat Dokter)</option>
+              <option value="Izin Khusus / Acara Keluarga">Izin Khusus / Acara Keluarga</option>
+              <option value="Cuti Melahirkan / Bersalin">Cuti Melahirkan / Bersalin</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Mulai Tanggal</label>
+              <input type="date" id="leave-start" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Sampai Tanggal</label>
+              <input type="date" id="leave-end" class="form-control" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Alasan Cuti / Keterangan</label>
+            <textarea id="leave-reason" class="form-control" rows="3" placeholder="Jelaskan kebutuhan pengajuan cuti Anda..." required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-cuti')">Batal</button>
+          <button type="submit" class="btn-nalar-primary">Submit Pengajuan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Pengajuan Barang (PR) -->
+  <div id="modal-pr" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">Form Purchase Requisition (PR)</h3>
+        <button class="modal-close-btn" onclick="App.closeModal('modal-pr')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="form-pr">
+        <div class="modal-body">
+          <!-- Target Dapur (Wajib untuk semua pengajuan PR: Menampilkan ID SPPG & Nama Dapur) -->
+          <div id="pr-kitchen-container" class="form-group" style="background: rgba(245, 158, 11, 0.08); border: 1px dashed rgba(245, 158, 11, 0.35); border-radius: var(--radius-sm); padding: 12px 14px;">
+            <label class="form-label" style="color: #FCD34D;">🍳 Untuk Kepentingan Dapur Apa? (Pilih Database SPPG) <span style="color: #F87171;">*</span></label>
+            <select id="pr-kitchen-select" class="form-control" required style="font-weight: 500; font-size: 13px;">
+              <!-- Populated dynamically: [ID SPPG] - [Nama Dapur] -->
+            </select>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              *Setiap pengajuan PR wajib ditautkan ke titik dapur operasional SPPG tujuan.
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Nama Barang / Deskripsi Permintaan <span style="color: #F87171;">*</span></label>
+            <input type="text" id="pr-name" class="form-control" placeholder="Contoh: Blender Komersial Heavy Duty 2L" required>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Kategori</label>
+              <select id="pr-category" class="form-control" required>
+                <option value="Fasilitas Kantor & Dapur">Fasilitas Kantor & Dapur</option>
+                <option value="Perangkat IT & Survei">Perangkat IT & Survei</option>
+                <option value="ATK & Consumables">ATK & Consumables</option>
+                <option value="Pantry & Logistik">Pantry & Logistik</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tingkat Urgensi</label>
+              <select id="pr-urgency" class="form-control" required>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High (Mendesak)</option>
+                <option value="LOW">Low (Reguler)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Jumlah (Quantity) <span style="color: #F87171;">*</span></label>
+              <input type="number" id="pr-qty" class="form-control" min="1" value="1" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Estimasi Harga Satuan (Rp) <span style="color: #F87171;">*</span></label>
+              <input type="number" id="pr-price" class="form-control" placeholder="2500000" required>
+            </div>
+          </div>
+
+          <!-- Attachment / Foto Spesifikasi Barang -->
+          <div class="form-group">
+            <label class="form-label">Attachment / Foto Spesifikasi Barang</label>
+            <div style="border: 2px dashed var(--border-card); border-radius: var(--radius-md); padding: 18px; text-align: center; background: rgba(0,0,0,0.25); cursor: pointer; transition: all 0.2s ease;" 
+                 id="pr-dropzone" onclick="document.getElementById('pr-attachment').click()">
+              <input type="file" id="pr-attachment" accept="image/*" style="display: none;" onchange="PengajuanBarangModule.handleFileSelect(event)">
+              
+              <div id="pr-attachment-prompt">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--brand-orange)" stroke-width="1.8" style="margin: 0 auto 8px auto; display: block;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                <div style="font-size: 12.5px; font-weight: 500; color: #fff;">Klik untuk Upload Foto / Gambar Spesifikasi Barang</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">Format: JPG, PNG, WebP (Maks. 5MB)</div>
+              </div>
+
+              <!-- Live Image Preview -->
+              <div id="pr-attachment-preview" style="display: none; align-items: center; justify-content: center; gap: 14px; margin-top: 6px;">
+                <img id="pr-preview-img" src="" alt="Preview Foto" style="width: 70px; height: 70px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--brand-orange);">
+                <div style="text-align: left;">
+                  <div id="pr-preview-filename" style="font-size: 12px; font-weight: 600; color: #fff; font-family: var(--font-mono); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">filename.jpg</div>
+                  <div style="font-size: 11px; color: #34D399; margin-top: 2px;">✓ Foto berhasil dilampirkan</div>
+                  <button type="button" class="text-mono-badge" style="color: #F87171; background: none; border: none; cursor: pointer; font-size: 10px; margin-top: 4px; padding: 0;" onclick="event.stopPropagation(); PengajuanBarangModule.removeAttachment();">
+                    ✕ Hapus Foto
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Alasan Kebutuhan Barang <span style="color: #F87171;">*</span></label>
+            <textarea id="pr-reason" class="form-control" rows="3" placeholder="Tuliskan justifikasi operasional pengajuan barang..." required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-pr')">Batal</button>
+          <button type="submit" class="btn-nalar-primary">Submit PR</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Lightbox: Foto Preview -->
+  <div id="modal-image-preview" class="modal-backdrop" onclick="App.closeModal('modal-image-preview')">
+    <div class="modal-box" style="max-width: 500px; padding: 24px; text-align: center;" onclick="event.stopPropagation()">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 id="lightbox-title" class="modal-title" style="font-size: 16px;">Foto Barang</h3>
+        <button class="modal-close-btn" onclick="App.closeModal('modal-image-preview')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <img id="lightbox-img" src="" alt="Foto Barang" style="width: 100%; max-height: 380px; object-fit: contain; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); background: #000;">
+    </div>
+  </div>
+
+  <!-- Floating Action Button (FAB): System Maintenance & Master Reset (Khusus Human Capital & Direktur Operasional) -->
+  <div id="fab-system-settings" class="fab-system-settings" style="display: none;" onclick="App.openSystemMaintenanceModal()" title="Pengaturan & Reset Sistem (HC & Direktur Operasional)">
+    <div class="fab-pulse-ring"></div>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+    <span class="fab-tooltip">⚙️ Pengaturan & Reset Database</span>
+  </div>
+
+  <!-- Modal: System Maintenance & Master Reset -->
+  <div id="modal-system-maintenance" class="modal-backdrop">
+    <div class="modal-box" style="max-width: 600px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); display: flex; align-items: center; justify-content: center; color: #F87171; font-size: 18px;">
+            ⚙️
+          </div>
+          <div>
+            <h3 class="modal-title" style="color: #fff; font-size: 17px;">Pemeliharaan Sistem & Master Reset Database</h3>
+            <p style="font-size: 11px; color: #A78BFA; font-family: var(--font-mono); margin-top: 2px;">Otoritas Khusus: Human Capital & Direktur Operasional</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="App.closeModal('modal-system-maintenance')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="modal-body" style="padding: 20px 24px;">
+        <!-- Status Database Saat Ini -->
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 18px;">
+          <span class="text-mono-badge" style="color: var(--text-muted); font-size: 10.5px;">Statistik Database Saat Ini</span>
+          <div id="maintenance-db-stats" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 12.5px;">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Warning Card -->
+        <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-left: 4px solid #EF4444; border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 18px;">
+          <div style="font-weight: 700; color: #F87171; font-size: 13.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+            <span>⚠️</span> PERHATIAN: PEMBERSIHAN & RESET DATA TOTAL
+          </div>
+          <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 8px;">
+            Tindakan ini akan <strong>menghapus seluruh transaksi operasional</strong> (seluruh pengajuan cuti, log timesheet harian, pengadaan barang PR, dan log aktivitas) serta menghapus seluruh akun staf/karyawan lainnya.
+          </p>
+          <div style="font-size: 11.5px; color: #34D399; background: rgba(16, 185, 129, 0.1); padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(52, 211, 153, 0.25); line-height: 1.6;">
+            🔒 <strong>Akun Pimpinan Master yang Dipertahankan:</strong><br>
+            1. 👑 <strong>Super Administrator</strong> (Master Oversight & IT)<br>
+            2. 👤 <strong>Tazkia Aulia</strong> (Human Capital Administrator)<br>
+            3. 👤 <strong>Muhammad Arrasyid</strong> (Direktur Operasional)<br>
+            4. 👤 <strong>Rochmad</strong> (Direktur Utama)
+          </div>
+        </div>
+
+        <!-- Security Confirmation Input -->
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="form-label" style="color: #FCD34D;">
+            Ketik kata <code style="background: rgba(239,68,68,0.2); color: #F87171; padding: 2px 6px; border-radius: 3px; font-family: var(--font-mono); font-weight: 700;">RESET DATA</code> untuk konfirmasi:
+          </label>
+          <input type="text" id="maintenance-confirm-input" class="form-control" placeholder="Ketik RESET DATA di sini..." style="font-family: var(--font-mono); text-transform: uppercase;">
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-system-maintenance')">Batal</button>
+        <button type="button" class="btn-nalar-primary" style="background: linear-gradient(135deg, #DC2626 0%, #EF4444 100%); border-color: #F87171; color: #fff; font-weight: 700;" onclick="App.executeMasterReset()">
+          🔴 Reset Bersih (Pertahankan Master Organisasi)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Pengaturan Server Supabase & Notifikasi Gmail SMTP -->
+  <div id="modal-supabase-config" class="modal-backdrop">
+    <div class="modal-box" style="max-width: 540px;">
+      <div class="modal-header">
+        <h3 class="modal-title">⚡ Konfigurasi Cloud Supabase & Gmail SMTP</h3>
+        <button class="modal-close-btn" onclick="App.closeModal('modal-supabase-config')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
+          Hubungkan aplikasi ERP MMS ke database PostgreSQL Supabase dan aktifkan pengiriman notifikasi email via Gmail SMTP resmi yayasan.
+        </p>
+
+        <div class="form-group">
+          <label class="form-label">Project URL Supabase <span style="color: #F87171;">*</span></label>
+          <input type="url" id="cfg-supabase-url" class="form-control" placeholder="https://xyzcompany.supabase.co" style="font-family: var(--font-mono); font-size: 12.5px;">
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">Ditemukan di: Dashboard Supabase ➔ Project Settings ➔ API ➔ Project URL</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Project Anon / Public API Key <span style="color: #F87171;">*</span></label>
+          <textarea id="cfg-supabase-anon" class="form-control" rows="3" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..." style="font-family: var(--font-mono); font-size: 11.5px; resize: vertical;"></textarea>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">Ditemukan di: Dashboard Supabase ➔ Project Settings ➔ API ➔ Project API keys (anon public)</div>
+        </div>
+
+        <div style="background: rgba(16, 185, 129, 0.08); border: 1px dashed rgba(16, 185, 129, 0.35); border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 14px;">
+          <div style="font-size: 12px; font-weight: 600; color: #6EE7B7; margin-bottom: 4px;">📧 Gmail SMTP & Google App Password:</div>
+          <div style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.45;">
+            Pengaturan SMTP Gmail (Email yayasan & 16 karakter Google App Password) disimpan secara aman di <strong>Supabase Dashboard ➔ Project Settings ➔ Edge Functions ➔ Secrets</strong> (<code style="color: #FCD34D;">SMTP_USER</code> dan <code style="color: #FCD34D;">SMTP_PASS</code>).
+          </div>
+        </div>
+
+        <!-- Live Email Notification Tester Section -->
+        <div style="background: rgba(30, 41, 59, 0.65); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 14px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <div style="font-size: 12px; font-weight: 700; color: #93C5FD; display: flex; align-items: center; gap: 6px;">
+              <span>🧪</span> Uji Coba Pengiriman Email Notifikasi:
+            </div>
+            <span style="font-size: 10px; font-family: var(--font-mono); color: #34D399; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 4px;">Edge Function</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="email" id="cfg-test-email-input" class="form-control" value="alfaqih1108@gmail.com" placeholder="Email tujuan uji coba..." style="font-size: 12px; flex: 1;">
+            <button type="button" class="btn-nalar-primary" id="btn-run-email-test" onclick="App.testDirectEmailSend()" style="padding: 6px 14px; font-size: 12px; white-space: nowrap; background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);">
+              🚀 Kirim Tes
+            </button>
+          </div>
+          <div id="cfg-email-test-result" style="display: none; margin-top: 10px; font-size: 11.5px; padding: 8px 12px; border-radius: 6px; line-height: 1.45;"></div>
+        </div>
+
+        <div id="cfg-test-result" style="display: none; margin-top: 14px; font-size: 12.5px; padding: 10px 14px; border-radius: 8px;"></div>
+      </div>
+
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <button type="button" class="btn-nalar-secondary" onclick="App.testSupabaseConnection()">🔍 Tes Koneksi</button>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-supabase-config')">Batal</button>
+          <button type="button" class="btn-nalar-primary" onclick="App.saveSupabaseConfig()">💾 Simpan & Sinkronisasi</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Autentikasi Gagal / Username & Password Salah -->
+  <div id="modal-login-failed" class="modal-backdrop">
+    <div class="modal-box" style="max-width: 480px; text-align: center; border: 1px solid rgba(239, 68, 68, 0.4); box-shadow: 0 25px 60px -15px rgba(239, 68, 68, 0.25), 0 0 40px rgba(239, 68, 68, 0.15); border-radius: 16px;">
+      <div class="modal-body" style="padding: 32px 28px 26px 28px;">
+        <!-- Animated Danger Icon -->
+        <div style="width: 68px; height: 68px; border-radius: 50%; background: rgba(239, 68, 68, 0.12); border: 2px solid rgba(239, 68, 68, 0.4); display: flex; align-items: center; justify-content: center; margin: 0 auto 18px auto; color: #EF4444; box-shadow: 0 0 25px rgba(239, 68, 68, 0.2);">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
+
+        <h3 style="font-size: 19px; font-weight: 700; color: #fff; margin-bottom: 8px; letter-spacing: -0.01em;">
+          Autentikasi Gagal
+        </h3>
+        <p style="font-size: 13.5px; color: #CBD5E1; line-height: 1.55; margin-bottom: 24px;">
+          Username atau password yang Anda masukkan <strong>tidak cocok</strong> dengan data resmi di sistem. Mohon periksa kembali dan isi ulang.
+        </p>
+
+        <button type="button" class="btn-nalar-primary" style="width: 100%; height: 44px; justify-content: center; font-size: 14px; font-weight: 700; border-radius: 10px; background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35); cursor: pointer;" onclick="App.retryLoginInput()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px;"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          Isi Ulang & Coba Lagi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <!-- Supabase JS SDK & Configuration -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-config.js?v=20260824_14"></script>
+
+  <!-- Application Modules -->
+  <script src="js/modules/data.js?v=20260824_14"></script>
+  <script src="js/modules/dashboard.js?v=20260824_14"></script>
+  <script src="js/modules/cuti.js?v=20260824_14"></script>
+  <script src="js/modules/timesheet.js?v=20260824_14"></script>
+  <script src="js/modules/pengajuan-barang.js?v=20260824_14"></script>
+  <script src="js/modules/cash-advance.js?v=20260824_14"></script>
+  <script src="js/modules/dapur-yayasan.js?v=20260824_14"></script>
+  <script src="js/modules/hc-hub.js?v=20260824_14"></script>
+  <script src="js/modules/admin-hub.js?v=20260824_14"></script>
+  <script src="js/modules/approval-center.js?v=20260824_14"></script>
+  <script src="js/app.js?v=20260824_14"></script>
+</body>
+</html>

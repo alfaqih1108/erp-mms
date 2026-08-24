@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Panduan Uji Coba (UAT Guidance) - ERP Yayasan Enterprise Hub</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 16mm 14mm 16mm 14mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #1E293B;
+      background: #FFFFFF;
+      line-height: 1.5;
+      font-size: 11pt;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .header-banner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #FF4B01;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .header-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #FF4B01, #8B5CF6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 800;
+      font-size: 18pt;
+    }
+
+    .header-title h1 {
+      font-size: 16pt;
+      font-weight: 800;
+      color: #0F172A;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+
+    .header-title p {
+      font-size: 9.5pt;
+      color: #64748B;
+      font-weight: 500;
+    }
+
+    .header-badge {
+      background: #FFF7ED;
+      border: 1px solid #FDBA74;
+      color: #C2410C;
+      font-size: 8.5pt;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .meta-box {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .meta-label {
+      font-size: 8pt;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #64748B;
+      letter-spacing: 0.05em;
+    }
+
+    .meta-val {
+      font-size: 10pt;
+      font-weight: 600;
+      color: #0F172A;
+    }
+
+    h2 {
+      font-size: 12.5pt;
+      font-weight: 700;
+      color: #0F172A;
+      margin-top: 18px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-left: 4px solid #FF4B01;
+      padding-left: 10px;
+    }
+
+    .scenario-card {
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+      page-break-inside: avoid;
+    }
+
+    .scenario-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .scenario-title {
+      font-size: 11pt;
+      font-weight: 700;
+      color: #0F172A;
+    }
+
+    .scenario-tag {
+      font-size: 8pt;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .tag-cuti { background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; }
+    .tag-pr { background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; }
+    .tag-ts { background: #FAF5FF; color: #7E22CE; border: 1px solid #E9D5FF; }
+    .tag-dapur { background: #FFFBEB; color: #B45309; border: 1px solid #FDE68A; }
+    .tag-hc { background: #FFF1F2; color: #BE123C; border: 1px solid #FECDD3; }
+
+    .step-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 10px;
+      font-size: 9.5pt;
+      line-height: 1.45;
+      color: #334155;
+    }
+
+    .step-num {
+      background: #F1F5F9;
+      color: #0F172A;
+      font-weight: 700;
+      font-size: 8pt;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .step-text strong {
+      color: #0F172A;
+    }
+
+    .expected-box {
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: #F8FAFC;
+      border-left: 3px solid #10B981;
+      border-radius: 0 6px 6px 0;
+      font-size: 9pt;
+      color: #065F46;
+      font-weight: 500;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      margin-bottom: 16px;
+      font-size: 9pt;
+    }
+
+    th {
+      background: #F1F5F9;
+      color: #334155;
+      font-weight: 700;
+      text-align: left;
+      padding: 8px 10px;
+      border: 1px solid #CBD5E1;
+      font-size: 8.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    td {
+      padding: 7px 10px;
+      border: 1px solid #E2E8F0;
+      color: #334155;
+    }
+
+    tr:nth-child(even) {
+      background: #F8FAFC;
+    }
+
+    .badge-role {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 8pt;
+      font-weight: 600;
+      background: #E2E8F0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #0F172A;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .tip-banner {
+      background: #EFF6FF;
+      border: 1px solid #BFDBFE;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      font-size: 9pt;
+      color: #1E40AF;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .footer {
+      margin-top: 24px;
+      padding-top: 10px;
+      border-top: 1px solid #E2E8F0;
+      display: flex;
+      justify-content: space-between;
+      font-size: 8pt;
+      color: #94A3B8;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header-banner">
+    <div class="header-left">
+      <div class="header-logo">ERP</div>
+      <div class="header-title">
+        <h1>PANDUAN UJI COBA (UAT GUIDANCE)</h1>
+        <p>ERP YAYASAN Enterprise Hub — Staging & Trial Verification</p>
+      </div>
+    </div>
+    <div class="header-badge">STAGING V2.1</div>
+  </div>
+
+  <!-- META BOX -->
+  <div class="meta-box">
+    <div class="meta-item">
+      <span class="meta-label">Alamat Staging URL</span>
+      <span class="meta-val">https://erp-mms.vercel.app</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Default Password</span>
+      <span class="meta-val" style="font-family: 'JetBrains Mono', monospace; color: #FF4B01;">password123</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Metode Uji Coba</span>
+      <span class="meta-val">1 Device (Role Switcher Super Admin)</span>
+    </div>
+  </div>
+
+  <!-- QUICK TIP -->
+  <div class="tip-banner">
+    <span style="font-size: 14pt;">💡</span>
+    <div>
+      <strong>Tips Uji Coba 1 Device:</strong> Login dengan akun <strong>superadmin</strong>. Gunakan pemilih peran (<em>Role Switcher</em>) di bilah navigasi atas (Desktop) atau menu samping (Mobile) untuk berpindah akun pemohon dan approver secara instan tanpa perlu logout-login!
+    </div>
+  </div>
+
+  <!-- 1. PENGUJIAN CUTI -->
+  <h2>1. Pengujian Modul Cuti & Izin Karyawan</h2>
+  <div class="scenario-card">
+    <div class="scenario-header">
+      <div class="scenario-title">Skenario 1: Pengajuan & Persetujuan Cuti (Leave Workflow)</div>
+      <span class="scenario-tag tag-cuti">CUTI & IZIN</span>
+    </div>
+    <ul class="step-list">
+      <li class="step-item">
+        <span class="step-num">1</span>
+        <div class="step-text">Di Role Switcher, pilih <strong>Bivaldie A.R. (Manager Area)</strong> atau <strong>Rendy (Staff Keuangan)</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">2</span>
+        <div class="step-text">Buka menu <strong>Pengajuan Cuti & Izin</strong> ➔ Klik tombol <strong>+ Ajukan Cuti Baru</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">3</span>
+        <div class="step-text">Pilih jenis cuti (Tahunan/Izin/Sakit), tanggal cuti, dan alasan ➔ Klik <strong>Kirim Pengajuan</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">4</span>
+        <div class="step-text">Ganti peran ke <strong>Dian Ekawati (Head of HC)</strong> atau <strong>Rochmad (Direktur Utama)</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">5</span>
+        <div class="step-text">Buka menu <strong>Approval Center</strong> ➔ Tab <strong>Cuti & Izin</strong> ➔ Klik tombol hijau <strong>Setujui (Approve)</strong>.</div>
+      </li>
+    </ul>
+    <div class="expected-box">
+      <strong>Hasil yang Diharapkan:</strong> Status di kalender pemohon berubah menjadi 🟢 <strong>Hijau (Cuti Approved)</strong>, kuota cuti berkurang otomatis, dan tercatat di riwayat approval.
+    </div>
+  </div>
+
+  <!-- 2. PENGUJIAN BARANG (PR) -->
+  <h2>2. Pengujian Pengadaan Barang / Purchase Request (PR)</h2>
+  <div class="scenario-card">
+    <div class="scenario-header">
+      <div class="scenario-title">Skenario 2: Pengajuan PR & Approval Bertingkat (Tier 1 & Tier 2)</div>
+      <span class="scenario-tag tag-pr">PENGADAAN (PR)</span>
+    </div>
+    <ul class="step-list">
+      <li class="step-item">
+        <span class="step-num">1</span>
+        <div class="step-text">Pilih akun <strong>Muhammad Alfaqih (Direktur Operasional)</strong> atau <strong>Bivaldie</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">2</span>
+        <div class="step-text">Buka menu <strong>Pengajuan Barang (PR)</strong> ➔ Klik <strong>+ Buat Pengajuan Barang (PR)</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">3</span>
+        <div class="step-text">Isi nama barang, estimasi nominal (misal: <em>Rp 3.500.000</em>), upload foto nota/katalog ➔ Klik <strong>Submit</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">4</span>
+        <div class="step-text"><strong>Tier 1 Approval:</strong> Ganti akun ke <strong>Viona (Manager Keuangan)</strong> ➔ Buka <strong>Approval Center</strong> ➔ Klik <strong>Setujui (Verifikasi Keuangan)</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">5</span>
+        <div class="step-text"><strong>Final Approval:</strong> Ganti akun ke <strong>Rochmad (Direktur Utama)</strong> ➔ Buka <strong>Approval Center</strong> ➔ Klik <strong>Final Approval</strong>.</div>
+      </li>
+    </ul>
+    <div class="expected-box">
+      <strong>Hasil yang Diharapkan:</strong> Status PR berubah menjadi <strong>APPROVED</strong>, progres approval selesai 100%, dan rincian tersimpan di tabel log pengadaan.
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- 3. PENGUJIAN TIMESHEET -->
+  <h2>3. Pengujian Timesheet & Presensi Harian</h2>
+  <div class="scenario-card">
+    <div class="scenario-header">
+      <div class="scenario-title">Skenario 3: Input Presensi Kerja & Rekapitulasi Jam Kerja HC</div>
+      <span class="scenario-tag tag-ts">TIMESHEET</span>
+    </div>
+    <ul class="step-list">
+      <li class="step-item">
+        <span class="step-num">1</span>
+        <div class="step-text">Gunakan akun staf (misal: <strong>Rendy - Staff Keuangan</strong>).</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">2</span>
+        <div class="step-text">Buka menu <strong>Timesheet & Presensi</strong> ➔ Input Jam Masuk (08:00), Jam Pulang (17:00), dan Uraian Tugas Harian.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">3</span>
+        <div class="step-text">Upload foto selfie / bukti kerja ➔ Klik <strong>Simpan Presensi Hari Ini</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">4</span>
+        <div class="step-text">Ganti akun ke <strong>Dian Ekawati (Head of HC)</strong> ➔ Buka <strong>HC Hub ➔ 5. Export Timesheet Karyawan</strong>.</div>
+      </li>
+    </ul>
+    <div class="expected-box">
+      <strong>Hasil yang Diharapkan:</strong> Total jam kerja terhitung otomatis (8.0 Jam Efektif), log tersimpan di tabel HC, dan siap diexport ke file Excel (.xlsx).
+    </div>
+  </div>
+
+  <!-- 4. PENGUJIAN DAPUR & VA -->
+  <h2>4. Pengujian Dapur SPPG & Saldo Virtual Account</h2>
+  <div class="scenario-card">
+    <div class="scenario-header">
+      <div class="scenario-title">Skenario 4: Monitoring 5 Dapur Wilayah & Mutasi Saldo VA</div>
+      <span class="scenario-tag tag-dapur">DAPUR & SPPG</span>
+    </div>
+    <ul class="step-list">
+      <li class="step-item">
+        <span class="step-num">1</span>
+        <div class="step-text">Gunakan akun <strong>Kody Suryo Nugroho (Direktur Keuangan)</strong> atau <strong>Muhammad Alfaqih (Direktur Ops)</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">2</span>
+        <div class="step-text">Buka <strong>Admin Hub ➔ 1. Daftar Dapur (Master SPPG)</strong>: Periksa data 5 lokasi titik dapur operasional.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">3</span>
+        <div class="step-text">Buka <strong>Admin Hub ➔ 2. Laporan Dapur & Saldo VA</strong>: Periksa ringkasan pengeluaran bahan dan sisa saldo VA.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">4</span>
+        <div class="step-text">Buka <strong>Admin Hub ➔ 3. Daftar Kendala Dapur SPPG</strong>: Buat laporan kendala harian baru.</div>
+      </li>
+    </ul>
+    <div class="expected-box">
+      <strong>Hasil yang Diharapkan:</strong> Seluruh titik dapur SPPG tampil presisi dengan status operasional aktif dan pencatatan saldo VA yang transparan.
+    </div>
+  </div>
+
+  <!-- 5. PENGUJIAN HRIS & HC HUB -->
+  <h2>5. Pengujian HC Hub & Master Data HRIS</h2>
+  <div class="scenario-card">
+    <div class="scenario-header">
+      <div class="scenario-title">Skenario 5: Organogram Perusahaan & Manajemen Akun Karyawan</div>
+      <span class="scenario-tag tag-hc">HC HUB</span>
+    </div>
+    <ul class="step-list">
+      <li class="step-item">
+        <span class="step-num">1</span>
+        <div class="step-text">Gunakan akun <strong>Dian Ekawati (Head of HC)</strong> atau <strong>Super Admin</strong>.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">2</span>
+        <div class="step-text">Buka <strong>HC Hub ➔ 1. Struktur Perusahaan</strong>: Lihat hierarki jabatan dan bagan organogram interaktif.</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">3</span>
+        <div class="step-text">Buka <strong>HC Hub ➔ 2. Data Karyawan</strong>: Cek formulir data master 36 field lengkap (biodata, bank, BPJS, NIKA).</div>
+      </li>
+      <li class="step-item">
+        <span class="step-num">4</span>
+        <div class="step-text">Buka <strong>HC Hub ➔ 3. Pengelolaan Akun</strong>: Uji pembuatan akun karyawan baru atau ubah password.</div>
+      </li>
+    </ul>
+    <div class="expected-box">
+      <strong>Hasil yang Diharapkan:</strong> Pembaruan pejabat dan karyawan baru langsung tersinkronisasi ke seluruh sistem secara dinamis.
+    </div>
+  </div>
+
+  <!-- TABEL AKUN PEJABAT -->
+  <h2>6. Daftar Kredensial Akun Pengujian</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Nama Pejabat</th>
+        <th>Role / Jabatan</th>
+        <th>Username</th>
+        <th>Password</th>
+        <th>Wewenang Utama</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Super Administrator</strong></td>
+        <td><span class="badge-role">SUPER_ADMIN</span></td>
+        <td><code>superadmin</code></td>
+        <td><code>password123</code></td>
+        <td>Akses Master IT & Role Switcher Instan</td>
+      </tr>
+      <tr>
+        <td><strong>Rochmad</strong></td>
+        <td><span class="badge-role">DIREKTUR_UTAMA</span></td>
+        <td><code>rochmad</code></td>
+        <td><code>password123</code></td>
+        <td>Final Approval PR, Cuti & Dokumen</td>
+      </tr>
+      <tr>
+        <td><strong>Muhammad Arrasyid</strong></td>
+        <td><span class="badge-role">DIREKTUR_OPERASIONAL</span></td>
+        <td><code>arrasyid</code></td>
+        <td><code>password123</code></td>
+        <td>Approval Operasional, Dapur & Area</td>
+      </tr>
+      <tr>
+        <td><strong>Kody Suryo Nugroho</strong></td>
+        <td><span class="badge-role">DIREKTUR_KEUANGAN</span></td>
+        <td><code>kody.suryo</code></td>
+        <td><code>password123</code></td>
+        <td>Approval Anggaran, Saldo VA & Kasbon</td>
+      </tr>
+      <tr>
+        <td><strong>Muhammad Alfaqih</strong></td>
+        <td><span class="badge-role">DIREKTUR_OPERASIONAL</span></td>
+        <td><code>alfaqih</code></td>
+        <td><code>password123</code></td>
+        <td>Pengajuan PR, Dapur SPPG & Approval</td>
+      </tr>
+      <tr>
+        <td><strong>Viona</strong></td>
+        <td><span class="badge-role">MANAGER_KEUANGAN</span></td>
+        <td><code>viona</code></td>
+        <td><code>password123</code></td>
+        <td>Verifikasi Keuangan PR & Saldo Kasbon</td>
+      </tr>
+      <tr>
+        <td><strong>Dian Ekawati</strong></td>
+        <td><span class="badge-role">HEAD_OF_HC</span></td>
+        <td><code>dian.ekawati</code></td>
+        <td><code>password123</code></td>
+        <td>Kelola HRIS, Akun, Rekap Cuti & Timesheet</td>
+      </tr>
+      <tr>
+        <td><strong>Bivaldie A.R.</strong></td>
+        <td><span class="badge-role">MANAGER_AREA</span></td>
+        <td><code>bivaldie</code></td>
+        <td><code>password123</code></td>
+        <td>Pengajuan Cuti, PR & SPPG Jakarta</td>
+      </tr>
+      <tr>
+        <td><strong>Rendy</strong></td>
+        <td><span class="badge-role">STAFF_AHLI_KEUANGAN</span></td>
+        <td><code>rendy</code></td>
+        <td><code>password123</code></td>
+        <td>Input Timesheet, Cuti & Dapur VA</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>ERP YAYASAN Enterprise Hub © 2026 — Dokumen Resmi Panduan UAT Staging</span>
+    <span>Tanggal Dokumen: 21 Agustus 2026</span>
+  </div>
+
+</body>
+</html>

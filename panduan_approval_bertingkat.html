@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Matriks Alur Approval Bertingkat - ERP Yayasan Enterprise Hub</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 14mm 14mm 14mm 14mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #1E293B;
+      background: #FFFFFF;
+      line-height: 1.45;
+      font-size: 9.5pt;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* HEADER */
+    .header-banner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2.5px solid #FF4B01;
+      padding-bottom: 10px;
+      margin-bottom: 16px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #FF4B01, #8B5CF6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 800;
+      font-size: 16pt;
+    }
+
+    .header-title h1 {
+      font-size: 15pt;
+      font-weight: 800;
+      color: #0F172A;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+
+    .header-title p {
+      font-size: 8.5pt;
+      color: #64748B;
+      font-weight: 500;
+    }
+
+    .header-badge {
+      background: #FFF7ED;
+      border: 1px solid #FDBA74;
+      color: #C2410C;
+      font-size: 8pt;
+      font-weight: 700;
+      padding: 5px 10px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* SUMMARY STATS */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .meta-card {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .meta-card-label {
+      font-size: 7.5pt;
+      font-weight: 700;
+      color: #64748B;
+      text-transform: uppercase;
+    }
+
+    .meta-card-val {
+      font-size: 9.5pt;
+      font-weight: 700;
+      color: #0F172A;
+    }
+
+    /* SECTION HEADER */
+    h2 {
+      font-size: 11.5pt;
+      font-weight: 800;
+      color: #0F172A;
+      margin-top: 14px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-left: 4px solid #FF4B01;
+      padding-left: 8px;
+    }
+
+    /* FLOW DIAGRAM BAR */
+    .flow-chain {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 10px;
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      flex-wrap: wrap;
+    }
+
+    .flow-node {
+      display: flex;
+      flex-direction: column;
+      background: #FFFFFF;
+      border: 1px solid #CBD5E1;
+      border-radius: 6px;
+      padding: 4px 8px;
+      min-width: 95px;
+    }
+
+    .flow-node.highlight {
+      border-color: #FF4B01;
+      background: #FFF7ED;
+    }
+
+    .flow-node-role {
+      font-size: 7.5pt;
+      font-weight: 700;
+      color: #FF4B01;
+      text-transform: uppercase;
+    }
+
+    .flow-node-title {
+      font-size: 8pt;
+      font-weight: 600;
+      color: #0F172A;
+    }
+
+    .flow-arrow {
+      color: #94A3B8;
+      font-weight: 800;
+      font-size: 10pt;
+    }
+
+    /* DETAILED STEP CARD */
+    .flow-card {
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      page-break-inside: avoid;
+    }
+
+    .stage-item {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 6px;
+      font-size: 8.5pt;
+      line-height: 1.35;
+    }
+
+    .stage-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 7.5pt;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #0F172A;
+      color: #FFFFFF;
+      height: fit-content;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .stage-content {
+      flex: 1;
+    }
+
+    .stage-content strong {
+      color: #0F172A;
+    }
+
+    .stage-role {
+      font-size: 8pt;
+      color: #475569;
+      margin-top: 1px;
+    }
+
+    /* TABLE STYLING */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      margin-bottom: 12px;
+      font-size: 8.5pt;
+    }
+
+    th {
+      background: #F1F5F9;
+      color: #334155;
+      font-weight: 700;
+      text-align: left;
+      padding: 6px 8px;
+      border: 1px solid #CBD5E1;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    td {
+      padding: 6px 8px;
+      border: 1px solid #E2E8F0;
+      color: #334155;
+    }
+
+    tr:nth-child(even) {
+      background: #F8FAFC;
+    }
+
+    .tag-flow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 7.5pt;
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .tag-pr { background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; }
+    .tag-ca { background: #FFF7ED; color: #C2410C; border: 1px solid #FED7AA; }
+    .tag-cuti { background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; }
+    .tag-ts { background: #FAF5FF; color: #7E22CE; border: 1px solid #E9D5FF; }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .footer {
+      margin-top: 16px;
+      padding-top: 8px;
+      border-top: 1px solid #E2E8F0;
+      display: flex;
+      justify-content: space-between;
+      font-size: 7.5pt;
+      color: #94A3B8;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header-banner">
+    <div class="header-left">
+      <div class="header-logo">ERP</div>
+      <div class="header-title">
+        <h1>MATRIKS ALUR APPROVAL BERTINGKAT</h1>
+        <p>Standar Operasional Alur Persetujuan Multi-Tier & Tata Kelola Wewenang — ERP MMS</p>
+      </div>
+    </div>
+    <div class="header-badge">SOP WORKFLOW 2026</div>
+  </div>
+
+  <!-- SUMMARY STATS -->
+  <div class="meta-grid">
+    <div class="meta-card">
+      <span class="meta-card-label">Total Modul Approval</span>
+      <span class="meta-card-val">4 Modul Utama</span>
+    </div>
+    <div class="meta-card">
+      <span class="meta-card-label">Tingkat Hirarki Tertinggi</span>
+      <span class="meta-card-val">Direktur Utama (Tier 1)</span>
+    </div>
+    <div class="meta-card">
+      <span class="meta-card-label">Otorisasi Anggaran PR</span>
+      <span class="meta-card-val">3-Tier Verification</span>
+    </div>
+    <div class="meta-card">
+      <span class="meta-card-label">Pertanggungjawaban LPJ</span>
+      <span class="meta-card-val">Auto Settlement Audit</span>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       FLOW 1: PENGADAAN BARANG (PURCHASE REQUEST)
+       ========================================================================= -->
+  <h2>1. Alur Pengadaan Barang / Purchase Request (PR) — 3 Tahap</h2>
+  
+  <div class="flow-chain">
+    <div class="flow-node highlight">
+      <span class="flow-node-role">Tahap 1: Input</span>
+      <span class="flow-node-title">Staff / Manajer</span>
+    </div>
+    <span class="flow-arrow">➔</span>
+    <div class="flow-node">
+      <span class="flow-node-role">Tahap 2: Manajerial</span>
+      <span class="flow-node-title">Manager Area / Keu</span>
+    </div>
+    <span class="flow-arrow">➔</span>
+    <div class="flow-node">
+      <span class="flow-node-role">Tahap 3: Anggaran</span>
+      <span class="flow-node-title">Staff Ahli Keuangan</span>
+    </div>
+    <span class="flow-arrow">➔</span>
+    <div class="flow-node highlight">
+      <span class="flow-node-role">Tahap 4: Final & PO</span>
+      <span class="flow-node-title">Direktur / Dirut</span>
+    </div>
+  </div>
+
+  <div class="flow-card">
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 1</span>
+      <div class="stage-content">
+        <strong>Penginputan Pengajuan Barang (PR):</strong>
+        <div class="stage-role"><em>Pelaksana:</em> Staf Operasional, Surveyor, Perwakilan Yayasan, atau Manajer Area (Dapur SPPG).</div>
+        <div>User mengisi rincian nama barang, kategori belanja, estimasi biaya (RAB), jumlah unit, keterangan urgensi, dan melampirkan foto nota referensi / katalog.</div>
+      </div>
+    </div>
+
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 2</span>
+      <div class="stage-content">
+        <strong>Verifikasi Manajerial Teknis (Tier 1 Manager Approval):</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em> Manajer Area (Dian Ekawati / Bivaldie A.R.) atau Manajer Keuangan (Viona).</div>
+        <div>Memeriksa kelayakan dan kebutuhan fisik barang di unit kerja lapangan. <em>(Catatan: Jika pemohon adalah Manajer Area atau Direktur, alur otomatis langsung melompat ke Tahap 3)</em>.</div>
+      </div>
+    </div>
+
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 3</span>
+      <div class="stage-content">
+        <strong>Verifikasi Pos Anggaran & Pajak (Finance Verification):</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em> Staff Ahli Keuangan & Administrasi / FAT Officer (Rendy).</div>
+        <div>Memeriksa ketersediaan saldo anggaran, validasi vendor, dan memverifikasi kewajaran harga sebelum diteruskan ke jajaran direksi.</div>
+      </div>
+    </div>
+
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 4</span>
+      <div class="stage-content">
+        <strong>Persetujuan Eksekutif & Penerbitan Purchase Order (Final Director Approval):</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em> Direktur Operasional (M. Arrasyid / M. Alfaqih), Direktur Keuangan (Kody Suryo), atau Direktur Utama (Rochmad).</div>
+        <div>Otorisasi pencairan dana pembelian dan penerbitan nomor Purchase Order (PO) sah yayasan. Status berubah menjadi <strong>APPROVED</strong>.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       FLOW 2: KASBON OPERASIONAL (CASH ADVANCE) & LPJ
+       ========================================================================= -->
+  <h2>2. Alur Kasbon Operasional (Cash Advance) & Pertanggungjawaban (LPJ) — 4 Tahap</h2>
+  
+  <div class="flow-chain">
+    <div class="flow-node highlight">
+      <span class="flow-node-role">Tahap 1: Pengajuan</span>
+      <span class="flow-node-title">Pemohon Dana</span>
+    </div>
+    <span class="flow-arrow">➔</span>
+    <div class="flow-node">
+      <span class="flow-node-role">Tahap 2: Otorisasi</span>
+      <span class="flow-node-title">Direktur Keuangan / Ops</span>
+    </div>
+    <span class="flow-arrow">➔</span>
+    <div class="flow-node">
+      <span class="flow-node-role">Tahap 3: Transfer</span>
+      <span class="flow-node-title">Disbursement Keuangan</span>
+    </div>
+    <span class="flow-arrow">➔</span>
+    <div class="flow-node highlight">
+      <span class="flow-node-role">Tahap 4: LPJ Nota</span>
+      <span class="flow-node-title">Audit Settlement Lunas</span>
+    </div>
+  </div>
+
+  <div class="flow-card">
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 1</span>
+      <div class="stage-content">
+        <strong>Penginputan Permohonan Kasbon (CA Submission):</strong>
+        <div class="stage-role"><em>Pelaksana:</em> Seluruh Karyawan / Manajer / Staf Operasional Lapangan.</div>
+        <div>Mengisi nominal dana kasbon yang dibutuhkan, rincian keperluan perjalanan dinas / operasional mendesak, tanggal tenggat LPJ, dan nomor rekening penerima.</div>
+      </div>
+    </div>
+
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 2</span>
+      <div class="stage-content">
+        <strong>Persetujuan Otorisasi Anggaran Kasbon (Director Review):</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em> Direktur Keuangan (Kody Suryo Nugroho) atau Direktur Operasional (M. Alfaqih).</div>
+        <div>Memeriksa urgensi permohonan dana dan memastikan pemohon tidak memiliki tunggakan LPJ kasbon lama yang belum selesai.</div>
+      </div>
+    </div>
+
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 3</span>
+      <div class="stage-content">
+        <strong>Pencairan & Transfer Dana Kasbon (FAT Disbursement):</strong>
+        <div class="stage-role"><em>Pelaksana:</em> Staff Ahli Keuangan / Tim Kasir Yayasan (Rendy / Viona).</div>
+        <div>Melakukan transfer dana ke rekening pemohon, mengunggah bukti transfer bank resmi, dan menetapkan status <strong>DISBURSED (Dana Dicairkan)</strong>.</div>
+      </div>
+    </div>
+
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 4</span>
+      <div class="stage-content">
+        <strong>Pelaporan LPJ Nota Riil & Rekonsiliasi Akhir (Settlement Audit):</strong>
+        <div class="stage-role"><em>Pelaksana & Verifikator:</em> Pemohon mengunggah foto nota bukti pengeluaran riil ➔ Tim Keuangan memvalidasi saldo lebih/kurang ➔ Status <strong>SETTLED (Lunas & Terverifikasi)</strong>.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- =========================================================================
+       FLOW 3: CUTI & IZIN KARYAWAN
+       ========================================================================= -->
+  <h2>3. Alur Pengajuan Cuti & Izin Karyawan — 2 atau 3 Tahap</h2>
+  
+  <div class="flow-chain">
+    <div class="flow-node highlight">
+      <span class="flow-node-role">Tahap 1: Input</span>
+      <span class="flow-node-title">Karyawan</span>
+    </div>
+    <span class="flow-arrow">➔</span>
+    <div class="flow-node">
+      <span class="flow-node-role">Tahap 2: Atasan</span>
+      <span class="flow-node-title">Direktur Terkait (Ops/Keu)</span>
+    </div>
+    <span class="flow-arrow">➔</span>
+    <div class="flow-node highlight">
+      <span class="flow-node-role">Tahap 3: Final</span>
+      <span class="flow-node-title">Head of HC / Dirut</span>
+    </div>
+  </div>
+
+  <div class="flow-card">
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 1</span>
+      <div class="stage-content">
+        <strong>Penginputan Cuti / Izin (Leave Submission):</strong>
+        <div class="stage-role"><em>Pelaksana:</em> Seluruh Tenaga Kerja & Pejabat Yayasan.</div>
+        <div>Memilih jenis cuti (Tahunan, Cuti Pribadi Q3 Pasal 14, Izin Terencana, Sakit dengan Surat Dokter, atau Melahirkan), rentang tanggal, dan delegasi tugas pekerjaan.</div>
+      </div>
+    </div>
+
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 2</span>
+      <div class="stage-content">
+        <strong>Persetujuan Operasional & Atasan Langsung (Operational Endorsement):</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em> Direktur Keuangan (untuk staf keuangan) atau Direktur Operasional (untuk manajer area/staf lapangan).</div>
+        <div>Memastikan kontinuitas operasional kantor dan SPPG dapur tetap berjalan saat pemohon mengambil cuti.</div>
+      </div>
+    </div>
+
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 3</span>
+      <div class="stage-content">
+        <strong>Validasi Kuota Hak Cuti & Finalisasi HRIS (HC Final Approval):</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em> Head of Human Capital (Dian Ekawati) atau Direktur Utama (Rochmad).</div>
+        <div>Validasi masa kerja dan pemotongan otomatis kuota cuti. Kalender kerja pemohon otomatis berubah warna menjadi 🟢 <strong>Hijau (Cuti Approved)</strong>.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       FLOW 4: TIMESHEET & PRESENSI HARIAN
+       ========================================================================= -->
+  <h2>4. Alur Timesheet Presensi & Rekapitulasi Jam Kerja — 2 Tahap</h2>
+  
+  <div class="flow-chain">
+    <div class="flow-node highlight">
+      <span class="flow-node-role">Tahap 1: Input Presensi</span>
+      <span class="flow-node-title">Karyawan / Staf</span>
+    </div>
+    <span class="flow-arrow">➔</span>
+    <div class="flow-node highlight">
+      <span class="flow-node-role">Tahap 2: Verifikasi & Rekap</span>
+      <span class="flow-node-title">Head of Human Capital (HC)</span>
+    </div>
+  </div>
+
+  <div class="flow-card">
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 1</span>
+      <div class="stage-content">
+        <strong>Pencatatan Presensi & Log Aktivitas Mandiri:</strong>
+        <div class="stage-role"><em>Pelaksana:</em> Seluruh Karyawan Kantor & Lapangan.</div>
+        <div>Mencatat jam masuk, jam pulang, uraian tugas yang diselesaikan hari ini, dan melampirkan foto selfie / bukti kerja harian.</div>
+      </div>
+    </div>
+
+    <div class="stage-item">
+      <span class="stage-badge">TAHAP 2</span>
+      <div class="stage-content">
+        <strong>Verifikasi & Audit Rekapitulasi Jam Kerja (HC Monthly Audit):</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em> Head of Human Capital (Dian Ekawati).</div>
+        <div>Memvalidasi total jam kerja harian/lembur yang sah, mengunci log presensi, dan mengunduh format laporan resmi Excel (.xlsx) untuk penggajian.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       TABEL MATRIKS WEWENANG LENGKAP
+       ========================================================================= -->
+  <h2>5. Tabel Matriks Wewenang & Hak Approval per Pejabat</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Nama Pejabat</th>
+        <th>Jabatan / Role</th>
+        <th>Pengadaan PR</th>
+        <th>Kasbon (CA) & LPJ</th>
+        <th>Cuti & Izin</th>
+        <th>Timesheet</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Rochmad</strong></td>
+        <td>Direktur Utama</td>
+        <td><span class="tag-flow tag-pr">Final Approval</span></td>
+        <td><span class="tag-flow tag-ca">Final Approval</span></td>
+        <td><span class="tag-flow tag-cuti">Final Approval</span></td>
+        <td><span class="tag-flow tag-ts">Oversight</span></td>
+      </tr>
+      <tr>
+        <td><strong>M. Arrasyid</strong></td>
+        <td>Direktur Operasional</td>
+        <td><span class="tag-flow tag-pr">Director Approval</span></td>
+        <td><span class="tag-flow tag-ca">Director Review</span></td>
+        <td><span class="tag-flow tag-cuti">Endorsement Ops</span></td>
+        <td><span class="tag-flow tag-ts">Oversight</span></td>
+      </tr>
+      <tr>
+        <td><strong>Kody Suryo Nugroho</strong></td>
+        <td>Direktur Keuangan</td>
+        <td><span class="tag-flow tag-pr">Director Approval</span></td>
+        <td><span class="tag-flow tag-ca">Director Review</span></td>
+        <td><span class="tag-flow tag-cuti">Endorsement Keu</span></td>
+        <td><span class="tag-flow tag-ts">Oversight</span></td>
+      </tr>
+      <tr>
+        <td><strong>M. Alfaqih</strong></td>
+        <td>Direktur Operasional</td>
+        <td><span class="tag-flow tag-pr">Director Approval</span></td>
+        <td><span class="tag-flow tag-ca">Director Review</span></td>
+        <td><span class="tag-flow tag-cuti">Endorsement Ops</span></td>
+        <td><span class="tag-flow tag-ts">Oversight</span></td>
+      </tr>
+      <tr>
+        <td><strong>Viona</strong></td>
+        <td>Manager Keuangan</td>
+        <td><span class="tag-flow tag-pr">Manager Review</span></td>
+        <td><span class="tag-flow tag-ca">Verifikasi LPJ</span></td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td><strong>Dian Ekawati</strong></td>
+        <td>Head of HC / Area</td>
+        <td><span class="tag-flow tag-pr">Manager Area Review</span></td>
+        <td>-</td>
+        <td><span class="tag-flow tag-cuti">Final HC Approval</span></td>
+        <td><span class="tag-flow tag-ts">Audit & Export</span></td>
+      </tr>
+      <tr>
+        <td><strong>Bivaldie A.R.</strong></td>
+        <td>Manager Area Jakarta</td>
+        <td><span class="tag-flow tag-pr">Manager Area Review</span></td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td><strong>Rendy</strong></td>
+        <td>Staff Ahli Keuangan</td>
+        <td><span class="tag-flow tag-pr">Finance Verification</span></td>
+        <td><span class="tag-flow tag-ca">Disbursement & LPJ</span></td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td><strong>Super Administrator</strong></td>
+        <td>Master System IT</td>
+        <td><span class="tag-flow tag-pr">Full Override</span></td>
+        <td><span class="tag-flow tag-ca">Full Override</span></td>
+        <td><span class="tag-flow tag-cuti">Full Override</span></td>
+        <td><span class="tag-flow tag-ts">Full Override</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>ERP YAYASAN Enterprise Hub © 2026 — Dokumen Resmi Matriks Alur Approval Bertingkat</span>
+    <span>Tanggal Efektif: 21 Agustus 2026</span>
+  </div>
+
+</body>
+</html>
