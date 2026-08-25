@@ -2282,10 +2282,9 @@ class DatabaseManager {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed && Array.isArray(parsed.users)) {
-          const deletedIds = Array.isArray(parsed.deletedUserIds) ? parsed.deletedUserIds : [];
-          // Auto-sync missing users from INITIAL_DATABASE (kecuali yang sengaja dihapus)
+          // Auto-sync missing users from INITIAL_DATABASE
           INITIAL_DATABASE.users.forEach(initUser => {
-            if (!deletedIds.includes(initUser.id) && !parsed.users.some(u => u.id === initUser.id)) {
+            if (!parsed.users.some(u => u.id === initUser.id)) {
               parsed.users.push(initUser);
             }
           });
@@ -2298,7 +2297,6 @@ class DatabaseManager {
           if (!Array.isArray(parsed.timesheets)) parsed.timesheets = [];
           if (!Array.isArray(parsed.cashAdvances)) parsed.cashAdvances = [];
           if (!Array.isArray(parsed.fieldIssues)) parsed.fieldIssues = [];
-          if (!Array.isArray(parsed.deletedUserIds)) parsed.deletedUserIds = [];
 
           return parsed;
         }
@@ -2606,25 +2604,8 @@ class DatabaseManager {
     const idx = this.data.users.findIndex(u => u.id === userId);
     if (idx !== -1) {
       const deleted = this.data.users.splice(idx, 1)[0];
-      if (!Array.isArray(this.data.deletedUserIds)) this.data.deletedUserIds = [];
-      if (!this.data.deletedUserIds.includes(userId)) this.data.deletedUserIds.push(userId);
-
-      this.addLog(`Human Capital menghapus/menonaktifkan akun: ${deleted.name} (${deleted.username})`, 'hc');
+      this.addLog(`Human Capital menonaktifkan akun: ${deleted.name} (${deleted.username})`, 'hc');
       this.save();
-
-      // Hapus permanen dari Supabase Cloud tabel "users"
-      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
-        const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
-        const key = window.SupabaseConfig.getAnonKey();
-        fetch(`${url}/rest/v1/users?id=eq.${userId}`, {
-          method: 'DELETE',
-          headers: {
-            'apikey': key,
-            'Authorization': `Bearer ${key}`
-          }
-        }).catch(err => console.warn('Supabase User Delete Warning:', err));
-      }
-
       return true;
     }
     return false;
