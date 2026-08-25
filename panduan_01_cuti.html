@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>SOP 01 - Panduan Pengajuan Cuti & Izin Karyawan</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+    @page { size: A4 portrait; margin: 12mm 14mm 12mm 14mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #0F172A; background: #FFFFFF; line-height: 1.45; font-size: 9.2pt;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .header-banner {
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 2.5px solid #FF4B01; padding-bottom: 8px; margin-bottom: 12px;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-logo {
+      width: 40px; height: 40px; border-radius: 8px;
+      background: linear-gradient(135deg, #FF4B01, #8B5CF6);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 800; font-size: 14pt;
+    }
+    .header-title h1 { font-size: 13pt; font-weight: 800; color: #0F172A; }
+    .header-title p { font-size: 8pt; color: #64748B; font-weight: 500; }
+    .header-badge {
+      background: #FFF7ED; border: 1px solid #FDBA74; color: #C2410C;
+      font-size: 7.5pt; font-weight: 700; padding: 4px 8px; border-radius: 5px; text-transform: uppercase;
+    }
+    .meta-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;
+    }
+    .meta-card {
+      background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;
+    }
+    .meta-label { font-size: 7pt; font-weight: 700; color: #64748B; text-transform: uppercase; }
+    .meta-val { font-size: 8.5pt; font-weight: 700; color: #0F172A; margin-top: 2px; }
+
+    .section-title {
+      font-size: 10pt; font-weight: 800; color: #0F172A; margin: 12px 0 6px 0;
+      display: flex; align-items: center; gap: 6px; border-left: 3.5px solid #FF4B01; padding-left: 6px;
+    }
+    .step-card {
+      background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px;
+      padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid;
+    }
+    .step-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .step-num {
+      width: 22px; height: 22px; border-radius: 50%; background: #FF4B01; color: white;
+      font-weight: 800; font-size: 8.5pt; display: flex; align-items: center; justify-content: center;
+    }
+    .step-title { font-weight: 700; font-size: 9pt; color: #0F172A; }
+    .step-desc { font-size: 8.5pt; color: #475569; margin-left: 30px; }
+
+    table.data-table {
+      width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 8.2pt;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #CBD5E1; padding: 5px 8px; text-align: left;
+    }
+    table.data-table th { background: #F1F5F9; font-weight: 700; color: #1E293B; }
+    table.data-table tr:nth-child(even) { background: #F8FAFC; }
+
+    .badge {
+      display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 7pt; font-weight: 700;
+    }
+    .badge-green { background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }
+    .badge-blue { background: #DBEAFE; color: #1E40AF; border: 1px solid #93C5FD; }
+    .badge-yellow { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
+
+    .callout {
+      background: #EFF6FF; border-left: 3.5px solid #3B82F6; padding: 6px 10px;
+      border-radius: 0 6px 6px 0; font-size: 8pt; color: #1E40AF; margin: 8px 0;
+    }
+    .footer {
+      border-top: 1px solid #E2E8F0; padding-top: 6px; margin-top: 14px;
+      display: flex; justify-content: space-between; font-size: 7pt; color: #94A3B8;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-banner">
+    <div class="header-left">
+      <div class="header-logo">M</div>
+      <div class="header-title">
+        <h1>SOP-HC-001: PANDUAN PENGAJUAN CUTI & IZIN</h1>
+        <p>Sistem ERP MMS Yayasan &bull; Portal Resmi: https://erpyayasan.com</p>
+      </div>
+    </div>
+    <div class="header-badge">SOP RESMI HC</div>
+  </div>
+
+  <div class="meta-grid">
+    <div class="meta-card">
+      <div class="meta-label">Nomor Dokumen</div>
+      <div class="meta-val">SOP/MMS/HC/2026/001</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Sasaran Pengguna</div>
+      <div class="meta-val">Seluruh Karyawan (36 Akun)</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Penanggung Jawab</div>
+      <div class="meta-val">Human Capital & Direksi</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Status Sistem</div>
+      <div class="meta-val"><span class="badge badge-green">LIVE &bull; erpyayasan.com</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">1. Jenis-Jenis Cuti & Ketentuan Kuota</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 22%;">Jenis Cuti</th>
+        <th style="width: 15%;">Hak Kuota</th>
+        <th style="width: 38%;">Ketentuan & Persyaratan</th>
+        <th style="width: 25%;">Syarat Lampiran</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Cuti Tahunan</strong></td>
+        <td>12 – 18 Hari / Thn</td>
+        <td>Karyawan masa kerja &ge; 1 tahun. Mengurangi saldo cuti tahunan. Diajukan min. H-3.</td>
+        <td>Opsional</td>
+      </tr>
+      <tr>
+        <td><strong>Cuti Pribadi (Alasan Penting)</strong></td>
+        <td>3 Hari / Kuartal (Q)</td>
+        <td>Keperluan keluarga/mendesak. Mengurangi saldo kuartal aktif (reset tiap 3 bulan).</td>
+        <td>Opsional</td>
+      </tr>
+      <tr>
+        <td><strong>Izin Sakit</strong></td>
+        <td>Sesuai Kondisi Medis</td>
+        <td>Tidak memotong saldo cuti tahunan jika disertai surat keterangan dokter resmi.</td>
+        <td><span class="badge badge-yellow">Wajib Surat Dokter</span></td>
+      </tr>
+      <tr>
+        <td><strong>Cuti Melahirkan / Gugur</strong></td>
+        <td>3 Bulan / 1.5 Bulan</td>
+        <td>Khusus staf wanita. Gaji pokok tetap dibayarkan sesuai UU Ketenagakerjaan.</td>
+        <td>Surat Dokter / Bidan</td>
+      </tr>
+      <tr>
+        <td><strong>Cuti Khusus (Menikah/Duka)</strong></td>
+        <td>2 – 3 Hari</td>
+        <td>Pernikahan karyawan (3 hr), anak menikah (2 hr), keluarga inti wafat (2 hr).</td>
+        <td>Surat Keterangan</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="section-title">2. Tata Cara Pengajuan Cuti Langkah Demi Langkah</div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">Login ke Portal ERP MMS Yayasan</div>
+    </div>
+    <div class="step-desc">
+      Buka browser di HP/Laptop ➔ Akses <strong>https://erpyayasan.com</strong> ➔ Masukkan Username resmi (contoh: <code>tazkia.aulia</code>, <code>alfaqih</code>, <code>tri.utari</code>) dan Password: <code>password123</code>.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">Buka Menu Cuti & Izin</div>
+    </div>
+    <div class="step-desc">
+      Pada bilah navigasi utama / sidebar, klik menu <strong>📅 Cuti & Izin</strong>. Anda akan melihat kartu sisa kuota Cuti Tahunan dan Cuti Pribadi Kuartal aktif Anda.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">Klik Tombol "Ajukan Permohonan Cuti"</div>
+    </div>
+    <div class="step-desc">
+      Klik tombol oranye <strong>+ Buat Pengajuan Cuti Baru</strong> untuk membuka formulir modal pengajuan.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div class="step-title">Lengkapi Data Formulir Permohonan</div>
+    </div>
+    <div class="step-desc">
+      Isi kolom formulir secara akurat:
+      <ul style="margin: 4px 0 0 16px; font-size: 8pt;">
+        <li><strong>Jenis Cuti</strong>: Pilih sesuai kebutuhan (Tahunan, Pribadi, Sakit, Khusus).</li>
+        <li><strong>Tanggal Mulai & Tanggal Selesai</strong>: Pilih rentang tanggal (sistem otomatis menghitung durasi hari kerja).</li>
+        <li><strong>Alasan Permohonan</strong>: Tuliskan keterangan singkat dan jelas.</li>
+        <li><strong>Kontak Darurat</strong>: Masukkan nomor HP/WhatsApp keluarga yang bisa dihubungi saat cuti.</li>
+        <li><strong>Unggah Lampiran</strong> (Khusus Sakit/Khusus): Unggah foto surat dokter/keterangan resmi (JPG/PDF).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">5</div>
+      <div class="step-title">Kirim Pengajuan & Notifikasi Otomatis Meluncur</div>
+    </div>
+    <div class="step-desc">
+      Klik tombol <strong>🚀 Kirim Permohonan Cuti</strong>. Data seketika tersimpan di database Cloud Supabase, dan sistem secara otomatis mengirimkan <strong>email notifikasi persetujuan resmi ke pejabat approver terkait</strong> (Human Capital / Direktur Operasional).
+    </div>
+  </div>
+
+  <div class="section-title">3. Matriks Alur Persetujuan (*Approval Routing*)</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Jabatan Pemohon</th>
+        <th>Alur Verifikasi</th>
+        <th>Pejabat Approver</th>
+        <th>Notifikasi Email Otomatis</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Staf / Surveyor / Perwakilan Dapur SPPG</td>
+        <td><span class="badge badge-blue">HC_DIRECT</span></td>
+        <td><strong>Tazkia Aulia</strong> (Human Capital)</td>
+        <td>Dikirim ke email HC</td>
+      </tr>
+      <tr>
+        <td>FAT Officer / Staf Ahli Keuangan</td>
+        <td><span class="badge badge-yellow">FINANCE_TIER</span></td>
+        <td><strong>Kody Suryo Nugroho</strong> (Direktur Keuangan)</td>
+        <td>Dikirim ke email Dir. Keuangan</td>
+      </tr>
+      <tr>
+        <td>Manajer Area / Manajer Keuangan / HC</td>
+        <td><span class="badge badge-green">MANAGER_TIER</span></td>
+        <td><strong>Muhammad Alfaqih</strong> (Direktur Operasional)</td>
+        <td>Dikirim ke <code>alfaqih1108@gmail.com</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    📌 <strong>Tips Melacak Status</strong>: Anda dapat melihat progres permohonan Anda (Pending, Approved, Rejected) secara real-time pada tabel Riwayat Pengajuan di menu Cuti & Izin atau melalui link tombol yang tercantum di email notifikasi.
+  </div>
+
+  <div class="footer">
+    <div>Dokumen Standar Operasional Prosedur &bull; Yayasan Mitra Mandiri Sejahtera</div>
+    <div>Dicetak otomatis dari Sistem ERP MMS &bull; Halaman 1 dari 1</div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>SOP 06 - Panduan Pengisian & Rekapitulasi Timesheet Presensi Harian</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+    @page { size: A4 portrait; margin: 12mm 14mm 12mm 14mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #0F172A; background: #FFFFFF; line-height: 1.45; font-size: 9.2pt;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .header-banner {
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 2.5px solid #06B6D4; padding-bottom: 8px; margin-bottom: 12px;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-logo {
+      width: 40px; height: 40px; border-radius: 8px;
+      background: linear-gradient(135deg, #06B6D4, #3B82F6);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 800; font-size: 14pt;
+    }
+    .header-title h1 { font-size: 13pt; font-weight: 800; color: #0F172A; }
+    .header-title p { font-size: 8pt; color: #64748B; font-weight: 500; }
+    .header-badge {
+      background: #ECFEFF; border: 1px solid #A5F3FC; color: #0E7490;
+      font-size: 7.5pt; font-weight: 700; padding: 4px 8px; border-radius: 5px; text-transform: uppercase;
+    }
+    .meta-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;
+    }
+    .meta-card {
+      background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;
+    }
+    .meta-label { font-size: 7pt; font-weight: 700; color: #64748B; text-transform: uppercase; }
+    .meta-val { font-size: 8.5pt; font-weight: 700; color: #0F172A; margin-top: 2px; }
+
+    .section-title {
+      font-size: 10pt; font-weight: 800; color: #0F172A; margin: 12px 0 6px 0;
+      display: flex; align-items: center; gap: 6px; border-left: 3.5px solid #06B6D4; padding-left: 6px;
+    }
+    .step-card {
+      background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px;
+      padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid;
+    }
+    .step-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .step-num {
+      width: 22px; height: 22px; border-radius: 50%; background: #06B6D4; color: white;
+      font-weight: 800; font-size: 8.5pt; display: flex; align-items: center; justify-content: center;
+    }
+    .step-title { font-weight: 700; font-size: 9pt; color: #0F172A; }
+    .step-desc { font-size: 8.5pt; color: #475569; margin-left: 30px; }
+
+    table.data-table {
+      width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 8.2pt;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #CBD5E1; padding: 5px 8px; text-align: left;
+    }
+    table.data-table th { background: #F1F5F9; font-weight: 700; color: #1E293B; }
+    table.data-table tr:nth-child(even) { background: #F8FAFC; }
+
+    .badge {
+      display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 7pt; font-weight: 700;
+    }
+    .badge-green { background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }
+    .badge-blue { background: #DBEAFE; color: #1E40AF; border: 1px solid #93C5FD; }
+    .badge-yellow { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
+
+    .callout {
+      background: #ECFEFF; border-left: 3.5px solid #06B6D4; padding: 6px 10px;
+      border-radius: 0 6px 6px 0; font-size: 8pt; color: #0E7490; margin: 8px 0;
+    }
+    .footer {
+      border-top: 1px solid #E2E8F0; padding-top: 6px; margin-top: 14px;
+      display: flex; justify-content: space-between; font-size: 7pt; color: #94A3B8;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-banner">
+    <div class="header-left">
+      <div class="header-logo">T</div>
+      <div class="header-title">
+        <h1>SOP-OPS-006: PANDUAN PENGISIAN & REKAPITULASI TIMESHEET HARIAN</h1>
+        <p>Sistem ERP MMS Yayasan &bull; Portal Resmi: https://erpyayasan.com</p>
+      </div>
+    </div>
+    <div class="header-badge">SOP PRESENSI & PRODUKTIVITAS</div>
+  </div>
+
+  <div class="meta-grid">
+    <div class="meta-card">
+      <div class="meta-label">Nomor Dokumen</div>
+      <div class="meta-val">SOP/MMS/OPS/2026/006</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Sasaran Pengguna</div>
+      <div class="meta-val">Seluruh Staf, Surveyor, Perwakilan Dapur</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Penanggung Jawab</div>
+      <div class="meta-val">Human Capital & Manajer Area</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Frekuensi Pengisian</div>
+      <div class="meta-val"><span class="badge badge-blue">Harian (Setiap Hari Kerja)</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">1. Standar Jam Kerja & Status Kehadiran</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Kategori Karyawan</th>
+        <th style="width: 25%;">Jam Kerja Standar</th>
+        <th style="width: 25%;">Lokasi Tugas</th>
+        <th style="width: 25%;">Kewajiban Log Aktivitas</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Staf Kantor Pusat (Head Office)</strong></td>
+        <td>08.00 – 17.00 WIB</td>
+        <td>Kantor Yayasan MMS</td>
+        <td>Ringkasan pekerjaan harian admin/HC/FAT.</td>
+      </tr>
+      <tr>
+        <td><strong>Surveyor Lapangan</strong></td>
+        <td>08.00 – 17.00 WIB (Fleksibel)</td>
+        <td>Wilayah SPPG Regional (Jawa Timur/Barat/dll)</td>
+        <td>Laporan titik lokasi survei & jumlah mitra dikunjungi.</td>
+      </tr>
+      <tr>
+        <td><strong>Perwakilan Dapur SPPG</strong></td>
+        <td>05.00 – 14.00 WIB / Shift</td>
+        <td>Titik Dapur SPPG Spesifik</td>
+        <td>Laporan persiapan porsi, kualitas menu, & distribusi.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="section-title">2. Tata Cara Pengisian Timesheet Presensi Harian</div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">Buka Menu Timesheet</div>
+    </div>
+    <div class="step-desc">
+      Login ke <strong>https://erpyayasan.com</strong> ➔ Klik menu <strong>⏱️ Timesheet</strong> di sidebar kiri.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">Klik Tombol "+ Catat Kehadiran Hari Ini"</div>
+    </div>
+    <div class="step-desc">
+      Klik tombol biru <strong>+ Isi Log Timesheet Hari Ini</strong> di pojok kanan atas tabel.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">Lengkapi Jam Kerja & Lokasi Penugasan</div>
+    </div>
+    <div class="step-desc">
+      Isi data presensi:
+      <ul style="margin: 4px 0 0 16px; font-size: 8pt;">
+        <li><strong>Tanggal</strong>: Otomatis terisi tanggal hari ini (bisa disesuaikan jika mencatat mundur dengan persetujuan HC).</li>
+        <li><strong>Jam Masuk (Clock-In) & Jam Pulang (Clock-Out)</strong>: Masukkan waktu aktual mulai dan selesai bekerja.</li>
+        <li><strong>Status Kehadiran</strong>: Pilih <code>HADIR</code>, <code>DINAS_LUAR</code>, <code>WFH</code>, atau <code>LEMBUR</code>.</li>
+        <li><strong>Lokasi Kerja / Titik Dapur</strong>: Masukkan nama kantor/dapur SPPG tempat Anda bertugas hari ini.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div class="step-title">Tuliskan Log Ringkasan Aktivitas Kerja (*Daily Task*)</div>
+    </div>
+    <div class="step-desc">
+      Deskripsikan pencapaian tugas utama hari ini secara padat dan jelas (contoh: <em>Menyelesaikan verifikasi berkas 10 mitra dapur SPPG Bandung, melakukan monitoring standar higienitas, dan rekonsiliasi kasbon</em>).
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">5</div>
+      <div class="step-title">Simpan Log Presensi</div>
+    </div>
+    <div class="step-desc">
+      Klik tombol <strong>💾 Simpan Log Presensi</strong>. Catatan kehadiran langsung masuk ke rekapitulasi performa bulanan dan dapat dipantau langsung oleh Human Capital & Manajer Area.
+    </div>
+  </div>
+
+  <div class="section-title">3. Pengawasan HC & Ekspor Laporan Penggajian (Payroll Integration)</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Laporan Timesheet</th>
+        <th style="width: 40%;">Metode Akses HC / Manajer</th>
+        <th style="width: 35%;">Pemanfaatan Data</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Rekap Bulanan Kehadiran</strong></td>
+        <td>Buka Timesheet ➔ Filter berdasarkan Bulan & Departemen.</td>
+        <td>Penilaian kedisiplinan dan keaktifan staf lapangan.</td>
+      </tr>
+      <tr>
+        <td><strong>Ekspor ke Excel / CSV</strong></td>
+        <td>Klik tombol <em>📥 Ekspor Rekap Timesheet</em> di pojok kanan atas.</td>
+        <td>Dasar perhitungan tunjangan kehadiran, makan, & payroll HC.</td>
+      </tr>
+      <tr>
+        <td><strong>Audit Log Lapangan</strong></td>
+        <td>Manajer Area memeriksa kesesuaian log surveyor dengan output survei.</td>
+        <td>Validasi KPI dan pencapaian target bulanan.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    💡 <strong>Batas Akhir Pengisian</strong>: Seluruh karyawan diwajibkan menyelesaikan pengisian timesheet maksimal pada pukul **20.00 WIB** setiap hari kerja untuk memastikan integritas data absensi yayasan.
+  </div>
+
+  <div class="footer">
+    <div>Dokumen Standar Operasional Prosedur &bull; Yayasan Mitra Mandiri Sejahtera</div>
+    <div>Dicetak otomatis dari Sistem ERP MMS &bull; Halaman 1 dari 1</div>
+  </div>
+
+</body>
+</html>

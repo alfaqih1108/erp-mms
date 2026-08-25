@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>SOP 03 - Panduan Manajemen & Penambahan Pengguna Baru (HC Hub)</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+    @page { size: A4 portrait; margin: 12mm 14mm 12mm 14mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #0F172A; background: #FFFFFF; line-height: 1.45; font-size: 9.2pt;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .header-banner {
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 2.5px solid #10B981; padding-bottom: 8px; margin-bottom: 12px;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-logo {
+      width: 40px; height: 40px; border-radius: 8px;
+      background: linear-gradient(135deg, #10B981, #059669);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 800; font-size: 14pt;
+    }
+    .header-title h1 { font-size: 13pt; font-weight: 800; color: #0F172A; }
+    .header-title p { font-size: 8pt; color: #64748B; font-weight: 500; }
+    .header-badge {
+      background: #ECFDF5; border: 1px solid #A7F3D0; color: #047857;
+      font-size: 7.5pt; font-weight: 700; padding: 4px 8px; border-radius: 5px; text-transform: uppercase;
+    }
+    .meta-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;
+    }
+    .meta-card {
+      background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;
+    }
+    .meta-label { font-size: 7pt; font-weight: 700; color: #64748B; text-transform: uppercase; }
+    .meta-val { font-size: 8.5pt; font-weight: 700; color: #0F172A; margin-top: 2px; }
+
+    .section-title {
+      font-size: 10pt; font-weight: 800; color: #0F172A; margin: 12px 0 6px 0;
+      display: flex; align-items: center; gap: 6px; border-left: 3.5px solid #10B981; padding-left: 6px;
+    }
+    .step-card {
+      background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px;
+      padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid;
+    }
+    .step-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .step-num {
+      width: 22px; height: 22px; border-radius: 50%; background: #10B981; color: white;
+      font-weight: 800; font-size: 8.5pt; display: flex; align-items: center; justify-content: center;
+    }
+    .step-title { font-weight: 700; font-size: 9pt; color: #0F172A; }
+    .step-desc { font-size: 8.5pt; color: #475569; margin-left: 30px; }
+
+    table.data-table {
+      width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 8.2pt;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #CBD5E1; padding: 5px 8px; text-align: left;
+    }
+    table.data-table th { background: #F1F5F9; font-weight: 700; color: #1E293B; }
+    table.data-table tr:nth-child(even) { background: #F8FAFC; }
+
+    .badge {
+      display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 7pt; font-weight: 700;
+    }
+    .badge-green { background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }
+    .badge-blue { background: #DBEAFE; color: #1E40AF; border: 1px solid #93C5FD; }
+    .badge-purple { background: #F3E8FF; color: #6B21A8; border: 1px solid #D8B4FE; }
+
+    .callout {
+      background: #F0FDF4; border-left: 3.5px solid #10B981; padding: 6px 10px;
+      border-radius: 0 6px 6px 0; font-size: 8pt; color: #065F46; margin: 8px 0;
+    }
+    .footer {
+      border-top: 1px solid #E2E8F0; padding-top: 6px; margin-top: 14px;
+      display: flex; justify-content: space-between; font-size: 7pt; color: #94A3B8;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-banner">
+    <div class="header-left">
+      <div class="header-logo">U</div>
+      <div class="header-title">
+        <h1>SOP-HC-003: PANDUAN MANAJEMEN & PENAMBAHAN USER KARYAWAN</h1>
+        <p>Sistem ERP MMS Yayasan &bull; Portal Resmi: https://erpyayasan.com</p>
+      </div>
+    </div>
+    <div class="header-badge">SOP HUMAN CAPITAL & ADMIN</div>
+  </div>
+
+  <div class="meta-grid">
+    <div class="meta-card">
+      <div class="meta-label">Nomor Dokumen</div>
+      <div class="meta-val">SOP/MMS/HC/2026/003</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Otoritas Akses</div>
+      <div class="meta-val">Super Admin & Human Capital (Tazkia)</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Kapasitas Pengguna</div>
+      <div class="meta-val">36 Akun Aktif &bull; Unlimited Slot</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Tipe Sinkronisasi</div>
+      <div class="meta-val"><span class="badge badge-green">Dual Cloud Sync (Supabase)</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">1. Struktur Role, Hak Akses & Level Grade</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Nama Role / Jabatan</th>
+        <th style="width: 20%;">Kode Role Sistem</th>
+        <th style="width: 25%;">Level Grade</th>
+        <th style="width: 30%;">Cakupan Wewenang Modul</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Super Administrator</strong></td>
+        <td><code>SUPERADMIN</code></td>
+        <td>Executive IT / Tier 0</td>
+        <td>Akses penuh seluruh modul, database, & cloud config.</td>
+      </tr>
+      <tr>
+        <td><strong>Human Capital Officer</strong></td>
+        <td><code>HUMAN_CAPITAL</code></td>
+        <td>Head Office / Tier 3</td>
+        <td>Manajemen karyawan, persetujuan cuti level 1, rekap HRIS.</td>
+      </tr>
+      <tr>
+        <td><strong>Direktur Operasional</strong></td>
+        <td><code>DIREKTUR_OPERASIONAL</code></td>
+        <td>Direksi / Tier 2</td>
+        <td>Persetujuan cuti manajer, otorisasi pengadaan PR, audit dapur.</td>
+      </tr>
+      <tr>
+        <td><strong>Direktur Keuangan</strong></td>
+        <td><code>DIREKTUR_KEUANGAN</code></td>
+        <td>Direksi / Tier 2</td>
+        <td>Verifikasi kasbon, approval pencairan PR & anggaran.</td>
+      </tr>
+      <tr>
+        <td><strong>Manajer Area (Cimahi/Bogor/dll)</strong></td>
+        <td><code>MANAGER_AREA</code></td>
+        <td>Manajerial / Tier 3</td>
+        <td>Monitoring titik dapur regional & verifikasi awal PR barang.</td>
+      </tr>
+      <tr>
+        <td><strong>Surveyor / Staff Operasional</strong></td>
+        <td><code>SURVEYOR</code> / <code>STAFF</code></td>
+        <td>Staff Lapangan / Tier 4</td>
+        <td>Pengisian timesheet harian, pengajuan cuti pribadi & PR.</td>
+      </tr>
+      <tr>
+        <td><strong>Perwakilan Dapur SPPG</strong></td>
+        <td><code>PERWAKILAN_YAYASAN</code></td>
+        <td>Staff Dapur / Tier 4</td>
+        <td>Logistik harian dapur, laporan porsi makan, & pengadaan.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="section-title">2. Langkah Menambahkan Akun Karyawan Baru (HC Hub)</div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">Login sebagai Admin / Human Capital</div>
+    </div>
+    <div class="step-desc">
+      Login ke <strong>https://erpyayasan.com</strong> menggunakan akun Super Admin atau akun Human Capital (<code>tazkia.aulia</code>).
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">Buka Menu HC Hub ➔ Data Karyawan</div>
+    </div>
+    <div class="step-desc">
+      Klik menu <strong>👥 HC Hub</strong> di sidebar kiri, lalu pilih tab sub-menu <strong>Data Karyawan</strong>. Anda akan melihat tabel master seluruh 36 staf yayasan.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">Klik Tombol "+ Tambah Karyawan Baru"</div>
+    </div>
+    <div class="step-desc">
+      Klik tombol hijau <strong>+ Tambah Karyawan Baru</strong> di pojok kanan atas tabel untuk memunculkan formulir pendaftaran.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div class="step-title">Lengkapi Formulir Identitas & Hak Akses</div>
+    </div>
+    <div class="step-desc">
+      Isi data karyawan secara lengkap:
+      <ul style="margin: 4px 0 0 16px; font-size: 8pt;">
+        <li><strong>NIKA & NIK</strong>: Nomor Induk Karyawan Yayasan (contoh: <code>K-2026-037</code>) dan NIK KTP 16 digit.</li>
+        <li><strong>Nama Lengkap & Jabatan</strong>: Nama resmi sesuai KTP dan pilih jabatan kerja.</li>
+        <li><strong>Role Sistem</strong>: Pilih hak akses sesuai tabel di atas (contoh: <code>SURVEYOR</code> atau <code>PERWAKILAN_YAYASAN</code>).</li>
+        <li><strong>Alamat Email Aktif & No. HP</strong>: Masukkan email asli karyawan untuk menerima notifikasi otomatis.</li>
+        <li><strong>Username & Password Awal</strong>: Buat username unik (contoh: <code>ahmad.fauzi</code>) dan password awal (default: <code>password123</code>).</li>
+        <li><strong>Hak Kuota Cuti</strong>: Tetapkan kuota cuti tahunan (default: 12 hari) dan cuti pribadi (default: 3 hari/Q).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">5</div>
+      <div class="step-title">Simpan & Sinkronisasi Otomatis ke Cloud Supabase</div>
+    </div>
+    <div class="step-desc">
+      Klik tombol <strong>💾 Simpan Data Karyawan</strong>. Sistem akan langsung mengunggah profil akun ke tabel <code>users</code> di database Supabase Cloud sehingga karyawan bisa langsung login seketika!
+    </div>
+  </div>
+
+  <div class="section-title">3. Panduan Mengubah Email & Reset Password Karyawan</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Kebutuhan</th>
+        <th style="width: 40%;">Langkah Solusi</th>
+        <th style="width: 35%;">Dampak ke Sistem</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Karyawan Lupa Password</strong></td>
+        <td>Buka Data Karyawan ➔ Klik tombol <strong>Edit ✏️</strong> pada baris nama yang bersangkutan ➔ Ganti kolom password ke <code>password123</code> ➔ Klik Simpan.</td>
+        <td>Password baru langsung aktif seketika di cloud.</td>
+      </tr>
+      <tr>
+        <td><strong>Perubahan Email Notifikasi</strong></td>
+        <td>Edit profil karyawan ➔ Perbarui kolom <strong>Email</strong> ke alamat Gmail/kantor yang baru ➔ Klik Simpan.</td>
+        <td>Surat approval cuti & PR berikutnya otomatis terkirim ke email baru.</td>
+      </tr>
+      <tr>
+        <td><strong>Karyawan Resign / Nonaktif</strong></td>
+        <td>Edit profil ➔ Ubah status karyawan menjadi <strong>Nonaktif / Resign</strong> dan masukkan tanggal pengunduran diri.</td>
+        <td>Akun dinonaktifkan dari akses portal ERP.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    🔒 <strong>Keamanan Data Karyawan</strong>: Data NIK, nomor rekening bank, dan nomor darurat keluarga tersimpan secara terenkripsi di PostgreSQL Supabase dan hanya dapat dilihat oleh pemegang otoritas HC dan Direksi Utama.
+  </div>
+
+  <div class="footer">
+    <div>Dokumen Standar Operasional Prosedur &bull; Yayasan Mitra Mandiri Sejahtera</div>
+    <div>Dicetak otomatis dari Sistem ERP MMS &bull; Halaman 1 dari 1</div>
+  </div>
+
+</body>
+</html>

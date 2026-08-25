@@ -3,9 +3,9 @@
  * Enterprise HRIS Master Profile (36 Fields), Admin Hub Master Dapur SPPG, Multi-Tier Approval Tracking & Real-Time Timestamps
  */
 
-const STORAGE_KEY = 'ERP_YAYASAN_DATABASE_V22';
+const STORAGE_KEY = 'ERP_YAYASAN_DATABASE_V24';
 
-// Pembersihan otomatis cache database versi lama (V1 - V21) untuk membebaskan kuota LocalStorage
+// Pembersihan otomatis cache database versi lama (V1 - V23) untuk membebaskan kuota LocalStorage
 try {
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const k = localStorage.key(i);
@@ -242,15 +242,15 @@ const INITIAL_DATABASE = {
       id: 'DO-001',
       nika: 'K-2025-002',
       name: 'Muhammad Arrasyid',
-      role: 'DIREKTUR_OPERASIONAL',
-      roleLabel: 'Direktur Operasional',
-      kodeJabatan: '1120.03',
-      jabatan: 'Direktur Operasional',
-      levelGrade: 'Direksi / Tier 2',
-      department: 'Direksi Operasional',
-      avatarGrad: 'linear-gradient(135deg, #F59E0B 0%, #FCD34D 100%)',
+      role: 'KETUA_PEMBINA',
+      roleLabel: 'Ketua Pembina Yayasan',
+      kodeJabatan: '1110.01',
+      jabatan: 'Ketua Pembina Yayasan',
+      levelGrade: 'Pembina / Tier 1',
+      department: 'Pembina Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #6366F1 0%, #A855F7 100%)',
       quotaAnnualLeave: 15,
-      remainingAnnualLeave: 13,
+      remainingAnnualLeave: 15,
       quotaPersonalLeave: 3,
       remainingPersonalLeave: 3,
       currentQuarter: 'Q3 (Juli–September 2026)',
@@ -283,7 +283,7 @@ const INITIAL_DATABASE = {
       emergencyPhone: '-',
       resignDate: null,
       resignReason: '-',
-      notes: 'Direktur Operasional mengawasi manajer area, titik dapur SPPG, dan rantai pasok.'
+      notes: 'Ketua Pembina Yayasan mengawasi tata kelola strategis dan arah kebijakan yayasan.'
     },
     {
       id: 'DK-001',
@@ -354,7 +354,7 @@ const INITIAL_DATABASE = {
       agama: 'Islam',
       gender: 'Laki-laki',
       phone: '0878-2076-0675',
-      email: 'alfaqih@erpmms.co.id',
+      email: 'alfaqih1108@gmail.com',
       username: 'alfaqih',
       password: 'password123',
       nik: '3175041108010000',
@@ -1848,51 +1848,6 @@ const INITIAL_DATABASE = {
       emergencyRelation: '-',
       emergencyPhone: '-',
       notes: 'Maker Yayasan pengelola pelaporan transaksi dapur SPPG Citaman & SPPG Cilangkap.'
-    },
-    {
-      id: 'MAKER-002',
-      nika: 'MKR-2026-002',
-      name: 'Ahmad Syafei',
-      role: 'MAKER_YAYASAN',
-      roleLabel: 'Maker Yayasan',
-      kodeJabatan: 'WLKP-MKR-02',
-      jabatan: 'Maker Pengelola Dapur Yayasan',
-      levelGrade: 'Staff Pelaksana Dapur / Grade 1',
-      department: 'Kemitraan Yayasan',
-      avatarGrad: 'linear-gradient(135deg, #F59E0B 0%, #FB923C 100%)',
-      quotaAnnualLeave: 12,
-      remainingAnnualLeave: 12,
-      quotaPersonalLeave: 3,
-      remainingPersonalLeave: 3,
-      currentQuarter: 'Q3 (Juli–September 2026)',
-      joinDate: '2026-05-01',
-      birthPlace: 'Jakarta',
-      birthDate: '1992-07-08',
-      agama: 'Islam',
-      gender: 'Laki-laki',
-      phone: '0813-8899-7722',
-      email: 'ahmad.syafei@erpmms.co.id',
-      username: 'ahmad.syafei',
-      password: 'password123',
-      nik: '3175050807920002',
-      statusKaryawan: 'PKWT (Maker Dapur)',
-      statusPajak: 'TK/0',
-      pendidikan: 'SMA / SMK',
-      noKK: '-',
-      alamatKTP: 'Cipinang Cempedak, Jatinegara, Jakarta Timur',
-      alamatDomisili: 'Cipinang Cempedak, Jatinegara, Jakarta Timur',
-      statusTempatTinggal: 'Milik Sendiri',
-      noNPWP: '-',
-      alamatNPWP: '-',
-      bankName: 'Bank Mandiri',
-      rekeningNo: '1570088990011',
-      rekeningName: 'Ahmad Syafei',
-      noBPJSKesehatan: '-',
-      noBPJSTenagaKerja: '-',
-      emergencyName: '-',
-      emergencyRelation: '-',
-      emergencyPhone: '-',
-      notes: 'Maker Yayasan pengelola pelaporan transaksi dapur SPPG Cipinang Cempedak.'
     }
   ],
 
@@ -2327,9 +2282,10 @@ class DatabaseManager {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed && Array.isArray(parsed.users)) {
-          // Auto-sync missing users from INITIAL_DATABASE
+          const deletedIds = Array.isArray(parsed.deletedUserIds) ? parsed.deletedUserIds : [];
+          // Auto-sync missing users from INITIAL_DATABASE (kecuali yang sengaja dihapus)
           INITIAL_DATABASE.users.forEach(initUser => {
-            if (!parsed.users.some(u => u.id === initUser.id)) {
+            if (!deletedIds.includes(initUser.id) && !parsed.users.some(u => u.id === initUser.id)) {
               parsed.users.push(initUser);
             }
           });
@@ -2342,6 +2298,7 @@ class DatabaseManager {
           if (!Array.isArray(parsed.timesheets)) parsed.timesheets = [];
           if (!Array.isArray(parsed.cashAdvances)) parsed.cashAdvances = [];
           if (!Array.isArray(parsed.fieldIssues)) parsed.fieldIssues = [];
+          if (!Array.isArray(parsed.deletedUserIds)) parsed.deletedUserIds = [];
 
           return parsed;
         }
@@ -2649,8 +2606,25 @@ class DatabaseManager {
     const idx = this.data.users.findIndex(u => u.id === userId);
     if (idx !== -1) {
       const deleted = this.data.users.splice(idx, 1)[0];
-      this.addLog(`Human Capital menonaktifkan akun: ${deleted.name} (${deleted.username})`, 'hc');
+      if (!Array.isArray(this.data.deletedUserIds)) this.data.deletedUserIds = [];
+      if (!this.data.deletedUserIds.includes(userId)) this.data.deletedUserIds.push(userId);
+
+      this.addLog(`Human Capital menghapus/menonaktifkan akun: ${deleted.name} (${deleted.username})`, 'hc');
       this.save();
+
+      // Hapus permanen dari Supabase Cloud tabel "users"
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+        const key = window.SupabaseConfig.getAnonKey();
+        fetch(`${url}/rest/v1/users?id=eq.${userId}`, {
+          method: 'DELETE',
+          headers: {
+            'apikey': key,
+            'Authorization': `Bearer ${key}`
+          }
+        }).catch(err => console.warn('Supabase User Delete Warning:', err));
+      }
+
       return true;
     }
     return false;
@@ -4499,15 +4473,7 @@ class DatabaseManager {
       const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
       const key = window.SupabaseConfig.getAnonKey();
 
-      const checkRes = await fetch(`${url}/rest/v1/users?select=id&limit=1`, {
-        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-      });
-      if (checkRes.ok) {
-        const existing = await checkRes.json();
-        if (Array.isArray(existing) && existing.length > 0) return;
-      }
-
-      console.log('[Supabase Seed] Mengunggah master akun 36 pengguna ke tabel "users"...');
+      console.log('[Supabase Sync] Menyinkronkan master akun pengguna ke tabel "users"...');
       const usersData = this.getUsers().map(u => ({
         id: u.id,
         nika: u.nika || '',

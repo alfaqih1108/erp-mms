@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>SOP 05 - Panduan Approval Bertingkat (Approval Center)</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+    @page { size: A4 portrait; margin: 12mm 14mm 12mm 14mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #0F172A; background: #FFFFFF; line-height: 1.45; font-size: 9.2pt;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .header-banner {
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 2.5px solid #F59E0B; padding-bottom: 8px; margin-bottom: 12px;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-logo {
+      width: 40px; height: 40px; border-radius: 8px;
+      background: linear-gradient(135deg, #F59E0B, #D97706);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 800; font-size: 14pt;
+    }
+    .header-title h1 { font-size: 13pt; font-weight: 800; color: #0F172A; }
+    .header-title p { font-size: 8pt; color: #64748B; font-weight: 500; }
+    .header-badge {
+      background: #FEF3C7; border: 1px solid #FCD34D; color: #92400E;
+      font-size: 7.5pt; font-weight: 700; padding: 4px 8px; border-radius: 5px; text-transform: uppercase;
+    }
+    .meta-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;
+    }
+    .meta-card {
+      background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;
+    }
+    .meta-label { font-size: 7pt; font-weight: 700; color: #64748B; text-transform: uppercase; }
+    .meta-val { font-size: 8.5pt; font-weight: 700; color: #0F172A; margin-top: 2px; }
+
+    .section-title {
+      font-size: 10pt; font-weight: 800; color: #0F172A; margin: 12px 0 6px 0;
+      display: flex; align-items: center; gap: 6px; border-left: 3.5px solid #F59E0B; padding-left: 6px;
+    }
+    .step-card {
+      background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px;
+      padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid;
+    }
+    .step-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .step-num {
+      width: 22px; height: 22px; border-radius: 50%; background: #F59E0B; color: white;
+      font-weight: 800; font-size: 8.5pt; display: flex; align-items: center; justify-content: center;
+    }
+    .step-title { font-weight: 700; font-size: 9pt; color: #0F172A; }
+    .step-desc { font-size: 8.5pt; color: #475569; margin-left: 30px; }
+
+    table.data-table {
+      width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 8.2pt;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #CBD5E1; padding: 5px 8px; text-align: left;
+    }
+    table.data-table th { background: #F1F5F9; font-weight: 700; color: #1E293B; }
+    table.data-table tr:nth-child(even) { background: #F8FAFC; }
+
+    .badge {
+      display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 7pt; font-weight: 700;
+    }
+    .badge-green { background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }
+    .badge-blue { background: #DBEAFE; color: #1E40AF; border: 1px solid #93C5FD; }
+    .badge-yellow { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
+    .badge-red { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
+
+    .callout {
+      background: #FFFBEB; border-left: 3.5px solid #F59E0B; padding: 6px 10px;
+      border-radius: 0 6px 6px 0; font-size: 8pt; color: #92400E; margin: 8px 0;
+    }
+    .footer {
+      border-top: 1px solid #E2E8F0; padding-top: 6px; margin-top: 14px;
+      display: flex; justify-content: space-between; font-size: 7pt; color: #94A3B8;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-banner">
+    <div class="header-left">
+      <div class="header-logo">A</div>
+      <div class="header-title">
+        <h1>SOP-EXE-005: PANDUAN PENGOPERASIAN PUSAT PERSETUJUAN (APPROVAL CENTER)</h1>
+        <p>Sistem ERP MMS Yayasan &bull; Portal Resmi: https://erpyayasan.com</p>
+      </div>
+    </div>
+    <div class="header-badge">SOP DIREKSI & MANAJERIAL</div>
+  </div>
+
+  <div class="meta-grid">
+    <div class="meta-card">
+      <div class="meta-label">Nomor Dokumen</div>
+      <div class="meta-val">SOP/MMS/EXE/2026/005</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Sasaran Pengguna</div>
+      <div class="meta-val">Manajer Area, HC, & Jajaran Direksi</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Penanggung Jawab</div>
+      <div class="meta-val">Direktur Operasional & Keuangan</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Tipe Audit</div>
+      <div class="meta-val"><span class="badge badge-green">Digital Signature & Audit Trail</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">1. Matriks Otoritas Persetujuan Bertingkat (Approval Hierarchy)</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Jenis Transaksi</th>
+        <th style="width: 25%;">Persetujuan Level 1</th>
+        <th style="width: 25%;">Persetujuan Level 2</th>
+        <th style="width: 25%;">Persetujuan Final (Level 3)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Cuti Staf & Surveyor</strong></td>
+        <td><strong>Tazkia Aulia</strong> (HC Officer)</td>
+        <td><em>Selesai di Level 1</em></td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td><strong>Cuti Manajer & HC</strong></td>
+        <td><strong>Muhammad Alfaqih</strong> (Dir. Ops)</td>
+        <td><em>Selesai di Level 1</em></td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td><strong>Pengadaan PR (&lt; 2 Juta)</strong></td>
+        <td>Manajer Area Terkait</td>
+        <td><em>Selesai di Level 1</em></td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td><strong>Pengadaan PR (2 – 10 Juta)</strong></td>
+        <td>Manajer Area Terkait</td>
+        <td><strong>Muhammad Alfaqih</strong> (Dir. Ops)</td>
+        <td>Disposisi Finance</td>
+      </tr>
+      <tr>
+        <td><strong>Pengadaan Aset (&gt; 10 Juta)</strong></td>
+        <td>Manajer Area</td>
+        <td>Dir. Operasional + Dir. Keuangan</td>
+        <td><strong>Rochmad</strong> (Direktur Utama)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="section-title">2. Tata Cara Melakukan Approval di Portal ERP</div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">Menerima Notifikasi Email / Buka Portal ERP</div>
+    </div>
+    <div class="step-desc">
+      Ketika ada pengajuan baru, Anda akan menerima email resmi di Gmail (misal: <code>alfaqih1108@gmail.com</code>). Anda bisa mengklik tombol di email atau langsung login ke <strong>https://erpyayasan.com</strong>.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">Buka Menu Approval Center</div>
+    </div>
+    <div class="step-desc">
+      Klik menu <strong>🛡️ Approval Center</strong> pada bilah navigasi utama. Anda akan melihat lencana angka merah yang menandakan jumlah dokumen yang menunggu tindakan Anda.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">Tinjau Rincian Dokumen & Bukti Pendukung</div>
+    </div>
+    <div class="step-desc">
+      Klik tombol <strong>🔍 Rincian / Detail</strong> pada baris transaksi:
+      <ul style="margin: 4px 0 0 16px; font-size: 8pt;">
+        <li>Periksa identitas pemohon, sisa kuota cuti, durasi tanggal, atau rincian item barang PR.</li>
+        <li>Buka lampiran bukti foto/surat dokter dengan mengklik tombol <em>Lihat Lampiran</em>.</li>
+        <li>Tinjau riwayat approval sebelumnya (*Audit Trail*) jika dokumen merupakan eskalasi bertingkat.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div class="step-title">Eksekusi Keputusan (Approve / Reject / Disposisi)</div>
+    </div>
+    <div class="step-desc">
+      Pilih salah satu tombol tindakan resmi:
+      <ul style="margin: 4px 0 0 16px; font-size: 8pt;">
+        <li><span class="badge badge-green">✅ SETUJUI (APPROVE)</span>: Permohonan disahkan atau diteruskan ke tingkatan approver selanjutnya.</li>
+        <li><span class="badge badge-red">❌ TOLAK (REJECT)</span>: Masukkan <strong>Alasan Penolakan</strong> pada kotak dialog agar pemohon mengetahui alasan koreksi.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">5</div>
+      <div class="step-title">Perekaman Audit Trail & Pengiriman Email Balasan</div>
+    </div>
+    <div class="step-desc">
+      Sistem seketika mencatat nama approver, stempel waktu (*timestamp*), dan status ke database Supabase, serta <strong>secara otomatis mengirimkan email konfirmasi keputusan resmi ke email pemohon</strong>.
+    </div>
+  </div>
+
+  <div class="section-title">3. Ketentuan Khusus & Fitur Manajemen Dokumen</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Fitur / Kasus</th>
+        <th style="width: 35%;">Tindakan Pejabat Approver</th>
+        <th style="width: 40%;">Dampak Sistem</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Pembatalan / Hapus Pengajuan</strong></td>
+        <td>Buka rincian PR ➔ Klik tombol <em>🗑️ Hapus Pengajuan PR Ini</em>.</td>
+        <td>Pengajuan dibatalkan dan dihapus dari antrean approval.</td>
+      </tr>
+      <tr>
+        <td><strong>Eskalasi Otomatis</strong></td>
+        <td>Jika approver Level 1 berhalangan >2 hari, sistem dapat dieskalasi ke Level 2.</td>
+        <td>Notifikasi darurat diteruskan ke Direktur Operasional.</td>
+      </tr>
+      <tr>
+        <td><strong>Penyimpanan Bukti PDF</strong></td>
+        <td>Klik tombol <em>Cetak / Simpan PDF</em> pada rincian permohonan yang telah di-approve.</td>
+        <td>Menghasilkan lembar persetujuan resmi berformat PDF untuk arsip yayasan.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    📌 <strong>Integritas Keputusan</strong>: Setiap tindakan persetujuan yang dieksekusi di Approval Center mengikat secara sah dan terekam permanen pada riwayat database yayasan.
+  </div>
+
+  <div class="footer">
+    <div>Dokumen Standar Operasional Prosedur &bull; Yayasan Mitra Mandiri Sejahtera</div>
+    <div>Dicetak otomatis dari Sistem ERP MMS &bull; Halaman 1 dari 1</div>
+  </div>
+
+</body>
+</html>

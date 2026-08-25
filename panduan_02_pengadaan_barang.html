@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>SOP 02 - Panduan Pengadaan Barang (Purchase Requisition - PR)</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+    @page { size: A4 portrait; margin: 12mm 14mm 12mm 14mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #0F172A; background: #FFFFFF; line-height: 1.45; font-size: 9.2pt;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .header-banner {
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 2.5px solid #2563EB; padding-bottom: 8px; margin-bottom: 12px;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-logo {
+      width: 40px; height: 40px; border-radius: 8px;
+      background: linear-gradient(135deg, #2563EB, #06B6D4);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 800; font-size: 14pt;
+    }
+    .header-title h1 { font-size: 13pt; font-weight: 800; color: #0F172A; }
+    .header-title p { font-size: 8pt; color: #64748B; font-weight: 500; }
+    .header-badge {
+      background: #EFF6FF; border: 1px solid #BFDBFE; color: #1D4ED8;
+      font-size: 7.5pt; font-weight: 700; padding: 4px 8px; border-radius: 5px; text-transform: uppercase;
+    }
+    .meta-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;
+    }
+    .meta-card {
+      background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;
+    }
+    .meta-label { font-size: 7pt; font-weight: 700; color: #64748B; text-transform: uppercase; }
+    .meta-val { font-size: 8.5pt; font-weight: 700; color: #0F172A; margin-top: 2px; }
+
+    .section-title {
+      font-size: 10pt; font-weight: 800; color: #0F172A; margin: 12px 0 6px 0;
+      display: flex; align-items: center; gap: 6px; border-left: 3.5px solid #2563EB; padding-left: 6px;
+    }
+    .step-card {
+      background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px;
+      padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid;
+    }
+    .step-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .step-num {
+      width: 22px; height: 22px; border-radius: 50%; background: #2563EB; color: white;
+      font-weight: 800; font-size: 8.5pt; display: flex; align-items: center; justify-content: center;
+    }
+    .step-title { font-weight: 700; font-size: 9pt; color: #0F172A; }
+    .step-desc { font-size: 8.5pt; color: #475569; margin-left: 30px; }
+
+    table.data-table {
+      width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 8.2pt;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #CBD5E1; padding: 5px 8px; text-align: left;
+    }
+    table.data-table th { background: #F1F5F9; font-weight: 700; color: #1E293B; }
+    table.data-table tr:nth-child(even) { background: #F8FAFC; }
+
+    .badge {
+      display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 7pt; font-weight: 700;
+    }
+    .badge-green { background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }
+    .badge-blue { background: #DBEAFE; color: #1E40AF; border: 1px solid #93C5FD; }
+    .badge-yellow { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
+
+    .callout {
+      background: #F0FDF4; border-left: 3.5px solid #22C55E; padding: 6px 10px;
+      border-radius: 0 6px 6px 0; font-size: 8pt; color: #15803D; margin: 8px 0;
+    }
+    .footer {
+      border-top: 1px solid #E2E8F0; padding-top: 6px; margin-top: 14px;
+      display: flex; justify-content: space-between; font-size: 7pt; color: #94A3B8;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-banner">
+    <div class="header-left">
+      <div class="header-logo">P</div>
+      <div class="header-title">
+        <h1>SOP-OPS-002: PANDUAN PENGADAAN BARANG (PURCHASE REQUISITION)</h1>
+        <p>Sistem ERP MMS Yayasan &bull; Portal Resmi: https://erpyayasan.com</p>
+      </div>
+    </div>
+    <div class="header-badge">SOP OPERASIONAL & PROCUREMENT</div>
+  </div>
+
+  <div class="meta-grid">
+    <div class="meta-card">
+      <div class="meta-label">Nomor Dokumen</div>
+      <div class="meta-val">SOP/MMS/PROC/2026/002</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Sasaran Pengguna</div>
+      <div class="meta-val">Perwakilan Dapur, Surveyor, Manajer Area</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Penanggung Jawab</div>
+      <div class="meta-val">Manajer Area & Direktur Operasional</div>
+    </div>
+    <div class="meta-card">
+      <div class="meta-label">Kode Standar</div>
+      <div class="meta-val"><span class="badge badge-blue">PR-2026-SERIES</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">1. Kategori & Batasan Pengadaan Barang (PR)</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 22%;">Kategori PR</th>
+        <th style="width: 35%;">Contoh Item Pengadaan</th>
+        <th style="width: 23%;">Tingkat Persetujuan</th>
+        <th style="width: 20%;">Batas Waktu Review</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Peralatan Dapur SPPG</strong></td>
+        <td>Kompor gas industri, wajan besar, rice cooker 20L, blender bumbu, pisau stainless.</td>
+        <td>Manajer Area ➔ Dir. Operasional</td>
+        <td>1 x 24 Jam Kerja</td>
+      </tr>
+      <tr>
+        <td><strong>Bahan Baku & Logistik</strong></td>
+        <td>Beras cadangan, minyak goreng curah, gas LPG 12kg, bumbu kering kemasan.</td>
+        <td>Manajer Area</td>
+        <td>1 x 12 Jam Kerja</td>
+      </tr>
+      <tr>
+        <td><strong>Perlengkapan Higienitas</strong></td>
+        <td>Masker dapur, sarung tangan plastik, apron celemek, sabun cuci food-grade.</td>
+        <td>Manajer Area</td>
+        <td>1 x 12 Jam Kerja</td>
+      </tr>
+      <tr>
+        <td><strong>Perbaikan & Maintenance</strong></td>
+        <td>Servis instalasi air bersih dapur, pipa gas, renovasi meja persiapan saji.</td>
+        <td>Manajer Area ➔ Dir. Operasional</td>
+        <td>1 x 24 Jam Kerja</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="section-title">2. Tata Cara Pengajuan Purchase Requisition (PR)</div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">Buka Menu Pengadaan Barang (PR)</div>
+    </div>
+    <div class="step-desc">
+      Login ke <strong>https://erpyayasan.com</strong> ➔ Klik menu <strong>📦 Pengadaan Barang (PR)</strong> di sidebar kiri.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">Klik Tombol "Buat Pengajuan PR Baru"</div>
+    </div>
+    <div class="step-desc">
+      Klik tombol biru <strong>+ Buat Pengajuan PR Baru</strong> di pojok kanan atas tabel.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">Pilih Titik Dapur SPPG & Kategori</div>
+    </div>
+    <div class="step-desc">
+      Pilih lokasi dapur SPPG tujuan (contoh: <em>SPPG Dapur Cimahi 01, SPPG Dapur Bogor 02, SPPG Dapur Sukabumi</em>) dan tentukan tingkat urgensi: <code>NORMAL</code> atau <code>URGENT</code>.
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div class="step-title">Input Rincian Barang & Estimasi Biaya</div>
+    </div>
+    <div class="step-desc">
+      Masukkan detail barang yang dibutuhkan:
+      <ul style="margin: 4px 0 0 16px; font-size: 8pt;">
+        <li><strong>Nama Barang & Spesifikasi</strong>: Tulis merk/ukuran jelas (contoh: <em>Panci Kuah Stainless 50L Merk Zebra</em>).</li>
+        <li><strong>Jumlah (Quantity) & Satuan</strong>: Contoh: 2 Unit / 5 Pcs / 10 Box.</li>
+        <li><strong>Estimasi Harga Satuan & Total</strong>: Masukkan perkiraan harga pasar setempat.</li>
+        <li><strong>Lampiran Foto / Nota Penawaran</strong> (Jika ada): Unggah foto barang lama yang rusak atau struk penawaran harga toko.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num">5</div>
+      <div class="step-title">Submit PR & Notifikasi Otomatis Terkirim</div>
+    </div>
+    <div class="step-desc">
+      Klik tombol <strong>🚀 Kirim Permintaan Pengadaan</strong>. Sistem akan menerbitkan Nomor Tiket resmi (contoh: <code>PR-2026-084</code>), mencatat audit trail, dan mengirimkan <strong>email notifikasi ke Manajer Area dan Direktur Operasional (`alfaqih1108@gmail.com`)</strong>.
+    </div>
+  </div>
+
+  <div class="section-title">3. Hierarki Verifikasi & Pencairan Dana PR</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Nominal PR</th>
+        <th>Level 1: Verifikasi Lapangan</th>
+        <th>Level 2: Otorisasi Operasional</th>
+        <th>Level 3: Pencairan Dana (Disbursement)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>&lt; Rp 2.000.000</strong></td>
+        <td>Manajer Area Terkait</td>
+        <td><em>Cukup Level 1</em></td>
+        <td>Finance Admin / Kasbon Dapur</td>
+      </tr>
+      <tr>
+        <td><strong>Rp 2.000.000 – Rp 10.000.000</strong></td>
+        <td>Manajer Area Terkait</td>
+        <td><strong>Muhammad Alfaqih</strong> (Dir. Operasional)</td>
+        <td>FAT Officer (Transfer Bank)</td>
+      </tr>
+      <tr>
+        <td><strong>&gt; Rp 10.000.000 (Aset Besar)</strong></td>
+        <td>Manajer Area</td>
+        <td>Dir. Operasional + <strong>Kody Suryo</strong> (Dir. Keuangan)</td>
+        <td>Persetujuan Direktur Utama (Rochmad)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    💡 <strong>Ketentuan Penting Pengadaan</strong>: Seluruh barang yang telah dibeli wajib difoto dan diunggah bukti struk pembayarannya melalui fitur <em>Upload Bukti Realisasi</em> pada menu Rincian PR untuk proses tutup buku dan audit bulanan yayasan.
+  </div>
+
+  <div class="footer">
+    <div>Dokumen Standar Operasional Prosedur &bull; Yayasan Mitra Mandiri Sejahtera</div>
+    <div>Dicetak otomatis dari Sistem ERP MMS &bull; Halaman 1 dari 1</div>
+  </div>
+
+</body>
+</html>
