@@ -3,13 +3,13 @@
  * Enterprise HRIS Master Profile (36 Fields), Admin Hub Master Dapur SPPG, Multi-Tier Approval Tracking & Real-Time Timestamps
  */
 
-const STORAGE_KEY = 'ERP_YAYASAN_DATABASE_V24';
+const STORAGE_KEY = 'ERP_YAYASAN_DB_STABLE';
 
-// Pembersihan otomatis cache database versi lama (V1 - V23) untuk membebaskan kuota LocalStorage
+// Pembersihan otomatis cache database versi lama (V1 - V24) untuk membebaskan kuota LocalStorage
 try {
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const k = localStorage.key(i);
-    if (k && k.startsWith('ERP_YAYASAN_DATABASE_V') && k !== STORAGE_KEY) {
+    if (k && k.startsWith('ERP_YAYASAN_DATABASE_V')) {
       localStorage.removeItem(k);
     }
   }
@@ -2566,34 +2566,37 @@ class DatabaseManager {
     // Sinkronkan user baru ke Supabase
     this.syncToSupabase('users', {
       id: user.id,
-      nika: user.nika,
+      nika: user.nika || '',
       name: user.name,
       role: user.role,
-      role_label: user.roleLabel,
-      kode_jabatan: user.kodeJabatan,
-      jabatan: user.jabatan,
-      level_grade: user.levelGrade,
-      department: user.department,
-      avatar_grad: user.avatarGrad,
-      quota_annual_leave: user.quotaAnnualLeave,
-      remaining_annual_leave: user.remainingAnnualLeave,
-      quota_personal_leave: user.quotaPersonalLeave,
-      remaining_personal_leave: user.remainingPersonalLeave,
-      current_quarter: user.currentQuarter,
-      join_date: user.joinDate,
-      birth_place: user.birthPlace,
-      birth_date: user.birthDate,
-      agama: user.agama,
-      gender: user.gender,
-      phone: user.phone,
-      email: user.email,
+      role_label: user.roleLabel || user.jabatan || '',
+      kode_jabatan: user.kodeJabatan || '',
+      jabatan: user.jabatan || '',
+      level_grade: user.levelGrade || '',
+      department: user.department || '',
+      avatar_grad: user.avatarGrad || '',
+      quota_annual_leave: Number(user.quotaAnnualLeave) || 12,
+      remaining_annual_leave: Number(user.remainingAnnualLeave) || 12,
+      quota_personal_leave: Number(user.quotaPersonalLeave) || 3,
+      remaining_personal_leave: Number(user.remainingPersonalLeave) || 3,
+      current_quarter: user.currentQuarter || 'Q3 (Juli–September 2026)',
+      join_date: (user.joinDate && user.joinDate !== '-') ? user.joinDate : null,
+      birth_place: user.birthPlace || '',
+      birth_date: (user.birthDate && user.birthDate !== '-') ? user.birthDate : null,
+      agama: user.agama || 'Islam',
+      gender: user.gender || 'Laki-laki',
+      phone: user.phone || '',
+      email: user.email || '',
       username: user.username,
-      password: user.password,
-      nik: user.nik,
-      status_karyawan: user.statusKaryawan,
-      status_pajak: user.statusPajak,
-      pendidikan: user.pendidikan,
-      notes: user.notes
+      password: user.password || 'password123',
+      nik: user.nik || '',
+      status_karyawan: user.statusKaryawan || 'Tetap',
+      status_pajak: user.statusPajak || 'TK/0',
+      pendidikan: user.pendidikan || 'Sarjana (S1)',
+      bank_name: user.bankName || '',
+      rekening_no: user.rekeningNo || '',
+      rekening_name: user.rekeningName || user.name,
+      notes: user.notes || ''
     });
 
     return user;
@@ -4642,6 +4645,54 @@ class DatabaseManager {
                 if (su.email) localU.email = su.email;
                 if (su.name) localU.name = su.name;
                 if (su.phone) localU.phone = su.phone;
+                if (su.role) localU.role = su.role;
+                if (su.role_label) localU.roleLabel = su.role_label;
+                if (su.jabatan) localU.jabatan = su.jabatan;
+                if (su.department) localU.department = su.department;
+                if (su.level_grade) localU.levelGrade = su.level_grade;
+                if (su.kode_jabatan) localU.kodeJabatan = su.kode_jabatan;
+                if (su.password) localU.password = su.password;
+                if (su.username) localU.username = su.username;
+                if (su.bank_name) localU.bankName = su.bank_name;
+                if (su.rekening_no) localU.rekeningNo = su.rekening_no;
+                if (su.rekening_name) localU.rekeningName = su.rekening_name;
+                if (su.quota_annual_leave !== undefined && su.quota_annual_leave !== null) localU.quotaAnnualLeave = Number(su.quota_annual_leave);
+                if (su.remaining_annual_leave !== undefined && su.remaining_annual_leave !== null) localU.remainingAnnualLeave = Number(su.remaining_annual_leave);
+              } else {
+                this.data.users.push({
+                  id: su.id,
+                  nika: su.nika || su.id,
+                  name: su.name,
+                  role: su.role,
+                  roleLabel: su.role_label || su.jabatan || 'Staff',
+                  kodeJabatan: su.kode_jabatan || '',
+                  jabatan: su.jabatan || '',
+                  levelGrade: su.level_grade || '',
+                  department: su.department || '',
+                  avatarGrad: su.avatar_grad || 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+                  quotaAnnualLeave: Number(su.quota_annual_leave) || 12,
+                  remainingAnnualLeave: Number(su.remaining_annual_leave) || 12,
+                  quotaPersonalLeave: Number(su.quota_personal_leave) || 3,
+                  remainingPersonalLeave: Number(su.remaining_personal_leave) || 3,
+                  currentQuarter: su.current_quarter || 'Q3 (Juli–September 2026)',
+                  joinDate: su.join_date || '2024-01-01',
+                  birthPlace: su.birth_place || '',
+                  birthDate: su.birth_date || '',
+                  agama: su.agama || 'Islam',
+                  gender: su.gender || 'Laki-laki',
+                  phone: su.phone || '',
+                  email: su.email || '',
+                  username: su.username || su.id.toLowerCase(),
+                  password: su.password || 'password123',
+                  nik: su.nik || '',
+                  statusKaryawan: su.status_karyawan || 'Tetap',
+                  statusPajak: su.status_pajak || 'TK/0',
+                  pendidikan: su.pendidikan || 'Sarjana (S1)',
+                  bankName: su.bank_name || 'Bank Mandiri',
+                  rekeningNo: su.rekening_no || '-',
+                  rekeningName: su.rekening_name || su.name,
+                  notes: su.notes || ''
+                });
               }
             }
           }
@@ -4721,7 +4772,7 @@ class DatabaseManager {
       }
 
       this.save();
-      console.log('✅ [Supabase Pull] Data lokal berhasil disinkronkan.');
+      console.log('✅ [Supabase Pull] Data lokal berhasil disinkronkan dari Supabase Cloud.');
     } catch (err) {
       console.warn('⚠️ [Supabase Pull] Gagal mengambil data:', err);
     }
@@ -4743,9 +4794,17 @@ window.calculateTenure = calculateTenure;
 window.calculateAge = calculateAge;
 window.hasWorkedOneYear = hasWorkedOneYear;
 
-// Auto-sync data dari Supabase saat awal startup jika sudah dikonfigurasi
-setTimeout(() => {
-  if (window.DB && typeof window.DB.pushAllLocalDataToSupabase === 'function') {
-    window.DB.pushAllLocalDataToSupabase();
+// Auto-sync bidirectional saat awal startup
+setTimeout(async () => {
+  if (window.DB) {
+    if (typeof window.DB.pullLatestFromSupabase === 'function') {
+      await window.DB.pullLatestFromSupabase();
+    }
+    if (typeof window.DB.pushAllLocalDataToSupabase === 'function') {
+      await window.DB.pushAllLocalDataToSupabase();
+    }
   }
-}, 500);
+  if (window.App && typeof window.App.updateUserHeader === 'function') {
+    window.App.updateUserHeader();
+  }
+}, 400);
