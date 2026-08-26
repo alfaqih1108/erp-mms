@@ -12,6 +12,8 @@
 window.DapurYayasanModule = {
   selectedKitchenFilter: 'ALL',
   selectedDateFilter: 'ALL',
+  startDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
+  endDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
   customDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
   uploadedSPMUrl: '',
   uploadedSPMName: '',
@@ -66,13 +68,21 @@ window.DapurYayasanModule = {
         if (!matchKitchen) return false;
       }
 
-      // Date Filter
+      // Date Filter (Support Range Tanggal Mulai s.d. Tanggal Akhir)
       if (this.selectedDateFilter === 'TODAY' && r.date !== todayStr) {
         return false;
       } else if (this.selectedDateFilter === 'MONTH' && !r.date.startsWith(currentMonthStr)) {
         return false;
-      } else if (this.selectedDateFilter === 'SPECIFIC' && this.customDate && r.date !== this.customDate) {
-        return false;
+      } else if (this.selectedDateFilter === 'RANGE' || this.selectedDateFilter === 'SPECIFIC') {
+        const sDate = this.startDate || this.customDate;
+        const eDate = this.endDate || this.customDate;
+        if (sDate && eDate) {
+          if (r.date < sDate || r.date > eDate) return false;
+        } else if (sDate && r.date < sDate) {
+          return false;
+        } else if (eDate && r.date > eDate) {
+          return false;
+        }
       }
 
       return true;
@@ -198,22 +208,28 @@ window.DapurYayasanModule = {
                     `).join('')}
                   `}
                 </select>
-              </div>
-
-              <!-- Date Selector -->
-              <div style="display: flex; align-items: center; gap: 6px;">
+                   <!-- Date Selector (Range Support) -->
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 500;">Periode:</span>
-                <select id="dy-filter-date" class="form-control" style="width: auto; min-width: 170px; font-size: 12px; font-weight: 500;" onchange="DapurYayasanModule.handleDateFilterChange(this.value)">
+                <select id="dy-filter-date" class="form-control" style="width: auto; min-width: 180px; font-size: 12px; font-weight: 500;" onchange="DapurYayasanModule.handleDateFilterChange(this.value)">
                   <option value="ALL" ${this.selectedDateFilter === 'ALL' ? 'selected' : ''}>🗓️ Semua Riwayat</option>
                   <option value="TODAY" ${this.selectedDateFilter === 'TODAY' ? 'selected' : ''}>📅 Hari Ini (${todayFormatted})</option>
                   <option value="MONTH" ${this.selectedDateFilter === 'MONTH' ? 'selected' : ''}>📆 Bulan Ini (${thisMonthFormatted})</option>
-                  <option value="SPECIFIC" ${this.selectedDateFilter === 'SPECIFIC' ? 'selected' : ''}>🎯 Tanggal Tertentu...</option>
+                  <option value="RANGE" ${(this.selectedDateFilter === 'RANGE' || this.selectedDateFilter === 'SPECIFIC') ? 'selected' : ''}>🎯 Rentang Tanggal (Mulai s/d Akhir)...</option>
                 </select>
 
-                ${this.selectedDateFilter === 'SPECIFIC' ? `
-                  <input type="date" id="dy-custom-date" class="form-control" value="${this.customDate}" 
-                         style="width: 135px; padding: 6px 10px; font-size: 12px; margin: 0;"
-                         onchange="DapurYayasanModule.handleCustomDateChange(this.value)">
+                ${(this.selectedDateFilter === 'RANGE' || this.selectedDateFilter === 'SPECIFIC') ? `
+                  <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.4); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; padding: 4px 10px;">
+                    <span style="font-size: 11px; color: var(--text-muted); font-weight: 500;">Mulai:</span>
+                    <input type="date" id="dy-start-date" class="form-control" value="${this.startDate || this.customDate}" 
+                           style="width: 130px; padding: 4px 8px; font-size: 11.5px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); color: #fff;"
+                           onchange="DapurYayasanModule.handleStartDateChange(this.value)">
+                    <span style="font-size: 11px; color: #FCD34D; font-weight: 700;">s/d</span>
+                    <span style="font-size: 11px; color: var(--text-muted); font-weight: 500;">Sampai:</span>
+                    <input type="date" id="dy-end-date" class="form-control" value="${this.endDate || this.customDate}" 
+                           style="width: 130px; padding: 4px 8px; font-size: 11.5px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); color: #fff;"
+                           onchange="DapurYayasanModule.handleEndDateChange(this.value)">
+                  </div>
                 ` : ''}
               </div>
 
@@ -1135,5 +1151,45 @@ window.DapurYayasanModule = {
     }
 
     App.openModal('modal-spm-lightbox');
+  },
+
+  handleKitchenFilterChange: function(kitchenVal) {
+    this.selectedKitchenFilter = kitchenVal;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleKitchenCardClick: function(kitchenId) {
+    this.selectedKitchenFilter = kitchenId;
+    this.render(document.getElementById('main-content-area'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+
+  handleDateFilterChange: function(dateVal) {
+    this.selectedDateFilter = dateVal;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleStartDateChange: function(val) {
+    this.startDate = val;
+    this.customDate = val;
+    if (this.endDate && this.startDate > this.endDate) {
+      this.endDate = this.startDate;
+    }
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleEndDateChange: function(val) {
+    this.endDate = val;
+    if (this.startDate && this.endDate < this.startDate) {
+      this.startDate = this.endDate;
+    }
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleCustomDateChange: function(val) {
+    this.customDate = val;
+    this.startDate = val;
+    this.endDate = val;
+    this.render(document.getElementById('main-content-area'));
   }
 };

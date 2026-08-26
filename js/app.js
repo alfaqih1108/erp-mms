@@ -523,15 +523,31 @@ window.App = {
     const origBtnHtml = btnSubmit ? btnSubmit.innerHTML : '';
     if (btnSubmit) {
       btnSubmit.disabled = true;
-      btnSubmit.innerHTML = '<span>Memverifikasi Akun Cloud...</span>';
+      btnSubmit.innerHTML = '<span>Memverifikasi...</span>';
     }
 
-    // 1. Tarik data pengguna terbaru langsung dari Supabase Cloud secara real-time
-    if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+    const checkMatch = () => {
+      const users = DB.getUsers() || [];
+      return users.find(u => {
+        const matchUname = (u.username && u.username.toLowerCase() === uname) || 
+                           (u.email && u.email.toLowerCase() === uname) || 
+                           (u.name && u.name.toLowerCase() === uname) ||
+                           (u.id && u.id.toLowerCase() === uname);
+        const matchPwd = (u.password || 'password123') === pwd;
+        return matchUname && matchPwd;
+      });
+    };
+
+    // 1. Cek langsung kecocokan di memori (instant 0ms)
+    let matchedUser = checkMatch();
+
+    // 2. Jika belum cocok (misal akun baru dibuat di device lain / password baru direset), tarik HANYA tabel users dari cloud (~100ms)
+    if (!matchedUser && window.DB && typeof window.DB.pullUsersFromSupabase === 'function') {
       try {
-        await window.DB.pullLatestFromSupabase();
+        await window.DB.pullUsersFromSupabase();
+        matchedUser = checkMatch();
       } catch (err) {
-        console.warn('Login live pull notice:', err);
+        console.warn('Fast auth pull notice:', err);
       }
     }
 
@@ -540,18 +556,16 @@ window.App = {
       btnSubmit.innerHTML = origBtnHtml;
     }
 
-    const users = DB.getUsers() || [];
-    const matchedUser = users.find(u => {
-      const matchUname = (u.username && u.username.toLowerCase() === uname) || 
-                         (u.email && u.email.toLowerCase() === uname) || 
-                         (u.name && u.name.toLowerCase() === uname) ||
-                         (u.id && u.id.toLowerCase() === uname);
-      const matchPwd = (u.password || 'password123') === pwd;
-      return matchUname && matchPwd;
-    });
-
     if (matchedUser) {
+      // 3. Masuk ke dashboard seketika tanpa jeda
       this.handleLoginAs(matchedUser.id);
+
+      // 4. Sinkronkan seluruh data transaksi di background secara paralel tanpa memblokir tampilan UI
+      if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+        window.DB.pullLatestFromSupabase().then(() => {
+          this.refreshCurrentTab();
+        }).catch(() => {});
+      }
     } else {
       this.openModal('modal-login-failed');
       this.showToast('Autentikasi Gagal: Username atau Password salah!', 'danger');

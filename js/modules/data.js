@@ -5109,352 +5109,380 @@ class DatabaseManager {
     }
   }
 
+  async pullUsersFromSupabase() {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return false;
+    const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+    const key = window.SupabaseConfig.getAnonKey();
+    try {
+      const usersRes = await fetch(`${url}/rest/v1/users?select=*`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (usersRes.ok) {
+        const dbUsers = await usersRes.json();
+        if (Array.isArray(dbUsers) && dbUsers.length > 0) {
+          for (const su of dbUsers) {
+            const localU = this.getUsers().find(u => u.id === su.id);
+            if (localU) {
+              if (su.email) localU.email = su.email;
+              if (su.name) localU.name = su.name;
+              if (su.phone) localU.phone = su.phone;
+              if (su.role) localU.role = su.role;
+              if (su.role_label) localU.roleLabel = su.role_label;
+              if (su.jabatan) localU.jabatan = su.jabatan;
+              if (su.department) localU.department = su.department;
+              if (su.level_grade) localU.levelGrade = su.level_grade;
+              if (su.kode_jabatan) localU.kodeJabatan = su.kode_jabatan;
+              if (su.password) localU.password = su.password;
+              if (su.username) localU.username = su.username;
+              if (su.bank_name) localU.bankName = su.bank_name;
+              if (su.rekening_no) localU.rekeningNo = su.rekening_no;
+              if (su.rekening_name) localU.rekeningName = su.rekening_name;
+              if (su.quota_annual_leave !== undefined && su.quota_annual_leave !== null) localU.quotaAnnualLeave = Number(su.quota_annual_leave);
+              if (su.remaining_annual_leave !== undefined && su.remaining_annual_leave !== null) localU.remainingAnnualLeave = Number(su.remaining_annual_leave);
+            } else {
+              this.data.users.push({
+                id: su.id,
+                nika: su.nika || su.id,
+                name: su.name,
+                role: su.role,
+                roleLabel: su.role_label || su.jabatan || 'Staff',
+                kodeJabatan: su.kode_jabatan || '',
+                jabatan: su.jabatan || '',
+                levelGrade: su.level_grade || '',
+                department: su.department || '',
+                avatarGrad: su.avatar_grad || 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+                quotaAnnualLeave: Number(su.quota_annual_leave) || 12,
+                remainingAnnualLeave: Number(su.remaining_annual_leave) || 12,
+                quotaPersonalLeave: Number(su.quota_personal_leave) || 3,
+                remainingPersonalLeave: Number(su.remaining_personal_leave) || 3,
+                currentQuarter: su.current_quarter || 'Q3 (Juli–September 2026)',
+                joinDate: su.join_date || '2024-01-01',
+                birthPlace: su.birth_place || '',
+                birthDate: su.birth_date || '',
+                agama: su.agama || 'Islam',
+                gender: su.gender || 'Laki-laki',
+                phone: su.phone || '',
+                email: su.email || '',
+                username: su.username || su.id.toLowerCase(),
+                password: su.password || 'password123',
+                nik: su.nik || '',
+                statusKaryawan: su.status_karyawan || 'Tetap',
+                statusPajak: su.status_pajak || 'TK/0',
+                pendidikan: su.pendidikan || 'Sarjana (S1)',
+                bankName: su.bank_name || 'Bank Mandiri',
+                rekeningNo: su.rekening_no || '-',
+                rekeningName: su.rekening_name || su.name,
+                notes: su.notes || ''
+              });
+            }
+          }
+          this.save();
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('Pull users error:', e);
+    }
+    return false;
+  }
+
   async pullLatestFromSupabase() {
     if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
     const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
     const key = window.SupabaseConfig.getAnonKey();
+    const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
 
     try {
-      console.log('[Supabase Pull] Memuat data seluruh entitas secara real-time dari database Supabase Cloud...');
+      console.log('[Supabase Pull] Memuat data seluruh entitas secara paralel dari Supabase Cloud...');
 
-      // 1. Pull Users via REST API
-      try {
-        const usersRes = await fetch(`${url}/rest/v1/users?select=*`, {
-          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-        });
-        if (usersRes.ok) {
-          const dbUsers = await usersRes.json();
-          if (Array.isArray(dbUsers) && dbUsers.length > 0) {
-            for (const su of dbUsers) {
-              const localU = this.getUsers().find(u => u.id === su.id);
-              if (localU) {
-                if (su.email) localU.email = su.email;
-                if (su.name) localU.name = su.name;
-                if (su.phone) localU.phone = su.phone;
-                if (su.role) localU.role = su.role;
-                if (su.role_label) localU.roleLabel = su.role_label;
-                if (su.jabatan) localU.jabatan = su.jabatan;
-                if (su.department) localU.department = su.department;
-                if (su.level_grade) localU.levelGrade = su.level_grade;
-                if (su.kode_jabatan) localU.kodeJabatan = su.kode_jabatan;
-                if (su.password) localU.password = su.password;
-                if (su.username) localU.username = su.username;
-                if (su.bank_name) localU.bankName = su.bank_name;
-                if (su.rekening_no) localU.rekeningNo = su.rekening_no;
-                if (su.rekening_name) localU.rekeningName = su.rekening_name;
-                if (su.quota_annual_leave !== undefined && su.quota_annual_leave !== null) localU.quotaAnnualLeave = Number(su.quota_annual_leave);
-                if (su.remaining_annual_leave !== undefined && su.remaining_annual_leave !== null) localU.remainingAnnualLeave = Number(su.remaining_annual_leave);
-              } else {
-                this.data.users.push({
-                  id: su.id,
-                  nika: su.nika || su.id,
-                  name: su.name,
-                  role: su.role,
-                  roleLabel: su.role_label || su.jabatan || 'Staff',
-                  kodeJabatan: su.kode_jabatan || '',
-                  jabatan: su.jabatan || '',
-                  levelGrade: su.level_grade || '',
-                  department: su.department || '',
-                  avatarGrad: su.avatar_grad || 'linear-gradient(135deg, #8B5CF6, #EC4899)',
-                  quotaAnnualLeave: Number(su.quota_annual_leave) || 12,
-                  remainingAnnualLeave: Number(su.remaining_annual_leave) || 12,
-                  quotaPersonalLeave: Number(su.quota_personal_leave) || 3,
-                  remainingPersonalLeave: Number(su.remaining_personal_leave) || 3,
-                  currentQuarter: su.current_quarter || 'Q3 (Juli–September 2026)',
-                  joinDate: su.join_date || '2024-01-01',
-                  birthPlace: su.birth_place || '',
-                  birthDate: su.birth_date || '',
-                  agama: su.agama || 'Islam',
-                  gender: su.gender || 'Laki-laki',
-                  phone: su.phone || '',
-                  email: su.email || '',
-                  username: su.username || su.id.toLowerCase(),
-                  password: su.password || 'password123',
-                  nik: su.nik || '',
-                  statusKaryawan: su.status_karyawan || 'Tetap',
-                  statusPajak: su.status_pajak || 'TK/0',
-                  pendidikan: su.pendidikan || 'Sarjana (S1)',
-                  bankName: su.bank_name || 'Bank Mandiri',
-                  rekeningNo: su.rekening_no || '-',
-                  rekeningName: su.rekening_name || su.name,
-                  notes: su.notes || ''
-                });
-              }
+      // Jalankan seluruh 9 endpoint secara PARALEL untuk kecepatan instan (~200ms)
+      const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes] = await Promise.allSettled([
+        fetch(`${url}/rest/v1/users?select=*`, { headers }),
+        fetch(`${url}/rest/v1/kitchens?select=*`, { headers }),
+        fetch(`${url}/rest/v1/item_requests?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/leaves?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_reports?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/guideline_documents?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers })
+      ]);
+
+      // 1. Process Users
+      if (usersRes.status === 'fulfilled' && usersRes.value.ok) {
+        const dbUsers = await usersRes.value.json();
+        if (Array.isArray(dbUsers) && dbUsers.length > 0) {
+          for (const su of dbUsers) {
+            const localU = this.getUsers().find(u => u.id === su.id);
+            if (localU) {
+              if (su.email) localU.email = su.email;
+              if (su.name) localU.name = su.name;
+              if (su.phone) localU.phone = su.phone;
+              if (su.role) localU.role = su.role;
+              if (su.role_label) localU.roleLabel = su.role_label;
+              if (su.jabatan) localU.jabatan = su.jabatan;
+              if (su.department) localU.department = su.department;
+              if (su.level_grade) localU.levelGrade = su.level_grade;
+              if (su.kode_jabatan) localU.kodeJabatan = su.kode_jabatan;
+              if (su.password) localU.password = su.password;
+              if (su.username) localU.username = su.username;
+              if (su.bank_name) localU.bankName = su.bank_name;
+              if (su.rekening_no) localU.rekeningNo = su.rekening_no;
+              if (su.rekening_name) localU.rekeningName = su.rekening_name;
+              if (su.quota_annual_leave !== undefined && su.quota_annual_leave !== null) localU.quotaAnnualLeave = Number(su.quota_annual_leave);
+              if (su.remaining_annual_leave !== undefined && su.remaining_annual_leave !== null) localU.remainingAnnualLeave = Number(su.remaining_annual_leave);
+            } else {
+              this.data.users.push({
+                id: su.id,
+                nika: su.nika || su.id,
+                name: su.name,
+                role: su.role,
+                roleLabel: su.role_label || su.jabatan || 'Staff',
+                kodeJabatan: su.kode_jabatan || '',
+                jabatan: su.jabatan || '',
+                levelGrade: su.level_grade || '',
+                department: su.department || '',
+                avatarGrad: su.avatar_grad || 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+                quotaAnnualLeave: Number(su.quota_annual_leave) || 12,
+                remainingAnnualLeave: Number(su.remaining_annual_leave) || 12,
+                quotaPersonalLeave: Number(su.quota_personal_leave) || 3,
+                remainingPersonalLeave: Number(su.remaining_personal_leave) || 3,
+                currentQuarter: su.current_quarter || 'Q3 (Juli–September 2026)',
+                joinDate: su.join_date || '2024-01-01',
+                birthPlace: su.birth_place || '',
+                birthDate: su.birth_date || '',
+                agama: su.agama || 'Islam',
+                gender: su.gender || 'Laki-laki',
+                phone: su.phone || '',
+                email: su.email || '',
+                username: su.username || su.id.toLowerCase(),
+                password: su.password || 'password123',
+                nik: su.nik || '',
+                statusKaryawan: su.status_karyawan || 'Tetap',
+                statusPajak: su.status_pajak || 'TK/0',
+                pendidikan: su.pendidikan || 'Sarjana (S1)',
+                bankName: su.bank_name || 'Bank Mandiri',
+                rekeningNo: su.rekening_no || '-',
+                rekeningName: su.rekening_name || su.name,
+                notes: su.notes || ''
+              });
             }
           }
         }
-      } catch (err) {
-        console.warn('Pull Users error:', err);
       }
 
-      // 2. Pull Dapur (Kitchens & Delegasi Maker) via REST API
-      try {
-        const kRes = await fetch(`${url}/rest/v1/kitchens?select=*`, {
-          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-        });
-        if (kRes.ok) {
-          const dbKitchens = await kRes.json();
-          if (Array.isArray(dbKitchens) && dbKitchens.length > 0) {
-            this.data.kitchens = dbKitchens.map(k => ({
-              id: k.id,
-              idSppg: k.id_sppg,
-              namaDapur: k.nama_dapur,
-              namaYayasan: k.nama_yayasan,
-              name: k.nama_dapur,
-              provinsi: k.provinsi,
-              kotaKabupaten: k.kota_kabupaten,
-              kecamatan: k.kecamatan,
-              kelurahan: k.kelurahan,
-              alamatLengkap: k.alamat_lengkap,
-              location: k.location,
-              makerYayasan: k.maker_yayasan,
-              perwakilanYayasan: k.perwakilan_yayasan,
-              managerArea: k.manager_area,
-              status: k.status,
-              kapasitasPorsi: Number(k.kapasitas_porsi) || 500,
-              createdAt: k.created_at
-            }));
-          }
+      // 2. Process Kitchens
+      if (kRes.status === 'fulfilled' && kRes.value.ok) {
+        const dbKitchens = await kRes.value.json();
+        if (Array.isArray(dbKitchens) && dbKitchens.length > 0) {
+          this.data.kitchens = dbKitchens.map(k => ({
+            id: k.id,
+            idSppg: k.id_sppg,
+            namaDapur: k.nama_dapur,
+            namaYayasan: k.nama_yayasan,
+            name: k.nama_dapur,
+            provinsi: k.provinsi,
+            kotaKabupaten: k.kota_kabupaten,
+            kecamatan: k.kecamatan,
+            kelurahan: k.kelurahan,
+            alamatLengkap: k.alamat_lengkap,
+            location: k.location,
+            makerYayasan: k.maker_yayasan,
+            perwakilanYayasan: k.perwakilan_yayasan,
+            managerArea: k.manager_area,
+            status: k.status,
+            kapasitasPorsi: Number(k.kapasitas_porsi) || 500,
+            createdAt: k.created_at
+          }));
         }
-      } catch (err) {
-        console.warn('Pull Kitchens error:', err);
       }
 
-      // 3. Pull PRs via REST API
-      try {
-        const prRes = await fetch(`${url}/rest/v1/item_requests?select=*&order=created_at.desc`, {
-          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-        });
-        if (prRes.ok) {
-          const prs = await prRes.json();
-          if (Array.isArray(prs) && prs.length > 0) {
-            this.data.itemRequests = prs.map(p => ({
-              id: p.id,
-              employeeId: p.employee_id,
-              employeeName: p.employee_name,
-              role: p.role,
-              department: p.department,
-              itemName: p.item_name,
-              category: p.category,
-              quantity: p.quantity,
-              unitPrice: Number(p.unit_price) || 0,
-              totalPrice: Number(p.total_price) || 0,
-              urgency: p.urgency,
-              reason: p.reason,
-              targetKitchen: p.target_kitchen,
-              attachmentUrl: p.attachment_url,
-              attachmentName: p.attachment_name,
-              stage: p.stage,
-              status: p.status,
-              rejectionReason: p.rejection_reason,
-              approvalHistory: p.approval_history || [],
-              createdAt: p.created_at
-            }));
-          }
+      // 3. Process Item Requests
+      if (prRes.status === 'fulfilled' && prRes.value.ok) {
+        const prs = await prRes.value.json();
+        if (Array.isArray(prs) && prs.length > 0) {
+          this.data.itemRequests = prs.map(p => ({
+            id: p.id,
+            employeeId: p.employee_id,
+            employeeName: p.employee_name,
+            role: p.role,
+            department: p.department,
+            itemName: p.item_name,
+            category: p.category,
+            quantity: p.quantity,
+            unitPrice: Number(p.unit_price) || 0,
+            totalPrice: Number(p.total_price) || 0,
+            urgency: p.urgency,
+            reason: p.reason,
+            targetKitchen: p.target_kitchen,
+            attachmentUrl: p.attachment_url,
+            attachmentName: p.attachment_name,
+            stage: p.stage,
+            status: p.status,
+            rejectionReason: p.rejection_reason,
+            approvalHistory: p.approval_history || [],
+            createdAt: p.created_at
+          }));
         }
-      } catch (err) {
-        console.warn('Pull PR error:', err);
       }
 
-      // 4. Pull Leaves via REST API
-      try {
-        const leaveRes = await fetch(`${url}/rest/v1/leaves?select=*&order=created_at.desc`, {
-          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-        });
-        if (leaveRes.ok) {
-          const leaves = await leaveRes.json();
-          if (Array.isArray(leaves) && leaves.length > 0) {
-            this.data.leaves = leaves.map(l => ({
-              id: l.id,
-              employeeId: l.employee_id,
-              employeeName: l.employee_name,
-              role: l.role,
-              department: l.department,
-              leaveType: l.leave_type,
-              type: l.leave_type,
-              startDate: l.start_date,
-              endDate: l.end_date,
-              duration: l.duration,
-              reason: l.reason,
-              emergencyContact: l.emergency_contact,
-              attachmentUrl: l.attachment_url,
-              attachmentName: l.attachment_name,
-              stage: l.stage,
-              status: l.status,
-              rejectionReason: l.rejection_reason,
-              approvalHistory: l.approval_history || [],
-              createdAt: l.created_at
-            }));
-          }
+      // 4. Process Leaves
+      if (leaveRes.status === 'fulfilled' && leaveRes.value.ok) {
+        const leaves = await leaveRes.value.json();
+        if (Array.isArray(leaves) && leaves.length > 0) {
+          this.data.leaves = leaves.map(l => ({
+            id: l.id,
+            employeeId: l.employee_id,
+            employeeName: l.employee_name,
+            role: l.role,
+            department: l.department,
+            leaveType: l.leave_type,
+            type: l.leave_type,
+            startDate: l.start_date,
+            endDate: l.end_date,
+            duration: l.duration,
+            reason: l.reason,
+            emergencyContact: l.emergency_contact,
+            attachmentUrl: l.attachment_url,
+            attachmentName: l.attachment_name,
+            stage: l.stage,
+            status: l.status,
+            rejectionReason: l.rejection_reason,
+            approvalHistory: l.approval_history || [],
+            createdAt: l.created_at
+          }));
         }
-      } catch (err) {
-        console.warn('Pull Leave error:', err);
       }
 
-      // 5. Pull Laporan Transaksi Dapur (Kitchen Reports)
-      try {
-        const krRes = await fetch(`${url}/rest/v1/kitchen_reports?select=*&order=created_at.desc`, {
-          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-        });
-        if (krRes.ok) {
-          const krs = await krRes.json();
-          if (Array.isArray(krs) && krs.length > 0) {
-            this.data.kitchenReports = krs.map(kr => ({
-              id: kr.id,
-              kitchenId: kr.kitchen_id,
-              kitchenName: kr.kitchen_name,
-              date: kr.date,
-              reporterId: kr.reporter_id,
-              reporterName: kr.reporter_name,
-              rawMaterialCost: Number(kr.raw_material_cost) || 0,
-              operationalCost: Number(kr.operational_cost) || 0,
-              carRentalCost: Number(kr.car_rental_cost) || 0,
-              totalDailyExpense: Number(kr.total_daily_expense) || 0,
-              porsiBesar: Number(kr.porsi_besar) || 0,
-              porsiKecil: Number(kr.porsi_kecil) || 0,
-              beneficiariesCount: Number(kr.beneficiaries_count) || 0,
-              targetBudget: Number(kr.target_budget) || 0,
-              costPerPortion: Number(kr.cost_per_portion) || 0,
-              costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
-              spmFileName: kr.spm_file_name,
-              spmAttachmentUrl: kr.spm_attachment_url,
-              vaBankName: kr.va_bank_name,
-              vaBalance: Number(kr.va_balance) || 0,
-              notes: kr.notes,
-              createdAt: kr.created_at
-            }));
-          }
+      // 5. Process Kitchen Reports
+      if (krRes.status === 'fulfilled' && krRes.value.ok) {
+        const krs = await krRes.value.json();
+        if (Array.isArray(krs) && krs.length > 0) {
+          this.data.kitchenReports = krs.map(kr => ({
+            id: kr.id,
+            kitchenId: kr.kitchen_id,
+            kitchenName: kr.kitchen_name,
+            date: kr.date,
+            reporterId: kr.reporter_id,
+            reporterName: kr.reporter_name,
+            rawMaterialCost: Number(kr.raw_material_cost) || 0,
+            operationalCost: Number(kr.operational_cost) || 0,
+            carRentalCost: Number(kr.car_rental_cost) || 0,
+            totalDailyExpense: Number(kr.total_daily_expense) || 0,
+            porsiBesar: Number(kr.porsi_besar) || 0,
+            porsiKecil: Number(kr.porsi_kecil) || 0,
+            beneficiariesCount: Number(kr.beneficiaries_count) || 0,
+            targetBudget: Number(kr.target_budget) || 0,
+            costPerPortion: Number(kr.cost_per_portion) || 0,
+            costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
+            spmFileName: kr.spm_file_name,
+            spmAttachmentUrl: kr.spm_attachment_url,
+            vaBankName: kr.va_bank_name,
+            vaBalance: Number(kr.va_balance) || 0,
+            notes: kr.notes,
+            createdAt: kr.created_at
+          }));
         }
-      } catch (err) {
-        console.warn('Pull Kitchen Reports error:', err);
       }
 
-      // 6. Pull Timesheets via REST API
-      try {
-        const tsRes = await fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, {
-          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-        });
-        if (tsRes.ok) {
-          const tss = await tsRes.json();
-          if (Array.isArray(tss) && tss.length > 0) {
-            this.data.timesheets = tss.map(ts => ({
-              id: ts.id,
-              employeeId: ts.employee_id,
-              employeeName: ts.employee_name,
-              role: ts.role,
-              date: ts.date,
-              startTime: ts.start_time,
-              endTime: ts.end_time,
-              activity: ts.activity,
-              activityPreset: ts.activity_preset,
-              category: ts.category,
-              status: ts.status,
-              createdAt: ts.created_at
-            }));
-          }
+      // 6. Process Timesheets
+      if (tsRes.status === 'fulfilled' && tsRes.value.ok) {
+        const tss = await tsRes.value.json();
+        if (Array.isArray(tss) && tss.length > 0) {
+          this.data.timesheets = tss.map(ts => ({
+            id: ts.id,
+            employeeId: ts.employee_id,
+            employeeName: ts.employee_name,
+            role: ts.role,
+            date: ts.date,
+            startTime: ts.start_time,
+            endTime: ts.end_time,
+            activity: ts.activity,
+            activityPreset: ts.activity_preset,
+            category: ts.category,
+            status: ts.status,
+            createdAt: ts.created_at
+          }));
         }
-      } catch (err) {
-        console.warn('Pull Timesheets error:', err);
       }
 
-      // 7. Pull Cash Advances via REST API
-      try {
-        const caRes = await fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc`, {
-          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-        });
-        if (caRes.ok) {
-          const cas = await caRes.json();
-          if (Array.isArray(cas) && cas.length > 0) {
-            this.data.cashAdvances = cas.map(ca => ({
-              id: ca.id,
-              title: ca.purpose,
-              employeeId: ca.employee_id,
-              employeeName: ca.employee_name,
-              employeeRole: ca.role,
-              department: ca.department,
-              targetLocation: ca.target_kitchen,
-              amountRequested: Number(ca.amount_requested) || 0,
-              amountApproved: Number(ca.amount_approved) || 0,
-              amountDisbursed: Number(ca.amount_disbursed) || 0,
-              bankName: ca.bank_name,
-              bankAccountNo: ca.rekening_no,
-              bankAccountName: ca.rekening_name,
-              reason: ca.purpose,
-              stage: ca.stage,
-              status: ca.status,
-              settlement: ca.settlement,
-              approvalHistory: ca.approval_history || [],
-              createdAt: ca.created_at
-            }));
-          }
+      // 7. Process Cash Advances
+      if (caRes.status === 'fulfilled' && caRes.value.ok) {
+        const cas = await caRes.value.json();
+        if (Array.isArray(cas) && cas.length > 0) {
+          this.data.cashAdvances = cas.map(ca => ({
+            id: ca.id,
+            title: ca.purpose,
+            employeeId: ca.employee_id,
+            employeeName: ca.employee_name,
+            employeeRole: ca.role,
+            department: ca.department,
+            targetLocation: ca.target_kitchen,
+            amountRequested: Number(ca.amount_requested) || 0,
+            amountApproved: Number(ca.amount_approved) || 0,
+            amountDisbursed: Number(ca.amount_disbursed) || 0,
+            bankName: ca.bank_name,
+            bankAccountNo: ca.rekening_no,
+            bankAccountName: ca.rekening_name,
+            reason: ca.purpose,
+            stage: ca.stage,
+            status: ca.status,
+            settlement: ca.settlement,
+            approvalHistory: ca.approval_history || [],
+            createdAt: ca.created_at
+          }));
         }
-      } catch (err) {
-        console.warn('Pull Cash Advances error:', err);
       }
 
-      // 8. Pull Guideline Documents via REST API
-      try {
-        const docRes = await fetch(`${url}/rest/v1/guideline_documents?select=*&order=created_at.desc`, {
-          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-        });
-        if (docRes.ok) {
-          const dList = await docRes.json();
-          if (Array.isArray(dList) && dList.length > 0) {
-            this.data.guidelineDocuments = dList.map(d => ({
-              id: d.id,
-              title: d.title,
-              fileType: d.file_type,
-              category: d.category,
-              targetRole: d.target_role,
-              targetLabel: d.target_label,
-              fileSize: d.file_size,
-              description: d.description,
-              uploadedBy: d.uploaded_by,
-              uploadDate: d.upload_date,
-              fileData: d.file_data,
-              createdAt: d.created_at
-            }));
-          }
+      // 8. Process Guideline Documents
+      if (docRes.status === 'fulfilled' && docRes.value.ok) {
+        const dList = await docRes.value.json();
+        if (Array.isArray(dList) && dList.length > 0) {
+          this.data.guidelineDocuments = dList.map(d => ({
+            id: d.id,
+            title: d.title,
+            fileType: d.file_type,
+            category: d.category,
+            targetRole: d.target_role,
+            targetLabel: d.target_label,
+            fileSize: d.file_size,
+            description: d.description,
+            uploadedBy: d.uploaded_by,
+            uploadDate: d.upload_date,
+            fileData: d.file_data,
+            createdAt: d.created_at
+          }));
         }
-      } catch (err) {
-        console.warn('Pull Guideline Documents error:', err);
       }
 
-      // 9. Pull Field Issues via REST API
-      try {
-        const issueRes = await fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, {
-          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-        });
-        if (issueRes.ok) {
-          const fList = await issueRes.json();
-          if (Array.isArray(fList) && fList.length > 0) {
-            this.data.fieldIssues = fList.map(f => {
-              let parsedPoints = [];
-              try {
-                parsedPoints = JSON.parse(f.issue_description);
-              } catch (e) {
-                parsedPoints = [{ id: 'PT-1', text: f.issue_description, status: 'BELUM_DIRESPON' }];
-              }
-              return {
-                id: f.id,
-                authorId: f.author_id,
-                authorName: f.author_name,
-                date: f.date,
-                kitchenId: f.kitchen_id,
-                kitchenName: f.kitchen_name,
-                points: Array.isArray(parsedPoints) ? parsedPoints : [],
-                status: f.status,
-                createdAt: f.created_at
-              };
-            });
-          }
+      // 9. Process Field Issues
+      if (issueRes.status === 'fulfilled' && issueRes.value.ok) {
+        const fList = await issueRes.value.json();
+        if (Array.isArray(fList) && fList.length > 0) {
+          this.data.fieldIssues = fList.map(f => {
+            let parsedPoints = [];
+            try {
+              parsedPoints = JSON.parse(f.issue_description);
+            } catch (e) {
+              parsedPoints = [{ id: 'PT-1', text: f.issue_description, status: 'BELUM_DIRESPON' }];
+            }
+            return {
+              id: f.id,
+              authorId: f.author_id,
+              authorName: f.author_name,
+              date: f.date,
+              kitchenId: f.kitchen_id,
+              kitchenName: f.kitchen_name,
+              points: Array.isArray(parsedPoints) ? parsedPoints : [],
+              status: f.status,
+              createdAt: f.created_at
+            };
+          });
         }
-      } catch (err) {
-        console.warn('Pull Field Issues error:', err);
       }
 
       this.save();
-      console.log('✅ [Supabase Pull] Seluruh 9 tabel database berhasil disinkronkan secara real-time dari Supabase Cloud.');
+      console.log('✅ [Supabase Pull] Seluruh 9 tabel database berhasil disinkronkan secara paralel dan instan.');
     } catch (err) {
       console.warn('⚠️ [Supabase Pull] Gagal mengambil data:', err);
     }
