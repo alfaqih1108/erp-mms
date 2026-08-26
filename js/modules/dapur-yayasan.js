@@ -440,29 +440,30 @@ window.DapurYayasanModule = {
             </div>
           </div>
 
-          <div class="nalar-table-container">
-            <table class="nalar-table">
+          <div class="nalar-table-container" style="overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+            <table class="nalar-table" style="min-width: 1850px; border-collapse: separate; border-spacing: 0;">
               <thead>
                 <tr>
-                  <th>No. Laporan</th>
-                  <th>Tanggal</th>
-                  <th>Nama Dapur & SPPG</th>
-                  <th>Belanja Bahan Baku</th>
-                  <th>Biaya Operasional</th>
-                  <th>Sewa Mobil</th>
-                  <th>Total Pengeluaran</th>
-                  <th>Rincian Porsi</th>
-                  <th>Biaya / Porsi</th>
-                  <th>Saldo Akhir VA</th>
-                  <th>Lampiran SPM</th>
-                  <th>Pelapor (Maker)</th>
-                  <th>Aksi</th>
+                  <th style="min-width: 150px; white-space: nowrap;">No. Laporan</th>
+                  <th style="min-width: 115px; white-space: nowrap;">Tanggal</th>
+                  <th style="min-width: 220px;">Nama Dapur & SPPG</th>
+                  <th style="min-width: 175px; white-space: nowrap; background: rgba(245, 158, 11, 0.08); color: #FCD34D;">Target Budget (Anggaran)</th>
+                  <th style="min-width: 160px; white-space: nowrap;">Belanja Bahan Baku</th>
+                  <th style="min-width: 150px; white-space: nowrap;">Biaya Operasional</th>
+                  <th style="min-width: 135px; white-space: nowrap;">Sewa Mobil</th>
+                  <th style="min-width: 170px; white-space: nowrap; background: rgba(255, 75, 1, 0.08); color: #FF8A4C;">Total Pengeluaran</th>
+                  <th style="min-width: 160px; white-space: nowrap;">Rincian Porsi</th>
+                  <th style="min-width: 175px; white-space: nowrap;">Biaya / Porsi</th>
+                  <th style="min-width: 160px; white-space: nowrap;">Saldo Akhir VA</th>
+                  <th style="min-width: 155px; white-space: nowrap;">Lampiran SPM</th>
+                  <th style="min-width: 165px;">Pelapor (Maker)</th>
+                  <th style="min-width: 90px; text-align: center; white-space: nowrap;">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 ${filteredReports.length === 0 ? `
                   <tr>
-                    <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 36px;">
+                    <td colspan="14" style="text-align: center; color: var(--text-muted); padding: 42px;">
                       Belum ada laporan transaksi dapur yang sesuai dengan kriteria filter saat ini.
                     </td>
                   </tr>
@@ -474,67 +475,80 @@ window.DapurYayasanModule = {
                   const carCost = Number(r.carRentalCost) || 0;
                   const totExpense = Number(r.totalDailyExpense) || (rawCost + opsCost + carCost);
 
+                  // Auto generate perhitungan target budget: Porsi Besar (@Rp10.000) + Porsi Kecil (@Rp8.000)
                   const targetBudg = Number(r.targetBudget) || ((pBesar * 10000) + (pKecil * 8000));
                   const eff = targetBudg > 0 ? Math.round((rawCost / targetBudg) * 100) : 100;
                   const costPerPortionAllIn = (r.beneficiariesCount || (pBesar + pKecil)) > 0 ? Math.round(totExpense / (r.beneficiariesCount || (pBesar + pKecil))) : 0;
                   
                   return `
                     <tr>
-                      <td style="color: #FB7185; font-weight: 600;">${r.id}</td>
-                      <td style="font-size: 12px;">${r.date}</td>
-                      <td>
-                        <div style="font-weight: 600; color: #fff;">${r.kitchenName}</div>
-                        <div style="font-size: 11px; color: var(--text-muted); font-style: italic;">
-                          ID SPPG Terdaftar
+                      <td style="color: #FB7185; font-weight: 700; white-space: nowrap; font-family: monospace; font-size: 12.5px;">
+                        ${r.id}
+                      </td>
+                      <td style="font-size: 12px; white-space: nowrap; color: #E2E8F0;">
+                        ${r.date}
+                      </td>
+                      <td style="min-width: 220px;">
+                        <div style="font-weight: 600; color: #fff; font-size: 13px; line-height: 1.35;">${r.kitchenName}</div>
+                        <div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 2px;">
+                          Titik Dapur SPPG Terdaftar
                         </div>
                       </td>
-                      <td style="color: #FCA5A5; font-weight: 600;">
+                      <td style="background: rgba(245, 158, 11, 0.04); border-left: 1px solid rgba(245, 158, 11, 0.15); border-right: 1px solid rgba(245, 158, 11, 0.15); white-space: nowrap;">
+                        <div style="color: #FDE68A; font-weight: 700; font-size: 13px;">
+                          Rp ${targetBudg.toLocaleString('id-ID')}
+                        </div>
+                        <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+                          Budget Auto-Generate
+                        </div>
+                      </td>
+                      <td style="color: #FCA5A5; font-weight: 600; font-size: 13px; white-space: nowrap;">
                         Rp ${rawCost.toLocaleString('id-ID')}
                       </td>
-                      <td style="color: #FDE68A; font-weight: 600;">
+                      <td style="color: #FDE68A; font-weight: 600; font-size: 13px; white-space: nowrap;">
                         Rp ${opsCost.toLocaleString('id-ID')}
                       </td>
-                      <td style="color: ${carCost > 0 ? '#93C5FD' : 'var(--text-muted)'}; font-weight: 600;">
-                        ${carCost > 0 ? `Rp ${carCost.toLocaleString('id-ID')}` : '<span style="font-style: italic; font-weight: 400; font-size: 11px;">- (Tidak Ada)</span>'}
+                      <td style="color: ${carCost > 0 ? '#93C5FD' : 'var(--text-muted)'}; font-weight: 600; font-size: 12.5px; white-space: nowrap;">
+                        ${carCost > 0 ? `Rp ${carCost.toLocaleString('id-ID')}` : '<span style="font-style: italic; font-weight: 400; font-size: 11px; color: var(--text-dim);">- (Tidak Ada)</span>'}
                       </td>
-                      <td style="color: #FF8A4C; font-weight: 800; font-size: 13px; background: rgba(255, 75, 1, 0.06);">
+                      <td style="color: #FF8A4C; font-weight: 800; font-size: 13.5px; background: rgba(255, 75, 1, 0.06); white-space: nowrap;">
                         Rp ${totExpense.toLocaleString('id-ID')}
                       </td>
-                      <td>
-                        <div style="font-weight: 700; color: #6EE7B7; font-size: 12px;">
+                      <td style="white-space: nowrap;">
+                        <div style="font-weight: 700; color: #6EE7B7; font-size: 12.5px;">
                           🍱 ${(r.beneficiariesCount || (pBesar + pKecil)).toLocaleString('id-ID')} Porsi
                         </div>
-                        <div style="display: flex; gap: 6px; font-size: 10.5px; margin-top: 2px;">
-                          <span style="color: #FCD34D;">● ${pBesar} Bsr</span>
-                          <span style="color: #60A5FA;">● ${pKecil} Kcl</span>
+                        <div style="display: flex; gap: 8px; font-size: 11px; margin-top: 3px;">
+                          <span style="color: #FCD34D; font-weight: 500;">● ${pBesar.toLocaleString('id-ID')} Bsr</span>
+                          <span style="color: #60A5FA; font-weight: 500;">● ${pKecil.toLocaleString('id-ID')} Kcl</span>
                         </div>
                       </td>
-                      <td>
-                        <div style="color: #FDE68A; font-weight: 600; font-size: 11.5px;">
+                      <td style="white-space: nowrap;">
+                        <div style="color: #FDE68A; font-weight: 600; font-size: 12px;">
                           Bahan: Rp ${(r.costPerPortion || 0).toLocaleString('id-ID')}
                         </div>
-                        <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 1px;">
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
                           All-In: <strong style="color: #fff;">Rp ${costPerPortionAllIn.toLocaleString('id-ID')}</strong>
                         </div>
-                        <div style="font-size: 10px; margin-top: 2px;">
-                          <span class="badge-status ${eff <= 100 ? 'badge-approved' : 'badge-rejected'}" style="font-size: 9px; padding: 1px 5px;">
+                        <div style="font-size: 10px; margin-top: 4px;">
+                          <span class="badge-status ${eff <= 100 ? 'badge-approved' : 'badge-rejected'}" style="font-size: 9.5px; padding: 2px 6px;">
                             ${eff <= 100 ? `🟢 Hemat (${eff}%)` : `🔴 Over (${eff}%)`}
                           </span>
                         </div>
                       </td>
-                      <td>
-                        <div style="color: #7DD3FC; font-weight: 600;">
+                      <td style="white-space: nowrap;">
+                        <div style="color: #7DD3FC; font-weight: 700; font-size: 13px;">
                           Rp ${(r.vaBalance || 0).toLocaleString('id-ID')}
                         </div>
-                        <div style="font-size: 10px; color: var(--text-dim);">
+                        <div style="font-size: 10.5px; color: var(--text-dim); margin-top: 2px;">
                           ${r.vaBankName || 'Bank Mandiri VA'}
                         </div>
                       </td>
-                      <td>
+                      <td style="white-space: nowrap;">
                         ${r.spmFileName ? `
                           <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
                                   onclick="DapurYayasanModule.openSPMLightbox('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen SPM'}')">
-                            📄 ${r.spmFileName.length > 12 ? r.spmFileName.slice(0, 10) + '...' : r.spmFileName}
+                            📄 ${r.spmFileName.length > 14 ? r.spmFileName.slice(0, 12) + '...' : r.spmFileName}
                           </button>
                         ` : `
                           <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
@@ -542,12 +556,12 @@ window.DapurYayasanModule = {
                           </span>
                         `}
                       </td>
-                      <td>
-                        <div style="font-weight: 500; color: #fff; font-size: 11.5px;">${r.reporterName}</div>
-                        <div style="font-size: 10px; color: var(--text-muted); font-style: italic;">${r.createdAt || '-'}</div>
+                      <td style="min-width: 165px;">
+                        <div style="font-weight: 500; color: #fff; font-size: 12px;">${r.reporterName}</div>
+                        <div style="font-size: 10.5px; color: var(--text-muted); font-style: italic; margin-top: 2px;">${r.createdAt || '-'}</div>
                       </td>
-                      <td>
-                        <button type="button" class="btn-nalar-secondary" style="padding: 4px 10px; font-size: 11px;" 
+                      <td style="text-align: center; white-space: nowrap;">
+                        <button type="button" class="btn-nalar-secondary" style="padding: 4px 12px; font-size: 11.5px;" 
                                 onclick="DapurYayasanModule.viewReportDetail('${r.id}')">
                           👁️ Detail
                         </button>
