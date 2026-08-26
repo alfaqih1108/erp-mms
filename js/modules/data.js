@@ -2746,6 +2746,25 @@ class DatabaseManager {
     this.data.kitchens.push(newKitchen);
     this.addLog(`Staf Ahli Keuangan & Administrasi mendaftarkan Dapur baru: ${newKitchen.idSppg} — ${newKitchen.namaDapur}`, 'admin');
     this.save();
+
+    this.syncToSupabase('kitchens', {
+      id: newKitchen.id,
+      id_sppg: newKitchen.idSppg,
+      nama_dapur: newKitchen.namaDapur,
+      nama_yayasan: newKitchen.namaYayasan,
+      provinsi: newKitchen.provinsi,
+      kota_kabupaten: newKitchen.kotaKabupaten,
+      kecamatan: newKitchen.kecamatan,
+      kelurahan: newKitchen.kelurahan,
+      alamat_lengkap: newKitchen.alamatLengkap,
+      location: newKitchen.location,
+      maker_yayasan: newKitchen.makerYayasan,
+      perwakilan_yayasan: newKitchen.perwakilanYayasan,
+      manager_area: newKitchen.managerArea,
+      status: newKitchen.status,
+      kapasitas_porsi: newKitchen.kapasitasPorsi
+    });
+
     return newKitchen;
   }
 
@@ -2759,6 +2778,26 @@ class DatabaseManager {
     
     this.addLog(`Data Dapur ${kitchen.idSppg} (${kitchen.namaDapur}) berhasil diperbarui oleh Staf Ahli Keuangan`, 'admin');
     this.save();
+
+    // Sinkronkan perubahan dapur & delegasi Maker/Perwakilan Yayasan ke Supabase Cloud
+    this.syncToSupabase('kitchens', {
+      id: kitchen.id,
+      id_sppg: kitchen.idSppg || kitchen.id,
+      nama_dapur: kitchen.namaDapur || kitchen.name || 'Dapur SPPG',
+      nama_yayasan: kitchen.namaYayasan || 'Yayasan Mitra Mandiri Sejahtera',
+      provinsi: kitchen.provinsi || 'DKI Jakarta',
+      kota_kabupaten: kitchen.kotaKabupaten || '-',
+      kecamatan: kitchen.kecamatan || '-',
+      kelurahan: kitchen.kelurahan || '-',
+      alamat_lengkap: kitchen.alamatLengkap || '-',
+      location: kitchen.location || `${kitchen.kotaKabupaten || '-'}, ${kitchen.provinsi || '-'}`,
+      maker_yayasan: kitchen.makerYayasan || 'Belum Ditetapkan',
+      perwakilan_yayasan: kitchen.perwakilanYayasan || 'Belum Ditetapkan',
+      manager_area: kitchen.managerArea || 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+      status: kitchen.status || 'AKTIF',
+      kapasitas_porsi: Number(kitchen.kapasitasPorsi) || 500
+    });
+
     return kitchen;
   }
 
@@ -2813,6 +2852,31 @@ class DatabaseManager {
 
     this.addLog(`${report.reporterName} melaporkan transaksi ${report.kitchenName}: ${beneficiariesCount} Porsi (Bahan: Rp ${rawMaterialCost.toLocaleString('id-ID')} + Ops: Rp ${operationalCost.toLocaleString('id-ID')}${carRentalCost > 0 ? ` + Sewa Mobil: Rp ${carRentalCost.toLocaleString('id-ID')}` : ''} = Total: Rp ${totalDailyExpense.toLocaleString('id-ID')}) · Saldo VA Rp ${Number(report.vaBalance).toLocaleString('id-ID')}`, 'kitchen');
     this.save();
+
+    this.syncToSupabase('kitchen_reports', {
+      id: newReport.id,
+      kitchen_id: newReport.kitchenId || newReport.targetKitchenId || 'DAPUR-01',
+      kitchen_name: newReport.kitchenName,
+      date: newReport.date || new Date().toISOString().slice(0, 10),
+      reporter_id: newReport.reporterId || this.getCurrentUser().id,
+      reporter_name: newReport.reporterName || this.getCurrentUser().name,
+      raw_material_cost: Number(newReport.rawMaterialCost) || 0,
+      operational_cost: Number(newReport.operationalCost) || 0,
+      car_rental_cost: Number(newReport.carRentalCost) || 0,
+      total_daily_expense: Number(newReport.totalDailyExpense) || 0,
+      porsi_besar: Number(newReport.porsiBesar) || 0,
+      porsi_kecil: Number(newReport.porsiKecil) || 0,
+      beneficiaries_count: Number(newReport.beneficiariesCount) || 0,
+      target_budget: Number(newReport.targetBudget) || 0,
+      cost_per_portion: Number(newReport.costPerPortion) || 0,
+      cost_per_portion_all_in: Number(newReport.costPerPortionAllIn) || 0,
+      spm_file_name: newReport.spmFileName || null,
+      spm_attachment_url: newReport.spmAttachmentUrl || null,
+      va_bank_name: newReport.vaBankName || 'Bank Mandiri',
+      va_balance: Number(newReport.vaBalance) || 0,
+      notes: newReport.notes || ''
+    });
+
     return newReport;
   }
 
@@ -3185,6 +3249,21 @@ class DatabaseManager {
     this.data.timesheets.unshift(newTs);
     this.addLog(`${user.name} mencatat log kerja: ${tsData.activityPreset || 'Aktivitas'} (${tsData.hours} Jam) [${status}] pada ${realTimestamp}`, 'timesheet');
     this.save();
+
+    this.syncToSupabase('timesheets', {
+      id: newTs.id,
+      employee_id: newTs.employeeId,
+      employee_name: newTs.employeeName,
+      role: newTs.role,
+      date: newTs.date || new Date().toISOString().slice(0, 10),
+      start_time: newTs.startTime,
+      end_time: newTs.endTime,
+      activity: newTs.activity || newTs.activityPreset || 'Log Kehadiran',
+      activity_preset: newTs.activityPreset || null,
+      category: newTs.category || 'Operasional',
+      status: newTs.status || 'COMPLETED'
+    });
+
     return newTs;
   }
 
@@ -4621,6 +4700,74 @@ class DatabaseManager {
         approval_history: p.approvalHistory || []
       });
     }
+
+    // 4. Sync Seluruh Dapur & Delegasi Maker/Perwakilan Yayasan ke Supabase
+    const kitchens = this.getKitchens();
+    for (const k of kitchens) {
+      await this.syncToSupabase('kitchens', {
+        id: k.id,
+        id_sppg: k.idSppg || k.id,
+        nama_dapur: k.namaDapur || k.name || 'Dapur SPPG',
+        nama_yayasan: k.namaYayasan || 'Yayasan Mitra Mandiri Sejahtera',
+        provinsi: k.provinsi || 'DKI Jakarta',
+        kota_kabupaten: k.kotaKabupaten || '-',
+        kecamatan: k.kecamatan || '-',
+        kelurahan: k.kelurahan || '-',
+        alamat_lengkap: k.alamatLengkap || '-',
+        location: k.location || `${k.kotaKabupaten || '-'}, ${k.provinsi || '-'}`,
+        maker_yayasan: k.makerYayasan || 'Belum Ditetapkan',
+        perwakilan_yayasan: k.perwakilanYayasan || 'Belum Ditetapkan',
+        manager_area: k.managerArea || 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+        status: k.status || 'AKTIF',
+        kapasitas_porsi: Number(k.kapasitasPorsi) || 500
+      });
+    }
+
+    // 5. Sync Timesheet lokal
+    const timesheets = this.getTimesheets();
+    for (const ts of timesheets) {
+      await this.syncToSupabase('timesheets', {
+        id: ts.id,
+        employee_id: ts.employeeId,
+        employee_name: ts.employeeName,
+        role: ts.role,
+        date: ts.date,
+        start_time: ts.startTime,
+        end_time: ts.endTime,
+        activity: ts.activity || ts.activityPreset || 'Log Kehadiran',
+        activity_preset: ts.activityPreset || null,
+        category: ts.category || 'Operasional',
+        status: ts.status || 'COMPLETED'
+      });
+    }
+
+    // 6. Sync Laporan Transaksi Dapur (Kitchen Reports)
+    const reports = this.getKitchenReports();
+    for (const kr of reports) {
+      await this.syncToSupabase('kitchen_reports', {
+        id: kr.id,
+        kitchen_id: kr.kitchenId || kr.targetKitchenId || 'DAPUR-01',
+        kitchen_name: kr.kitchenName,
+        date: kr.date || new Date().toISOString().slice(0, 10),
+        reporter_id: kr.reporterId,
+        reporter_name: kr.reporterName,
+        raw_material_cost: Number(kr.rawMaterialCost) || 0,
+        operational_cost: Number(kr.operationalCost) || 0,
+        car_rental_cost: Number(kr.carRentalCost) || 0,
+        total_daily_expense: Number(kr.totalDailyExpense) || 0,
+        porsi_besar: Number(kr.porsiBesar) || 0,
+        porsi_kecil: Number(kr.porsiKecil) || 0,
+        beneficiaries_count: Number(kr.beneficiariesCount) || 0,
+        target_budget: Number(kr.targetBudget) || 0,
+        cost_per_portion: Number(kr.costPerPortion) || 0,
+        cost_per_portion_all_in: Number(kr.costPerPortionAllIn) || 0,
+        spm_file_name: kr.spmFileName || null,
+        spm_attachment_url: kr.spmAttachmentUrl || null,
+        va_bank_name: kr.vaBankName || 'Bank Mandiri',
+        va_balance: Number(kr.vaBalance) || 0,
+        notes: kr.notes || ''
+      });
+    }
   }
 
   async pullLatestFromSupabase() {
@@ -4631,7 +4778,7 @@ class DatabaseManager {
     try {
       console.log('[Supabase Pull] Memuat data terbaru dari database Supabase...');
 
-      // Pull Users via REST API
+      // 1. Pull Users via REST API
       try {
         const usersRes = await fetch(`${url}/rest/v1/users?select=*`, {
           headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
@@ -4701,7 +4848,40 @@ class DatabaseManager {
         console.warn('Pull Users error:', err);
       }
 
-      // Pull PRs via REST API
+      // 2. Pull Dapur (Kitchens & Delegasi Maker) via REST API
+      try {
+        const kRes = await fetch(`${url}/rest/v1/kitchens?select=*`, {
+          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+        });
+        if (kRes.ok) {
+          const dbKitchens = await kRes.json();
+          if (Array.isArray(dbKitchens) && dbKitchens.length > 0) {
+            this.data.kitchens = dbKitchens.map(k => ({
+              id: k.id,
+              idSppg: k.id_sppg,
+              namaDapur: k.nama_dapur,
+              namaYayasan: k.nama_yayasan,
+              name: k.nama_dapur,
+              provinsi: k.provinsi,
+              kotaKabupaten: k.kota_kabupaten,
+              kecamatan: k.kecamatan,
+              kelurahan: k.kelurahan,
+              alamatLengkap: k.alamat_lengkap,
+              location: k.location,
+              makerYayasan: k.maker_yayasan,
+              perwakilanYayasan: k.perwakilan_yayasan,
+              managerArea: k.manager_area,
+              status: k.status,
+              kapasitasPorsi: Number(k.kapasitas_porsi) || 500,
+              createdAt: k.created_at
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Pull Kitchens error:', err);
+      }
+
+      // 3. Pull PRs via REST API
       try {
         const prRes = await fetch(`${url}/rest/v1/item_requests?select=*&order=created_at.desc`, {
           headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
@@ -4737,7 +4917,7 @@ class DatabaseManager {
         console.warn('Pull PR error:', err);
       }
 
-      // Pull Leaves via REST API
+      // 4. Pull Leaves via REST API
       try {
         const leaveRes = await fetch(`${url}/rest/v1/leaves?select=*&order=created_at.desc`, {
           headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
@@ -4769,6 +4949,44 @@ class DatabaseManager {
         }
       } catch (err) {
         console.warn('Pull Leave error:', err);
+      }
+
+      // 5. Pull Laporan Transaksi Dapur (Kitchen Reports)
+      try {
+        const krRes = await fetch(`${url}/rest/v1/kitchen_reports?select=*&order=created_at.desc`, {
+          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+        });
+        if (krRes.ok) {
+          const krs = await krRes.json();
+          if (Array.isArray(krs) && krs.length > 0) {
+            this.data.kitchenReports = krs.map(kr => ({
+              id: kr.id,
+              kitchenId: kr.kitchen_id,
+              kitchenName: kr.kitchen_name,
+              date: kr.date,
+              reporterId: kr.reporter_id,
+              reporterName: kr.reporter_name,
+              rawMaterialCost: Number(kr.raw_material_cost) || 0,
+              operationalCost: Number(kr.operational_cost) || 0,
+              carRentalCost: Number(kr.car_rental_cost) || 0,
+              totalDailyExpense: Number(kr.total_daily_expense) || 0,
+              porsiBesar: Number(kr.porsi_besar) || 0,
+              porsiKecil: Number(kr.porsi_kecil) || 0,
+              beneficiariesCount: Number(kr.beneficiaries_count) || 0,
+              targetBudget: Number(kr.target_budget) || 0,
+              costPerPortion: Number(kr.cost_per_portion) || 0,
+              costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
+              spmFileName: kr.spm_file_name,
+              spmAttachmentUrl: kr.spm_attachment_url,
+              vaBankName: kr.va_bank_name,
+              vaBalance: Number(kr.va_balance) || 0,
+              notes: kr.notes,
+              createdAt: kr.created_at
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Pull Kitchen Reports error:', err);
       }
 
       this.save();
