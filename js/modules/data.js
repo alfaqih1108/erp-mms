@@ -2497,7 +2497,7 @@ class DatabaseManager {
     return true;
   }
 
-  addUserAccount(newUserData) {
+  async addUserAccount(newUserData) {
     const id = `EMP-${String(this.getUsers().length + 1).padStart(3, '0')}`;
     const nika = newUserData.nika || `K-2026-${String(this.getUsers().length + 1).padStart(3, '0')}`;
     const colors = [
@@ -2563,8 +2563,8 @@ class DatabaseManager {
     this.addLog(`Human Capital membuat akun baru: ${user.name} (@${user.username})`, 'hc');
     this.save();
 
-    // Sinkronkan user baru ke Supabase
-    this.syncToSupabase('users', {
+    // Sinkronkan user baru ke Supabase secara real-time
+    await this.syncToSupabase('users', {
       id: user.id,
       nika: user.nika || '',
       name: user.name,
@@ -2602,13 +2602,31 @@ class DatabaseManager {
     return user;
   }
 
-  deleteUserAccount(userId) {
+  async deleteUserAccount(userId) {
     if (!Array.isArray(this.data.users)) return false;
     const idx = this.data.users.findIndex(u => u.id === userId);
     if (idx !== -1) {
       const deleted = this.data.users.splice(idx, 1)[0];
       this.addLog(`Human Capital menonaktifkan akun: ${deleted.name} (${deleted.username})`, 'hc');
       this.save();
+
+      // Hapus permanen dari Supabase Cloud
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/users?id=eq.${userId}`, {
+            method: 'DELETE',
+            headers: {
+              'apikey': key,
+              'Authorization': `Bearer ${key}`
+            }
+          });
+          console.log(`✅ [Supabase Delete] User ${userId} (${deleted.name}) berhasil dihapus dari database Supabase.`);
+        } catch (e) {
+          console.warn('Gagal menghapus user dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -3127,6 +3145,40 @@ class DatabaseManager {
     }, 0);
 
     return true;
+  }
+
+  async deleteLeave(id) {
+    if (!Array.isArray(this.data.leaves)) {
+      this.data.leaves = [...(INITIAL_DATABASE.leaves || [])];
+    }
+    const idx = this.data.leaves.findIndex(l => l.id === id);
+    if (idx !== -1) {
+      const deleted = this.data.leaves.splice(idx, 1)[0];
+      const user = this.getCurrentUser();
+      const realTimestamp = getRealtimeTimestamp();
+      this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus permohonan Cuti ${deleted.id} (${deleted.type || deleted.leaveType} · ${deleted.duration} hari) pada ${realTimestamp}`, 'leave');
+      this.save();
+
+      // Hapus permanen dari database cloud Supabase
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/leaves?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: {
+              'apikey': key,
+              'Authorization': `Bearer ${key}`
+            }
+          });
+          console.log(`✅ [Supabase Delete] Permohonan Cuti ${id} berhasil dihapus permanen dari Supabase.`);
+        } catch (e) {
+          console.warn('Gagal menghapus cuti dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   // =========================================================================

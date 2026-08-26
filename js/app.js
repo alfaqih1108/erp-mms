@@ -1193,10 +1193,14 @@ window.App = {
 
         </div>
 
-        <div class="modal-footer" style="padding: 14px 28px; display: flex; justify-content: ${details.type === 'PR' ? 'space-between' : 'flex-end'}; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div class="modal-footer" style="padding: 14px 28px; display: flex; justify-content: ${(details.type === 'PR' || details.type === 'LEAVE') ? 'space-between' : 'flex-end'}; align-items: center; flex-wrap: wrap; gap: 10px;">
           ${details.type === 'PR' ? `
             <button type="button" class="btn-nalar-secondary" style="padding: 6px 14px; font-size: 12px; color: #F87171; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08);" onclick="PengajuanBarangModule.confirmDeletePR('${details.id}', '${(details.title || 'Barang').replace(/'/g, "\\'")}')">
               🗑️ Hapus Pengajuan PR Ini
+            </button>
+          ` : (details.type === 'LEAVE' && (!Array.isArray(details.steps) || !details.steps.some(s => s.level === 2 && s.status === 'COMPLETED')) && details.status !== 'APPROVED') ? `
+            <button type="button" class="btn-nalar-secondary" style="padding: 6px 14px; font-size: 12px; color: #F87171; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08);" onclick="App.closeModal('modal-approval-tracker'); CutiModule.handleCancelLeave('${details.id}')">
+              🗑️ Batalkan & Hapus Permohonan Cuti Ini
             </button>
           ` : ''}
           <button type="button" class="btn-nalar-primary" style="padding: 6px 18px; font-size: 12.5px;" onclick="App.closeModal('modal-approval-tracker')">

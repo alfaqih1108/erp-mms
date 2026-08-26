@@ -2997,11 +2997,11 @@ window.HCHubModule = {
     this.render(document.getElementById('main-content-area'));
   },
 
-  handleDeleteUser: function(userId, userName) {
+  handleDeleteUser: async function(userId, userName) {
     if (confirm(`Apakah Anda yakin ingin menonaktifkan dan menghapus akun "${userName}"?`)) {
-      const success = DB.deleteUserAccount(userId);
+      const success = await DB.deleteUserAccount(userId);
       if (success) {
-        App.showToast(`Akun ${userName} berhasil dihapus dari sistem!`, 'success');
+        App.showToast(`Akun ${userName} berhasil dihapus dari sistem & database cloud!`, 'success');
         this.render(document.getElementById('main-content-area'));
       }
     }
@@ -3074,8 +3074,9 @@ window.HCHubModule = {
     }
   },
 
-  handleAddUserSubmit: function(e) {
-    if (e && e.preventDefault) e.preventDefault();
+  handleAddUserSubmit: async function(event) {
+    if (event) event.preventDefault();
+
     const nika = (document.getElementById('nu-nika')?.value || '').trim();
     const name = (document.getElementById('nu-name')?.value || '').trim();
     const nik = (document.getElementById('nu-nik')?.value || '').trim();
@@ -3103,7 +3104,14 @@ window.HCHubModule = {
       return;
     }
 
-    DB.addUserAccount({
+    const submitBtn = document.querySelector('#form-add-user button[type="submit"]');
+    const origBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>Menyimpan ke Cloud Supabase...</span>';
+    }
+
+    await DB.addUserAccount({
       nika: nika || `K-2026-${String(DB.getUsers().length + 1).padStart(3, '0')}`,
       name,
       nik: nik || '3171000000000000',
@@ -3127,8 +3135,13 @@ window.HCHubModule = {
       quotaPersonalLeave: 3
     });
 
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = origBtnHtml;
+    }
+
     App.closeModal('modal-add-user');
-    App.showToast(`Akun & data HRIS baru untuk "${name}" (@${username}) berhasil didaftarkan!`, 'success');
+    App.showToast(`Akun & data HRIS baru untuk "${name}" (@${username}) berhasil didaftarkan & disinkronkan ke Supabase!`, 'success');
     
     // Refresh sub-view aktif
     if (this.activeTab === 'akun') {

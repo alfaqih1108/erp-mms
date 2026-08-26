@@ -296,9 +296,16 @@ window.CutiModule = {
                       </div>
                     </td>
                     <td style="text-align: center;">
-                      <button type="button" class="btn-nalar-secondary" style="padding: 4px 10px; font-size: 11px; color: #A78BFA; border-color: rgba(139,92,246,0.4);" onclick="event.stopPropagation(); App.showApprovalTracker('leave', '${l.id}')">
-                        🔍 Detail Alur
-                      </button>
+                      <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; color: #A78BFA; border-color: rgba(139,92,246,0.4);" onclick="event.stopPropagation(); App.showApprovalTracker('leave', '${l.id}')">
+                          🔍 Detail
+                        </button>
+                        ${((!Array.isArray(l.approvalHistory) || !l.approvalHistory.some(h => (h.level === 2 && h.action === 'APPROVED') || h.level >= 3)) && l.status !== 'APPROVED') ? `
+                          <button type="button" class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; color: #F87171; border-color: rgba(248,113,113,0.4);" onclick="event.stopPropagation(); CutiModule.handleCancelLeave('${l.id}')" title="Batalkan & Hapus Permohonan Cuti">
+                            🗑️ Batal
+                          </button>
+                        ` : ''}
+                      </div>
                     </td>
                   </tr>
                 `).join('')}
@@ -871,5 +878,18 @@ window.CutiModule = {
     App.closeModal('modal-cuti');
     App.showToast(`Permohonan cuti "${opt.text}" (${duration} Hari) berhasil diajukan!`, 'success');
     this.render(document.getElementById('main-content-area'));
+  },
+
+  handleCancelLeave: async function(leaveId) {
+    const leave = (DB.getLeaves() || []).find(l => l.id === leaveId);
+    if (!leave) return;
+
+    if (confirm(`Apakah Anda yakin ingin membatalkan dan menghapus permohonan Cuti "${leave.type || leave.leaveType}" (${leave.id})?\n\nPengajuan ini akan dihapus secara permanen dari sistem & database cloud Supabase.`)) {
+      const success = await DB.deleteLeave(leaveId);
+      if (success) {
+        App.showToast(`Permohonan cuti ${leaveId} berhasil dibatalkan dan dihapus!`, 'success');
+        this.render(document.getElementById('main-content-area'));
+      }
+    }
   }
 };
