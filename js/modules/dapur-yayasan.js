@@ -164,29 +164,30 @@ window.DapurYayasanModule = {
         </div>
 
         <!-- Filter Bar di Atas Saldo / Summary KPI Cards -->
-        <div class="nalar-card" style="margin-bottom: 22px; padding: 16px 20px; background: rgba(18, 14, 10, 0.85); border: 1px solid rgba(245, 158, 11, 0.25);">
+        <div class="nalar-card" style="margin-bottom: 36px; padding: 18px 22px; background: rgba(18, 14, 10, 0.88); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md); box-shadow: 0 4px 20px rgba(0,0,0,0.4);">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
             
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <div style="width: 32px; height: 32px; border-radius: 6px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: center; font-size: 15px;">
+            <!-- Left Info -->
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); display: flex; align-items: center; justify-content: center; font-size: 16px;">
                 🔍
               </div>
               <div>
-                <div style="font-size: 12px; font-weight: 600; color: #fff; text-transform: uppercase; letter-spacing: 0.05em;">
+                <div style="font-size: 12px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em;">
                   Filter Analisis Transaksi & Saldo VA
                 </div>
-                <div style="font-size: 11px; color: var(--text-muted); font-style: italic;">
+                <div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 2px;">
                   ${isMaker ? 'Menyesuaikan summary berdasarkan tanggal & dapur yang didelegasikan ke Anda' : 'Pilih tanggal & dapur tertentu atau tampilkan konsolidasi seluruh dapur'}
                 </div>
               </div>
             </div>
 
-            <!-- Controls -->
-            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <!-- Right Controls -->
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
               
               <!-- Dapur Selector -->
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 500;">Dapur SPPG:</span>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 600;">Dapur SPPG:</span>
                 <select id="dy-filter-kitchen" class="form-control" style="width: auto; min-width: 240px; font-size: 12px; font-weight: 500;" onchange="DapurYayasanModule.handleKitchenFilterChange(this.value)">
                   ${isMaker ? `
                     <option value="ALL" ${this.selectedKitchenFilter === 'ALL' ? 'selected' : ''}>
@@ -208,9 +209,11 @@ window.DapurYayasanModule = {
                     `).join('')}
                   `}
                 </select>
-                   <!-- Date Selector (Range Support) -->
+              </div>
+
+              <!-- Date Selector (Range Support) -->
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 500;">Periode:</span>
+                <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 600;">Periode:</span>
                 <select id="dy-filter-date" class="form-control" style="width: auto; min-width: 180px; font-size: 12px; font-weight: 500;" onchange="DapurYayasanModule.handleDateFilterChange(this.value)">
                   <option value="ALL" ${this.selectedDateFilter === 'ALL' ? 'selected' : ''}>🗓️ Semua Riwayat</option>
                   <option value="TODAY" ${this.selectedDateFilter === 'TODAY' ? 'selected' : ''}>📅 Hari Ini (${todayFormatted})</option>
@@ -219,7 +222,7 @@ window.DapurYayasanModule = {
                 </select>
 
                 ${(this.selectedDateFilter === 'RANGE' || this.selectedDateFilter === 'SPECIFIC') ? `
-                  <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.4); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; padding: 4px 10px;">
+                  <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.5); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 6px; padding: 4px 10px;">
                     <span style="font-size: 11px; color: var(--text-muted); font-weight: 500;">Mulai:</span>
                     <input type="date" id="dy-start-date" class="form-control" value="${this.startDate || this.customDate}" 
                            style="width: 130px; padding: 4px 8px; font-size: 11.5px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); color: #fff;"
