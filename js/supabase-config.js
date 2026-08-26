@@ -3,19 +3,20 @@
  * Menghubungkan Frontend Vanilla JS dengan Backend Supabase (PostgreSQL & Edge Functions)
  */
 
-// Otomatis bersihkan cache versi lama (V1 - V21) untuk membebaskan kuota LocalStorage browser (5MB)
+// Otomatis bersihkan cache versi lama & kunci anon lama yang cacat
 (function cleanStaleLocalStorage() {
   try {
-    const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('ERP_YAYASAN_DATABASE_V') && k !== 'ERP_YAYASAN_DATABASE_V22') {
-        keysToRemove.push(k);
-      }
+    const oldKey = localStorage.getItem('ERP_SUPABASE_ANON_KEY');
+    if (oldKey && (oldKey.includes('slm') || oldKey !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xcHBhbmVpZXFrbnJlbGx5dWdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0OTE0MzcsImV4cCI6MjEwMzA2NzQzN30.JdaI9seSqTU_KWjLQKEUOb8QMVr9BOr9dagiDak6-ik')) {
+      localStorage.removeItem('ERP_SUPABASE_ANON_KEY');
+      localStorage.removeItem('ERP_SUPABASE_URL');
+      console.log('[Supabase Config] Kunci lama/cacat di localStorage berhasil dibersihkan.');
     }
-    keysToRemove.forEach(k => localStorage.removeItem(k));
-    if (keysToRemove.length > 0) {
-      console.log(`[Storage Cleanup] Berhasil membebaskan kuota localStorage (dihapus ${keysToRemove.length} cache lama).`);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('ERP_YAYASAN_DATABASE_V')) {
+        localStorage.removeItem(k);
+      }
     }
   } catch (e) {
     console.warn('Storage cleanup notice:', e);
@@ -23,7 +24,7 @@
 })();
 
 window.SupabaseConfig = {
-  // Default URL & Anon Public Key proyek Supabase Produksi Yayasan
+  // Default URL & Anon Public Key proyek Supabase Produksi Yayasan (Official & Verified)
   DEFAULT_URL: 'https://nqppaneieqknrellyugc.supabase.co',
   DEFAULT_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xcHBhbmVpZXFrbnJlbGx5dWdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0OTE0MzcsImV4cCI6MjEwMzA2NzQzN30.JdaI9seSqTU_KWjLQKEUOb8QMVr9BOr9dagiDak6-ik',
 
@@ -35,11 +36,11 @@ window.SupabaseConfig = {
   inMemoryKey: '',
 
   getUrl: function() {
-    return this.inMemoryUrl || localStorage.getItem(this.STORAGE_KEY_URL) || this.DEFAULT_URL || '';
+    return this.DEFAULT_URL;
   },
 
   getAnonKey: function() {
-    return this.inMemoryKey || localStorage.getItem(this.STORAGE_KEY_ANON) || this.DEFAULT_ANON_KEY || '';
+    return this.DEFAULT_ANON_KEY;
   },
 
   isConfigured: function() {
