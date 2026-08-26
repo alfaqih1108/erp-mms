@@ -2673,14 +2673,14 @@ class DatabaseManager {
     return false;
   }
 
-  updateUserPassword(userId, newPassword) {
+  async updateUserPassword(userId, newPassword) {
     const user = this.getUsers().find(u => u.id === userId);
     if (!user) return false;
     user.password = newPassword;
     this.addLog(`Human Capital me-reset password: ${user.name} (${user.username})`, 'hc');
     this.save();
 
-    this.syncToSupabase('users', {
+    await this.syncToSupabase('users', {
       id: user.id,
       password: newPassword
     });
@@ -4748,22 +4748,38 @@ class DatabaseManager {
 
     const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
     const key = window.SupabaseConfig.getAnonKey();
+    const idVal = data.id || (data.id_sppg ? data.id_sppg : null);
 
     try {
-      console.log(`[Supabase Sync] Mengirim data ke tabel "${table}"...`, data.id || '');
+      console.log(`[Supabase Sync] Mengirim data ke tabel "${table}"...`, idVal || '');
 
-      // 1. Coba via SDK jika tersedia
-      const client = window.SupabaseConfig.getClient();
-      if (client) {
-        const res = isUpsert ? await client.from(table).upsert(data) : await client.from(table).insert(data);
-        if (!res.error) {
-          console.log(`✅ [Supabase Sync SDK] Berhasil ke tabel ${table}:`, data.id || '');
-          return res;
+      // 1. Jika data memiliki ID spesifik, gunakan PATCH terlebih dahulu untuk memperbarui sebagian kolom (misal: password, status, stage, saldo VA) tanpa melanggar constraint NOT NULL
+      if (idVal) {
+        try {
+          const patchRes = await fetch(`${url}/rest/v1/${table}?id=eq.${idVal}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': key,
+              'Authorization': `Bearer ${key}`,
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify(data)
+          });
+
+          if (patchRes.ok) {
+            const patched = await patchRes.json();
+            if (Array.isArray(patched) && patched.length > 0) {
+              console.log(`✅ [Supabase PATCH] Berhasil memperbarui data di tabel "${table}" (ID: ${idVal})`);
+              return { success: true, data: patched };
+            }
+          }
+        } catch (patchErr) {
+          console.warn(`[Supabase PATCH Warning] Fallback ke POST/Upsert:`, patchErr);
         }
-        console.warn(`⚠️ [Supabase Sync SDK Error] Tabel ${table}:`, res.error);
       }
 
-      // 2. Direct HTTP REST PostgREST API (Fallback 100% Mandiri)
+      // 2. Direct HTTP REST PostgREST API (Insert / Full Upsert)
       const headers = {
         'Content-Type': 'application/json',
         'apikey': key,
@@ -4779,7 +4795,7 @@ class DatabaseManager {
       });
 
       if (response.ok) {
-        console.log(`✅ [Supabase Sync REST] Berhasil sinkronisasi ke tabel "${table}":`, data.id || '');
+        console.log(`✅ [Supabase Sync REST] Berhasil sinkronisasi ke tabel "${table}":`, idVal || '');
         return { success: true };
       } else {
         const errText = await response.text();
@@ -5460,17 +5476,14 @@ window.calculateTenure = calculateTenure;
 window.calculateAge = calculateAge;
 window.hasWorkedOneYear = hasWorkedOneYear;
 
-// Auto-sync bidirectional saat awal startup
+// Auto-sync: Tarik seluruh data terbaru dari Supabase Cloud sebagai Single Source of Truth
 setTimeout(async () => {
   if (window.DB) {
     if (typeof window.DB.pullLatestFromSupabase === 'function') {
       await window.DB.pullLatestFromSupabase();
     }
-    if (typeof window.DB.pushAllLocalDataToSupabase === 'function') {
-      await window.DB.pushAllLocalDataToSupabase();
-    }
   }
   if (window.App && typeof window.App.updateUserHeader === 'function') {
     window.App.updateUserHeader();
   }
-}, 400);
+}, 300);

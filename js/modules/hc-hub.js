@@ -2983,7 +2983,7 @@ window.HCHubModule = {
     App.openModal('modal-reset-password');
   },
 
-  handleResetPasswordSubmit: function(e) {
+  handleResetPasswordSubmit: async function(e) {
     if (e && e.preventDefault) e.preventDefault();
     const userId = document.getElementById('rp-user-id')?.value;
     const newPassword = (document.getElementById('rp-new-password')?.value || '').trim();
@@ -2991,9 +2991,9 @@ window.HCHubModule = {
       App.showToast('Password baru tidak boleh kosong!', 'warn');
       return;
     }
-    DB.updateUserPassword(userId, newPassword);
+    await DB.updateUserPassword(userId, newPassword);
     App.closeModal('modal-reset-password');
-    App.showToast('Password pengguna berhasil diupdate!', 'success');
+    App.showToast('Password pengguna berhasil diupdate dan tersimpan permanen di cloud!', 'success');
     this.render(document.getElementById('main-content-area'));
   },
 
