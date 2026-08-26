@@ -273,23 +273,43 @@ window.DashboardModule = {
               <div class="card-aura-glow aura-purple" style="opacity: 0.15;"></div>
               
               <div style="position: relative; z-index: 2;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px;">
+                <!-- Header with Title & Left/Right Scroll Controls -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
                   <div>
-                    <span class="text-mono-badge" style="color: #FB7185;">Pusat Sumber Daya & Pengetahuan Yayasan</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span class="text-mono-badge" style="color: #FB7185;">Pusat Sumber Daya & Pengetahuan Yayasan</span>
+                      <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+                        (${docs.length} Dokumen Tersedia)
+                      </span>
+                    </div>
                     <h3 style="font-size: 18px; margin-top: 2px;">📚 Dokumen Sosialisasi, SOP & Panduan Resmi Yayasan</h3>
                   </div>
-                  <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); background: rgba(225,29,72,0.12); padding: 4px 10px; border-radius: var(--radius-full); border: 1px solid rgba(225,29,72,0.25);">
-                    Dikelola oleh Human Capital
-                  </span>
+                  
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); background: rgba(225,29,72,0.12); padding: 4px 10px; border-radius: var(--radius-full); border: 1px solid rgba(225,29,72,0.25);">
+                      Dikelola oleh Human Capital
+                    </span>
+                    
+                    <!-- Navigation Scroll Buttons -->
+                    <div style="display: flex; gap: 6px;">
+                      <button type="button" class="btn-nalar-secondary" style="padding: 4px 12px; font-size: 13px; min-width: 34px; border-radius: 6px; border-color: rgba(225,29,72,0.4); color: #FDA4AF; cursor: pointer;" onclick="DashboardModule.scrollDocSlider('left')" title="Geser ke kiri">
+                        ◀
+                      </button>
+                      <button type="button" class="btn-nalar-secondary" style="padding: 4px 12px; font-size: 13px; min-width: 34px; border-radius: 6px; border-color: rgba(225,29,72,0.4); color: #FDA4AF; cursor: pointer;" onclick="DashboardModule.scrollDocSlider('right')" title="Geser ke kanan">
+                        ▶
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.6;">
-                  Berikut adalah kumpulan dokumen Standard Operating Procedure (SOP), materi sosialisasi kemitraan, dan slide presentasi yang relevan untuk mendukung tugas Anda sebagai <strong style="color: #fff;">${user.roleLabel}</strong>:
+                <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.6;">
+                  Berikut adalah kumpulan dokumen Standard Operating Procedure (SOP), materi sosialisasi kemitraan, dan slide presentasi yang relevan untuk mendukung tugas Anda sebagai <strong style="color: #fff;">${user.roleLabel}</strong> <em>(geser/scroll ke samping untuk melihat seluruh dokumen)</em>:
                 </p>
 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+                <!-- Horizontal Scrollable Container (Scroll Ke Samping) -->
+                <div id="doc-horizontal-slider" style="display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 12px; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: rgba(225,29,72,0.4) transparent;">
                   ${docs.map(d => `
-                    <div style="background: var(--bg-card-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 18px; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; transition: all 0.2s ease;"
+                    <div style="flex: 0 0 350px; min-width: 320px; max-width: 380px; scroll-snap-align: start; background: var(--bg-card-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 18px; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; transition: all 0.2s ease;"
                          onmouseover="this.style.borderColor='rgba(225,29,72,0.4)'; this.style.transform='translateY(-2px)'"
                          onmouseout="this.style.borderColor='var(--border-subtle)'; this.style.transform='none'">
                       
@@ -304,10 +324,10 @@ window.DashboardModule = {
                           <span style="font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted);">${d.fileSize}</span>
                         </div>
 
-                        <h4 style="font-size: 14px; font-weight: 600; color: #fff; line-height: 1.4; margin-bottom: 6px;">
+                        <h4 style="font-size: 14px; font-weight: 600; color: #fff; line-height: 1.4; margin-bottom: 6px; word-break: break-word;">
                           ${d.title}
                         </h4>
-                        <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 4px;">
+                        <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;">
                           ${d.description}
                         </p>
                       </div>
@@ -1119,6 +1139,17 @@ window.DashboardModule = {
     };
 
     DashboardModule.waveAnimationId = requestAnimationFrame(renderFrame);
+  },
+
+  scrollDocSlider: function(direction) {
+    const slider = document.getElementById('doc-horizontal-slider');
+    if (!slider) return;
+    const scrollAmount = 370;
+    if (direction === 'left') {
+      slider.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+    } else {
+      slider.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
   },
 
   openDocPreview: function(docId, title, fileType, description) {
