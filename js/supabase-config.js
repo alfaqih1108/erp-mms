@@ -90,7 +90,7 @@ window.SupabaseConfig = {
       try {
         for (let i = localStorage.length - 1; i >= 0; i--) {
           const k = localStorage.key(i);
-          if (k && k.startsWith('ERP_YAYASAN_DATABASE_V') && k !== 'ERP_YAYASAN_DATABASE_V22') {
+          if (k && k.startsWith('ERP_YAYASAN_DATABASE_V')) {
             localStorage.removeItem(k);
           }
         }
