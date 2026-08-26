@@ -3007,15 +3007,15 @@ window.HCHubModule = {
     }
   },
 
-  handleDeleteDoc: function(docId, title) {
+  handleDeleteDoc: async function(docId, title) {
     if (confirm(`Hapus dokumen panduan "${title}"?`)) {
-      DB.deleteGuidelineDocument(docId);
+      await DB.deleteGuidelineDocument(docId);
       App.showToast(`Dokumen panduan berhasil dihapus!`, 'success');
       this.render(document.getElementById('main-content-area'));
     }
   },
 
-  handleAddDocumentSubmit: function(e) {
+  handleAddDocumentSubmit: async function(e) {
     if (e && e.preventDefault) e.preventDefault();
     const title = (document.getElementById('nd-title')?.value || '').trim();
     const fileType = document.getElementById('nd-filetype')?.value || 'PDF';
@@ -3029,7 +3029,7 @@ window.HCHubModule = {
       return;
     }
 
-    DB.addGuidelineDocument({
+    await DB.addGuidelineDocument({
       title,
       fileType,
       targetRole,
@@ -3039,6 +3039,7 @@ window.HCHubModule = {
       fileData: this.currentUploadedFile ? this.currentUploadedFile.data : null
     });
 
+    this.currentUploadedFile = null;
     App.closeModal('modal-add-doc');
     App.showToast(`Dokumen "${title}" berhasil diunggah & diterbitkan ke dashboard tim yayasan!`, 'success');
     

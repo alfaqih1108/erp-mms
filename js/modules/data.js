@@ -2371,8 +2371,21 @@ class DatabaseManager {
     return docs.filter(d => d.targetRole === targetRoleFilter || d.targetRole === 'ALL_YAYASAN');
   }
 
-  addGuidelineDocument(docData) {
-    const id = `DOC-${String(this.getGuidelineDocuments().length + 1).padStart(3, '0')}`;
+  async addGuidelineDocument(docData) {
+    const docs = this.getGuidelineDocuments() || [];
+    let maxNum = 0;
+    docs.forEach(d => {
+      if (d.id) {
+        const match = d.id.match(/\d+/g);
+        if (match) {
+          const n = parseInt(match[match.length - 1], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const nextNum = Math.max(maxNum + 1, docs.length + 1);
+    const id = `DOC-${String(nextNum).padStart(3, '0')}`;
+
     const newDoc = {
       id,
       title: docData.title,
@@ -2392,7 +2405,7 @@ class DatabaseManager {
     this.addLog(`Human Capital mengunggah dokumen panduan baru: "${newDoc.title}" (${newDoc.fileType})`, 'hc');
     this.save();
 
-    this.syncToSupabase('guideline_documents', {
+    await this.syncToSupabase('guideline_documents', {
       id: newDoc.id,
       title: newDoc.title,
       file_type: newDoc.fileType,
@@ -2947,7 +2960,18 @@ class DatabaseManager {
 
   addLeave(leaveData) {
     const user = this.getCurrentUser();
-    const id = `LV-2026-${String(this.getLeaves().length + 84).padStart(3, '0')}`;
+    const allLeaves = this.getLeaves() || [];
+    let maxNum = 84;
+    allLeaves.forEach(l => {
+      if (l.id) {
+        const m = l.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `LV-2026-${String(maxNum + 1).padStart(3, '0')}`;
     
     let approvalFlow = 'HC_DIRECT';
     let stage = 'HC_REVIEW';
@@ -3407,7 +3431,18 @@ class DatabaseManager {
 
   addItemRequest(prData) {
     const user = this.getCurrentUser();
-    const id = `PR-2026-0${this.getItemRequests().length + 44}`;
+    const allPrs = this.getItemRequests() || [];
+    let maxNum = 44;
+    allPrs.forEach(p => {
+      if (p.id) {
+        const m = p.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `PR-2026-0${maxNum + 1}`;
     const realTimestamp = getRealtimeTimestamp();
     
     const isManagerArea = (user.role === 'MANAGER_AREA');
@@ -3686,7 +3721,18 @@ class DatabaseManager {
   addCashAdvance(caData) {
     const user = this.getCurrentUser();
     const realTimestamp = getRealtimeTimestamp();
-    const id = `CA-2026-${String(this.getCashAdvances().length + 1).padStart(3, '0')}`;
+    const allCAs = this.getCashAdvances() || [];
+    let maxNum = 0;
+    allCAs.forEach(c => {
+      if (c.id) {
+        const m = c.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `CA-2026-${String(maxNum + 1).padStart(3, '0')}`;
 
     const newCA = {
       id,
@@ -4018,8 +4064,18 @@ class DatabaseManager {
   addFieldIssue(issueData) {
     const user = this.getCurrentUser();
     const realTimestamp = getRealtimeTimestamp();
-    const allIssues = this.getFieldIssues();
-    const id = `KDL-2026-${String(allIssues.length + 1).padStart(3, '0')}`;
+    const allIssues = this.getFieldIssues() || [];
+    let maxNum = 0;
+    allIssues.forEach(i => {
+      if (i.id) {
+        const m = i.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `KDL-2026-${String(maxNum + 1).padStart(3, '0')}`;
 
     let points = [];
     if (Array.isArray(issueData.points) && issueData.points.length > 0) {
