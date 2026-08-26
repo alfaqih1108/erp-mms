@@ -15,6 +15,8 @@ window.DapurYayasanModule = {
   startDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
   endDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
   customDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
+  currentPage: 1,
+  pageSize: 5,
   uploadedSPMUrl: '',
   uploadedSPMName: '',
 
@@ -435,11 +437,12 @@ window.DapurYayasanModule = {
               <span class="text-mono-badge" style="color: var(--text-muted);">Rekap Transaksi & Audit</span>
               <h3 style="font-size: 18px; margin-top: 2px;">Riwayat Pelaporan Transaksi Bahan Baku, Biaya Operasional, Sewa Mobil & Saldo VA</h3>
             </div>
-            <div style="font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
-              Menampilkan <strong style="color: #fff;">${filteredReports.length}</strong> laporan
+            <div style="font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.35); padding: 5px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+              Menampilkan <strong style="color: #fff;">${filteredReports.length === 0 ? 0 : ((Math.min(Math.max(1, this.currentPage || 1), Math.ceil(filteredReports.length / this.pageSize) || 1) - 1) * this.pageSize) + 1}–${Math.min((Math.min(Math.max(1, this.currentPage || 1), Math.ceil(filteredReports.length / this.pageSize) || 1) * this.pageSize), filteredReports.length)}</strong> dari <strong style="color: #FCD34D;">${filteredReports.length}</strong> total transaksi
             </div>
           </div>
 
+          <!-- Table Container -->
           <div class="nalar-table-container" style="overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
             <table class="nalar-table" style="min-width: 1850px; border-collapse: separate; border-spacing: 0;">
               <thead>
@@ -461,117 +464,175 @@ window.DapurYayasanModule = {
                 </tr>
               </thead>
               <tbody>
-                ${filteredReports.length === 0 ? `
-                  <tr>
-                    <td colspan="14" style="text-align: center; color: var(--text-muted); padding: 42px;">
-                      Belum ada laporan transaksi dapur yang sesuai dengan kriteria filter saat ini.
-                    </td>
-                  </tr>
-                ` : filteredReports.map(r => {
-                  const pBesar = Number(r.porsiBesar) || 0;
-                  const pKecil = Number(r.porsiKecil) || 0;
-                  const rawCost = Number(r.rawMaterialCost) || 0;
-                  const opsCost = Number(r.operationalCost) || 0;
-                  const carCost = Number(r.carRentalCost) || 0;
-                  const totExpense = Number(r.totalDailyExpense) || (rawCost + opsCost + carCost);
+                ${(() => {
+                  const totalReports = filteredReports.length;
+                  const totalPages = Math.ceil(totalReports / this.pageSize) || 1;
+                  const curPage = Math.min(Math.max(1, this.currentPage || 1), totalPages);
+                  this.currentPage = curPage;
 
-                  // Auto generate perhitungan target budget: Porsi Besar (@Rp10.000) + Porsi Kecil (@Rp8.000)
-                  const targetBudg = Number(r.targetBudget) || ((pBesar * 10000) + (pKecil * 8000));
-                  const eff = targetBudg > 0 ? Math.round((rawCost / targetBudg) * 100) : 100;
-                  const costPerPortionAllIn = (r.beneficiariesCount || (pBesar + pKecil)) > 0 ? Math.round(totExpense / (r.beneficiariesCount || (pBesar + pKecil))) : 0;
-                  
-                  return `
-                    <tr>
-                      <td style="color: #FB7185; font-weight: 700; white-space: nowrap; font-family: monospace; font-size: 12.5px;">
-                        ${r.id}
-                      </td>
-                      <td style="font-size: 12px; white-space: nowrap; color: #E2E8F0;">
-                        ${r.date}
-                      </td>
-                      <td style="min-width: 220px;">
-                        <div style="font-weight: 600; color: #fff; font-size: 13px; line-height: 1.35;">${r.kitchenName}</div>
-                        <div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 2px;">
-                          Titik Dapur SPPG Terdaftar
-                        </div>
-                      </td>
-                      <td style="background: rgba(245, 158, 11, 0.04); border-left: 1px solid rgba(245, 158, 11, 0.15); border-right: 1px solid rgba(245, 158, 11, 0.15); white-space: nowrap;">
-                        <div style="color: #FDE68A; font-weight: 700; font-size: 13px;">
-                          Rp ${targetBudg.toLocaleString('id-ID')}
-                        </div>
-                        <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
-                          Budget Auto-Generate
-                        </div>
-                      </td>
-                      <td style="color: #FCA5A5; font-weight: 600; font-size: 13px; white-space: nowrap;">
-                        Rp ${rawCost.toLocaleString('id-ID')}
-                      </td>
-                      <td style="color: #FDE68A; font-weight: 600; font-size: 13px; white-space: nowrap;">
-                        Rp ${opsCost.toLocaleString('id-ID')}
-                      </td>
-                      <td style="color: ${carCost > 0 ? '#93C5FD' : 'var(--text-muted)'}; font-weight: 600; font-size: 12.5px; white-space: nowrap;">
-                        ${carCost > 0 ? `Rp ${carCost.toLocaleString('id-ID')}` : '<span style="font-style: italic; font-weight: 400; font-size: 11px; color: var(--text-dim);">- (Tidak Ada)</span>'}
-                      </td>
-                      <td style="color: #FF8A4C; font-weight: 800; font-size: 13.5px; background: rgba(255, 75, 1, 0.06); white-space: nowrap;">
-                        Rp ${totExpense.toLocaleString('id-ID')}
-                      </td>
-                      <td style="white-space: nowrap;">
-                        <div style="font-weight: 700; color: #6EE7B7; font-size: 12.5px;">
-                          🍱 ${(r.beneficiariesCount || (pBesar + pKecil)).toLocaleString('id-ID')} Porsi
-                        </div>
-                        <div style="display: flex; gap: 8px; font-size: 11px; margin-top: 3px;">
-                          <span style="color: #FCD34D; font-weight: 500;">● ${pBesar.toLocaleString('id-ID')} Bsr</span>
-                          <span style="color: #60A5FA; font-weight: 500;">● ${pKecil.toLocaleString('id-ID')} Kcl</span>
-                        </div>
-                      </td>
-                      <td style="white-space: nowrap;">
-                        <div style="color: #FDE68A; font-weight: 600; font-size: 12px;">
-                          Bahan: Rp ${(r.costPerPortion || 0).toLocaleString('id-ID')}
-                        </div>
-                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                          All-In: <strong style="color: #fff;">Rp ${costPerPortionAllIn.toLocaleString('id-ID')}</strong>
-                        </div>
-                        <div style="font-size: 10px; margin-top: 4px;">
-                          <span class="badge-status ${eff <= 100 ? 'badge-approved' : 'badge-rejected'}" style="font-size: 9.5px; padding: 2px 6px;">
-                            ${eff <= 100 ? `🟢 Hemat (${eff}%)` : `🔴 Over (${eff}%)`}
-                          </span>
-                        </div>
-                      </td>
-                      <td style="white-space: nowrap;">
-                        <div style="color: #7DD3FC; font-weight: 700; font-size: 13px;">
-                          Rp ${(r.vaBalance || 0).toLocaleString('id-ID')}
-                        </div>
-                        <div style="font-size: 10.5px; color: var(--text-dim); margin-top: 2px;">
-                          ${r.vaBankName || 'Bank Mandiri VA'}
-                        </div>
-                      </td>
-                      <td style="white-space: nowrap;">
-                        ${r.spmFileName ? `
-                          <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
-                                  onclick="DapurYayasanModule.openSPMLightbox('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen SPM'}')">
-                            📄 ${r.spmFileName.length > 14 ? r.spmFileName.slice(0, 12) + '...' : r.spmFileName}
+                  const startIdx = (curPage - 1) * this.pageSize;
+                  const endIdx = Math.min(startIdx + this.pageSize, totalReports);
+                  const pageReports = filteredReports.slice(startIdx, endIdx);
+
+                  if (pageReports.length === 0) {
+                    return `
+                      <tr>
+                        <td colspan="14" style="text-align: center; color: var(--text-muted); padding: 42px;">
+                          Belum ada laporan transaksi dapur yang sesuai dengan kriteria filter saat ini.
+                        </td>
+                      </tr>
+                    `;
+                  }
+
+                  return pageReports.map(r => {
+                    const pBesar = Number(r.porsiBesar) || 0;
+                    const pKecil = Number(r.porsiKecil) || 0;
+                    const rawCost = Number(r.rawMaterialCost) || 0;
+                    const opsCost = Number(r.operationalCost) || 0;
+                    const carCost = Number(r.carRentalCost) || 0;
+                    const totExpense = Number(r.totalDailyExpense) || (rawCost + opsCost + carCost);
+
+                    // Auto generate perhitungan target budget: Porsi Besar (@Rp10.000) + Porsi Kecil (@Rp8.000)
+                    const targetBudg = Number(r.targetBudget) || ((pBesar * 10000) + (pKecil * 8000));
+                    const eff = targetBudg > 0 ? Math.round((rawCost / targetBudg) * 100) : 100;
+                    const costPerPortionAllIn = (r.beneficiariesCount || (pBesar + pKecil)) > 0 ? Math.round(totExpense / (r.beneficiariesCount || (pBesar + pKecil))) : 0;
+                    
+                    return `
+                      <tr>
+                        <td style="color: #FB7185; font-weight: 700; white-space: nowrap; font-family: monospace; font-size: 12.5px;">
+                          ${r.id}
+                        </td>
+                        <td style="font-size: 12px; white-space: nowrap; color: #E2E8F0;">
+                          ${r.date}
+                        </td>
+                        <td style="min-width: 220px;">
+                          <div style="font-weight: 600; color: #fff; font-size: 13px; line-height: 1.35;">${r.kitchenName}</div>
+                          <div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 2px;">
+                            Titik Dapur SPPG Terdaftar
+                          </div>
+                        </td>
+                        <td style="background: rgba(245, 158, 11, 0.04); border-left: 1px solid rgba(245, 158, 11, 0.15); border-right: 1px solid rgba(245, 158, 11, 0.15); white-space: nowrap;">
+                          <div style="color: #FDE68A; font-weight: 700; font-size: 13px;">
+                            Rp ${targetBudg.toLocaleString('id-ID')}
+                          </div>
+                          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+                            Budget Auto-Generate
+                          </div>
+                        </td>
+                        <td style="color: #FCA5A5; font-weight: 600; font-size: 13px; white-space: nowrap;">
+                          Rp ${rawCost.toLocaleString('id-ID')}
+                        </td>
+                        <td style="color: #FDE68A; font-weight: 600; font-size: 13px; white-space: nowrap;">
+                          Rp ${opsCost.toLocaleString('id-ID')}
+                        </td>
+                        <td style="color: ${carCost > 0 ? '#93C5FD' : 'var(--text-muted)'}; font-weight: 600; font-size: 12.5px; white-space: nowrap;">
+                          ${carCost > 0 ? `Rp ${carCost.toLocaleString('id-ID')}` : '<span style="font-style: italic; font-weight: 400; font-size: 11px; color: var(--text-dim);">- (Tidak Ada)</span>'}
+                        </td>
+                        <td style="color: #FF8A4C; font-weight: 800; font-size: 13.5px; background: rgba(255, 75, 1, 0.06); white-space: nowrap;">
+                          Rp ${totExpense.toLocaleString('id-ID')}
+                        </td>
+                        <td style="white-space: nowrap;">
+                          <div style="font-weight: 700; color: #6EE7B7; font-size: 12.5px;">
+                            🍱 ${(r.beneficiariesCount || (pBesar + pKecil)).toLocaleString('id-ID')} Porsi
+                          </div>
+                          <div style="display: flex; gap: 8px; font-size: 11px; margin-top: 3px;">
+                            <span style="color: #FCD34D; font-weight: 500;">● ${pBesar.toLocaleString('id-ID')} Bsr</span>
+                            <span style="color: #60A5FA; font-weight: 500;">● ${pKecil.toLocaleString('id-ID')} Kcl</span>
+                          </div>
+                        </td>
+                        <td style="white-space: nowrap;">
+                          <div style="color: #FDE68A; font-weight: 600; font-size: 12px;">
+                            Bahan: Rp ${(r.costPerPortion || 0).toLocaleString('id-ID')}
+                          </div>
+                          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                            All-In: <strong style="color: #fff;">Rp ${costPerPortionAllIn.toLocaleString('id-ID')}</strong>
+                          </div>
+                          <div style="font-size: 10px; margin-top: 4px;">
+                            <span class="badge-status ${eff <= 100 ? 'badge-approved' : 'badge-rejected'}" style="font-size: 9.5px; padding: 2px 6px;">
+                              ${eff <= 100 ? `🟢 Hemat (${eff}%)` : `🔴 Over (${eff}%)`}
+                            </span>
+                          </div>
+                        </td>
+                        <td style="white-space: nowrap;">
+                          <div style="color: #7DD3FC; font-weight: 700; font-size: 13px;">
+                            Rp ${(r.vaBalance || 0).toLocaleString('id-ID')}
+                          </div>
+                          <div style="font-size: 10.5px; color: var(--text-dim); margin-top: 2px;">
+                            ${r.vaBankName || 'Bank Mandiri VA'}
+                          </div>
+                        </td>
+                        <td style="white-space: nowrap;">
+                          ${r.spmFileName ? `
+                            <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
+                                    onclick="DapurYayasanModule.openSPMLightbox('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen SPM'}')">
+                              📄 ${r.spmFileName.length > 14 ? r.spmFileName.slice(0, 12) + '...' : r.spmFileName}
+                            </button>
+                          ` : `
+                            <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
+                              📄 SPM Terlampir
+                            </span>
+                          `}
+                        </td>
+                        <td style="min-width: 165px;">
+                          <div style="font-weight: 500; color: #fff; font-size: 12px;">${r.reporterName}</div>
+                          <div style="font-size: 10.5px; color: var(--text-muted); font-style: italic; margin-top: 2px;">${r.createdAt || '-'}</div>
+                        </td>
+                        <td style="text-align: center; white-space: nowrap;">
+                          <button type="button" class="btn-nalar-secondary" style="padding: 4px 12px; font-size: 11.5px;" 
+                                  onclick="DapurYayasanModule.viewReportDetail('${r.id}')">
+                            👁️ Detail
                           </button>
-                        ` : `
-                          <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
-                            📄 SPM Terlampir
-                          </span>
-                        `}
-                      </td>
-                      <td style="min-width: 165px;">
-                        <div style="font-weight: 500; color: #fff; font-size: 12px;">${r.reporterName}</div>
-                        <div style="font-size: 10.5px; color: var(--text-muted); font-style: italic; margin-top: 2px;">${r.createdAt || '-'}</div>
-                      </td>
-                      <td style="text-align: center; white-space: nowrap;">
-                        <button type="button" class="btn-nalar-secondary" style="padding: 4px 12px; font-size: 11.5px;" 
-                                onclick="DapurYayasanModule.viewReportDetail('${r.id}')">
-                          👁️ Detail
-                        </button>
-                      </td>
-                    </tr>
-                  `;
-                }).join('')}
+                        </td>
+                      </tr>
+                    `;
+                  }).join('');
+                })()}
               </tbody>
             </table>
           </div>
+
+          <!-- Pagination Controls (Maksimal 5 Transaksi Per Tampilan) -->
+          ${(() => {
+            const totalReports = filteredReports.length;
+            const totalPages = Math.ceil(totalReports / this.pageSize) || 1;
+            const curPage = Math.min(Math.max(1, this.currentPage || 1), totalPages);
+
+            return `
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 12px;">
+                <div style="font-size: 12px; color: var(--text-muted);">
+                  Halaman <strong style="color: #fff;">${curPage}</strong> dari <strong style="color: #fff;">${totalPages}</strong> (Maks 5 Data / Halaman)
+                </div>
+
+                ${totalPages > 1 ? `
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <button type="button" class="btn-nalar-secondary" 
+                            style="padding: 4px 12px; font-size: 11.5px; ${curPage <= 1 ? 'opacity: 0.35; cursor: not-allowed;' : ''}"
+                            onclick="DapurYayasanModule.goToPage(${curPage - 1})"
+                            ${curPage <= 1 ? 'disabled' : ''}>
+                      ◀ Sebelumnya
+                    </button>
+
+                    <div style="display: flex; gap: 4px;">
+                      ${Array.from({ length: totalPages }, (_, i) => i + 1).map(p => `
+                        <button type="button" class="btn-nalar-secondary" 
+                                style="min-width: 32px; padding: 4px 8px; font-size: 11.5px; font-weight: ${p === curPage ? '700' : '400'}; ${p === curPage ? 'background: rgba(245, 158, 11, 0.25); border-color: #F59E0B; color: #FCD34D;' : 'color: var(--text-muted);'}"
+                                onclick="DapurYayasanModule.goToPage(${p})">
+                          ${p}
+                        </button>
+                      `).join('')}
+                    </div>
+
+                    <button type="button" class="btn-nalar-secondary" 
+                            style="padding: 4px 12px; font-size: 11.5px; ${curPage >= totalPages ? 'opacity: 0.35; cursor: not-allowed;' : ''}"
+                            onclick="DapurYayasanModule.goToPage(${curPage + 1})"
+                            ${curPage >= totalPages ? 'disabled' : ''}>
+                      Berikutnya ▶
+                    </button>
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          })()}
         </div>
 
       </div>
@@ -1170,25 +1231,34 @@ window.DapurYayasanModule = {
     App.openModal('modal-spm-lightbox');
   },
 
+  goToPage: function(pageNum) {
+    this.currentPage = pageNum;
+    this.render(document.getElementById('main-content-area'));
+  },
+
   handleKitchenFilterChange: function(kitchenVal) {
     this.selectedKitchenFilter = kitchenVal;
+    this.currentPage = 1;
     this.render(document.getElementById('main-content-area'));
   },
 
   handleKitchenCardClick: function(kitchenId) {
     this.selectedKitchenFilter = kitchenId;
+    this.currentPage = 1;
     this.render(document.getElementById('main-content-area'));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   },
 
   handleDateFilterChange: function(dateVal) {
     this.selectedDateFilter = dateVal;
+    this.currentPage = 1;
     this.render(document.getElementById('main-content-area'));
   },
 
   handleStartDateChange: function(val) {
     this.startDate = val;
     this.customDate = val;
+    this.currentPage = 1;
     if (this.endDate && this.startDate > this.endDate) {
       this.endDate = this.startDate;
     }
@@ -1197,6 +1267,7 @@ window.DapurYayasanModule = {
 
   handleEndDateChange: function(val) {
     this.endDate = val;
+    this.currentPage = 1;
     if (this.startDate && this.endDate < this.startDate) {
       this.startDate = this.endDate;
     }
@@ -1207,6 +1278,7 @@ window.DapurYayasanModule = {
     this.customDate = val;
     this.startDate = val;
     this.endDate = val;
+    this.currentPage = 1;
     this.render(document.getElementById('main-content-area'));
   }
 };
