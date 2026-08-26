@@ -9,13 +9,25 @@
 window.App = {
   currentTab: 'dashboard',
 
-  init: function() {
+  init: async function() {
     this.initRoleSwitcher();
     this.initEventListeners();
     this.applyRoleRestrictions();
     this.initLoginWaveAnimation();
     this.updateCloudBadge();
     this.switchTab('dashboard');
+
+    // Real-Time Auto Pull dari Supabase saat aplikasi dibuka di perangkat mana pun (HP / Laptop)
+    if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+      try {
+        await window.DB.pullLatestFromSupabase();
+        this.updateUserHeader();
+        this.applyRoleRestrictions();
+        this.refreshCurrentTab();
+      } catch (e) {
+        console.warn('Real-time sync on start error:', e);
+      }
+    }
   },
 
   initRoleSwitcher: function() {
@@ -496,7 +508,7 @@ window.App = {
     this.showToast(`Login berhasil sebagai: ${user.name} (${user.roleLabel})`, 'success');
   },
 
-  handleCredentialLogin: function(e) {
+  handleCredentialLogin: async function(e) {
     if (e && e.preventDefault) e.preventDefault();
     const uname = (document.getElementById('login-input-username')?.value || '').trim().toLowerCase();
     const pwd = (document.getElementById('login-input-password')?.value || '').trim();
@@ -507,11 +519,33 @@ window.App = {
       return;
     }
 
+    const btnSubmit = document.querySelector('#form-credential-login button[type="submit"]');
+    const origBtnHtml = btnSubmit ? btnSubmit.innerHTML : '';
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = '<span>Memverifikasi Akun Cloud...</span>';
+    }
+
+    // 1. Tarik data pengguna terbaru langsung dari Supabase Cloud secara real-time
+    if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+      try {
+        await window.DB.pullLatestFromSupabase();
+      } catch (err) {
+        console.warn('Login live pull notice:', err);
+      }
+    }
+
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerHTML = origBtnHtml;
+    }
+
     const users = DB.getUsers() || [];
     const matchedUser = users.find(u => {
       const matchUname = (u.username && u.username.toLowerCase() === uname) || 
                          (u.email && u.email.toLowerCase() === uname) || 
-                         (u.name && u.name.toLowerCase() === uname);
+                         (u.name && u.name.toLowerCase() === uname) ||
+                         (u.id && u.id.toLowerCase() === uname);
       const matchPwd = (u.password || 'password123') === pwd;
       return matchUname && matchPwd;
     });

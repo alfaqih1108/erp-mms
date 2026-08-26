@@ -25,7 +25,7 @@
 window.SupabaseConfig = {
   // Default URL & Anon Public Key proyek Supabase Produksi Yayasan
   DEFAULT_URL: 'https://nqppaneieqknrellyugc.supabase.co',
-  DEFAULT_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xcHBhbmVpZXFrbnJlbGx5dWdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0OTE0MzcslmV4cCI6MjEwMzA2NzQzN30.Jdal9seSqTU_KWjLQKEUOb8QMvR9BOr9daaiDak6-ik',
+  DEFAULT_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xcHBhbmVpZXFrbnJlbGx5dWdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0OTE0MzcsImV4cCI6MjEwMzA2NzQzN30.JdaI9seSqTU_KWjLQKEUOb8QMVr9BOr9dagiDak6-ik',
 
   STORAGE_KEY_URL: 'ERP_SUPABASE_URL',
   STORAGE_KEY_ANON: 'ERP_SUPABASE_ANON_KEY',
