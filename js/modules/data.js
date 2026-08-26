@@ -2391,16 +2391,44 @@ class DatabaseManager {
     this.data.guidelineDocuments.unshift(newDoc);
     this.addLog(`Human Capital mengunggah dokumen panduan baru: "${newDoc.title}" (${newDoc.fileType})`, 'hc');
     this.save();
+
+    this.syncToSupabase('guideline_documents', {
+      id: newDoc.id,
+      title: newDoc.title,
+      file_type: newDoc.fileType,
+      category: newDoc.category,
+      target_role: newDoc.targetRole,
+      target_label: newDoc.targetLabel,
+      file_size: newDoc.fileSize,
+      description: newDoc.description,
+      uploaded_by: newDoc.uploadedBy,
+      upload_date: newDoc.uploadDate,
+      file_data: newDoc.fileData
+    });
+
     return newDoc;
   }
 
-  deleteGuidelineDocument(docId) {
+  async deleteGuidelineDocument(docId) {
     if (!Array.isArray(this.data.guidelineDocuments)) return false;
     const idx = this.data.guidelineDocuments.findIndex(d => d.id === docId);
     if (idx !== -1) {
       const deleted = this.data.guidelineDocuments.splice(idx, 1)[0];
       this.addLog(`Human Capital menghapus dokumen panduan: "${deleted.title}"`, 'hc');
       this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/guideline_documents?id=eq.${docId}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus dokumen dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -3701,6 +3729,26 @@ class DatabaseManager {
     this.data.cashAdvances.unshift(newCA);
     this.addLog(`${user.name} mengajukan Cash Advance ${id} (Rp ${Number(caData.amountRequested).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
     this.save();
+
+    this.syncToSupabase('cash_advances', {
+      id: newCA.id,
+      employee_id: newCA.employeeId,
+      employee_name: newCA.employeeName,
+      role: newCA.employeeRole,
+      department: newCA.department,
+      purpose: newCA.title || newCA.reason,
+      amount_requested: newCA.amountRequested,
+      amount_approved: newCA.amountApproved,
+      amount_disbursed: newCA.amountDisbursed,
+      target_kitchen: newCA.targetLocation,
+      bank_name: newCA.bankName,
+      rekening_no: newCA.bankAccountNo,
+      rekening_name: newCA.bankAccountName,
+      stage: newCA.stage,
+      status: newCA.status,
+      approval_history: newCA.approvalHistory
+    });
+
     return newCA;
   }
 
@@ -3751,6 +3799,15 @@ class DatabaseManager {
     }
 
     this.save();
+
+    this.syncToSupabase('cash_advances', {
+      id: ca.id,
+      amount_approved: ca.amountApproved,
+      stage: ca.stage,
+      status: ca.status,
+      approval_history: ca.approvalHistory
+    });
+
     return true;
   }
 
@@ -3785,6 +3842,16 @@ class DatabaseManager {
 
     this.addLog(`FAT (${user.name}) mencairkan dana Cash Advance ${id} (Rp ${Number(disbursedAmount).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
     this.save();
+
+    this.syncToSupabase('cash_advances', {
+      id: ca.id,
+      amount_disbursed: ca.amountDisbursed,
+      disbursed_at: realTimestamp,
+      stage: ca.stage,
+      status: ca.status,
+      approval_history: ca.approvalHistory
+    });
+
     return true;
   }
 
@@ -3838,6 +3905,15 @@ class DatabaseManager {
 
     this.addLog(`${user.name} mengirimkan laporan LPJ Realisasi Cash Advance ${id} (Total Belanja: Rp ${totalSpent.toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
     this.save();
+
+    this.syncToSupabase('cash_advances', {
+      id: ca.id,
+      stage: ca.stage,
+      status: ca.status,
+      settlement: ca.settlement,
+      approval_history: ca.approvalHistory
+    });
+
     return true;
   }
 
@@ -3862,7 +3938,44 @@ class DatabaseManager {
 
     this.addLog(`FAT (${user.name}) memverifikasi dan menutup transaksi Cash Advance ${id} (SETTLED) pada ${realTimestamp}`, 'procurement');
     this.save();
+
+    this.syncToSupabase('cash_advances', {
+      id: ca.id,
+      stage: ca.stage,
+      status: ca.status,
+      approval_history: ca.approvalHistory
+    });
+
     return true;
+  }
+
+  async deleteCashAdvance(id) {
+    if (!Array.isArray(this.data.cashAdvances)) {
+      this.data.cashAdvances = [...(INITIAL_DATABASE.cashAdvances || [])];
+    }
+    const idx = this.data.cashAdvances.findIndex(c => c.id === id);
+    if (idx !== -1) {
+      const deleted = this.data.cashAdvances.splice(idx, 1)[0];
+      const user = this.getCurrentUser();
+      const realTimestamp = getRealtimeTimestamp();
+      this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus Cash Advance ${deleted.id} pada ${realTimestamp}`, 'procurement');
+      this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/cash_advances?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus cash advance dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   // =========================================================================
@@ -3976,6 +4089,20 @@ class DatabaseManager {
     this.data.fieldIssues.unshift(newIssue);
     this.addLog(`${user.name} melaporkan kendala lapangan ${id} (${points.length} Poin) untuk ${newIssue.kitchenName} pada ${realTimestamp}`, 'kitchen');
     this.save();
+
+    this.syncToSupabase('field_issues', {
+      id: newIssue.id,
+      author_id: newIssue.authorId,
+      author_name: newIssue.authorName,
+      date: newIssue.date,
+      kitchen_id: newIssue.kitchenId,
+      kitchen_name: newIssue.kitchenName,
+      category: 'Operasional Dapur',
+      severity: 'MEDIUM',
+      issue_description: JSON.stringify(newIssue.points),
+      status: newIssue.status
+    });
+
     return newIssue;
   }
 
@@ -4010,6 +4137,13 @@ class DatabaseManager {
     const statusLabel = newStatus === 'SUDAH_SELESAI' ? 'Sudah Selesai' : newStatus === 'SUDAH_DITANGGAPI' ? 'Sudah Ditanggapi' : newStatus === 'SUDAH_DIRESPON' ? 'Sudah Direspon' : 'Belum Direspon';
     this.addLog(`Manager Area (${user.name}) memperbarui status poin kendala di ${issue.kitchenName} menjadi "${statusLabel}" pada ${realTimestamp}`, 'kitchen');
     this.save();
+
+    this.syncToSupabase('field_issues', {
+      id: issue.id,
+      issue_description: JSON.stringify(issue.points),
+      status: issue.status
+    });
+
     return true;
   }
 
@@ -4036,15 +4170,36 @@ class DatabaseManager {
     issue.status = 'IN_PROGRESS';
     this.addLog(`Manager Area (${user.name}) memberikan tanggapan kendala lapangan ${id} (${issue.kitchenName}) pada ${realTimestamp}`, 'kitchen');
     this.save();
+
+    this.syncToSupabase('field_issues', {
+      id: issue.id,
+      issue_description: JSON.stringify(issue.points),
+      action_taken: response,
+      status: issue.status
+    });
+
     return true;
   }
 
-  deleteFieldIssue(id) {
+  async deleteFieldIssue(id) {
     if (!Array.isArray(this.data.fieldIssues)) return false;
     const idx = this.data.fieldIssues.findIndex(f => f.id === id);
     if (idx !== -1) {
       this.data.fieldIssues.splice(idx, 1);
       this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/field_issues?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus kendala lapangan dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -4775,7 +4930,7 @@ class DatabaseManager {
       });
     }
 
-    // 5. Sync Timesheet lokal
+    // 5. Sync Timesheet lokal ke Supabase
     const timesheets = this.getTimesheets();
     for (const ts of timesheets) {
       await this.syncToSupabase('timesheets', {
@@ -4793,7 +4948,7 @@ class DatabaseManager {
       });
     }
 
-    // 6. Sync Laporan Transaksi Dapur (Kitchen Reports)
+    // 6. Sync Laporan Transaksi Dapur (Kitchen Reports) ke Supabase
     const reports = this.getKitchenReports();
     for (const kr of reports) {
       await this.syncToSupabase('kitchen_reports', {
@@ -4820,6 +4975,66 @@ class DatabaseManager {
         notes: kr.notes || ''
       });
     }
+
+    // 7. Sync Cash Advances (Kasbon & LPJ) ke Supabase
+    const cashAdvances = this.getCashAdvances();
+    for (const ca of cashAdvances) {
+      await this.syncToSupabase('cash_advances', {
+        id: ca.id,
+        employee_id: ca.employeeId,
+        employee_name: ca.employeeName,
+        role: ca.employeeRole || ca.role,
+        department: ca.department,
+        purpose: ca.title || ca.reason || 'Kasbon Operasional',
+        amount_requested: Number(ca.amountRequested) || 0,
+        amount_approved: Number(ca.amountApproved) || 0,
+        amount_disbursed: Number(ca.amountDisbursed) || 0,
+        target_kitchen: ca.targetLocation || '',
+        bank_name: ca.bankName || '',
+        rekening_no: ca.bankAccountNo || '',
+        rekening_name: ca.bankAccountName || '',
+        stage: ca.stage,
+        status: ca.status,
+        disbursed_at: ca.disbursementDetails ? ca.disbursementDetails.disbursedAt : null,
+        settlement: ca.settlement || null,
+        approval_history: ca.approvalHistory || []
+      });
+    }
+
+    // 8. Sync Guideline Documents (Dokumen Panduan PDF/PPT) ke Supabase
+    const docs = this.getGuidelineDocuments();
+    for (const d of docs) {
+      await this.syncToSupabase('guideline_documents', {
+        id: d.id,
+        title: d.title,
+        file_type: d.fileType,
+        category: d.category,
+        target_role: d.targetRole,
+        target_label: d.targetLabel,
+        file_size: d.fileSize,
+        description: d.description,
+        uploaded_by: d.uploadedBy,
+        upload_date: d.uploadDate,
+        file_data: d.fileData || null
+      });
+    }
+
+    // 9. Sync Laporan Kendala Lapangan (Field Issues) ke Supabase
+    const issues = this.getFieldIssues();
+    for (const f of issues) {
+      await this.syncToSupabase('field_issues', {
+        id: f.id,
+        author_id: f.authorId,
+        author_name: f.authorName,
+        date: f.date,
+        kitchen_id: f.kitchenId,
+        kitchen_name: f.kitchenName,
+        category: 'Operasional Dapur',
+        severity: 'MEDIUM',
+        issue_description: JSON.stringify(f.points || []),
+        status: f.status
+      });
+    }
   }
 
   async pullLatestFromSupabase() {
@@ -4828,7 +5043,7 @@ class DatabaseManager {
     const key = window.SupabaseConfig.getAnonKey();
 
     try {
-      console.log('[Supabase Pull] Memuat data terbaru dari database Supabase...');
+      console.log('[Supabase Pull] Memuat data seluruh entitas secara real-time dari database Supabase Cloud...');
 
       // 1. Pull Users via REST API
       try {
@@ -4984,6 +5199,7 @@ class DatabaseManager {
               role: l.role,
               department: l.department,
               leaveType: l.leave_type,
+              type: l.leave_type,
               startDate: l.start_date,
               endDate: l.end_date,
               duration: l.duration,
@@ -5041,8 +5257,132 @@ class DatabaseManager {
         console.warn('Pull Kitchen Reports error:', err);
       }
 
+      // 6. Pull Timesheets via REST API
+      try {
+        const tsRes = await fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, {
+          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+        });
+        if (tsRes.ok) {
+          const tss = await tsRes.json();
+          if (Array.isArray(tss) && tss.length > 0) {
+            this.data.timesheets = tss.map(ts => ({
+              id: ts.id,
+              employeeId: ts.employee_id,
+              employeeName: ts.employee_name,
+              role: ts.role,
+              date: ts.date,
+              startTime: ts.start_time,
+              endTime: ts.end_time,
+              activity: ts.activity,
+              activityPreset: ts.activity_preset,
+              category: ts.category,
+              status: ts.status,
+              createdAt: ts.created_at
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Pull Timesheets error:', err);
+      }
+
+      // 7. Pull Cash Advances via REST API
+      try {
+        const caRes = await fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc`, {
+          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+        });
+        if (caRes.ok) {
+          const cas = await caRes.json();
+          if (Array.isArray(cas) && cas.length > 0) {
+            this.data.cashAdvances = cas.map(ca => ({
+              id: ca.id,
+              title: ca.purpose,
+              employeeId: ca.employee_id,
+              employeeName: ca.employee_name,
+              employeeRole: ca.role,
+              department: ca.department,
+              targetLocation: ca.target_kitchen,
+              amountRequested: Number(ca.amount_requested) || 0,
+              amountApproved: Number(ca.amount_approved) || 0,
+              amountDisbursed: Number(ca.amount_disbursed) || 0,
+              bankName: ca.bank_name,
+              bankAccountNo: ca.rekening_no,
+              bankAccountName: ca.rekening_name,
+              reason: ca.purpose,
+              stage: ca.stage,
+              status: ca.status,
+              settlement: ca.settlement,
+              approvalHistory: ca.approval_history || [],
+              createdAt: ca.created_at
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Pull Cash Advances error:', err);
+      }
+
+      // 8. Pull Guideline Documents via REST API
+      try {
+        const docRes = await fetch(`${url}/rest/v1/guideline_documents?select=*&order=created_at.desc`, {
+          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+        });
+        if (docRes.ok) {
+          const dList = await docRes.json();
+          if (Array.isArray(dList) && dList.length > 0) {
+            this.data.guidelineDocuments = dList.map(d => ({
+              id: d.id,
+              title: d.title,
+              fileType: d.file_type,
+              category: d.category,
+              targetRole: d.target_role,
+              targetLabel: d.target_label,
+              fileSize: d.file_size,
+              description: d.description,
+              uploadedBy: d.uploaded_by,
+              uploadDate: d.upload_date,
+              fileData: d.file_data,
+              createdAt: d.created_at
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Pull Guideline Documents error:', err);
+      }
+
+      // 9. Pull Field Issues via REST API
+      try {
+        const issueRes = await fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, {
+          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+        });
+        if (issueRes.ok) {
+          const fList = await issueRes.json();
+          if (Array.isArray(fList) && fList.length > 0) {
+            this.data.fieldIssues = fList.map(f => {
+              let parsedPoints = [];
+              try {
+                parsedPoints = JSON.parse(f.issue_description);
+              } catch (e) {
+                parsedPoints = [{ id: 'PT-1', text: f.issue_description, status: 'BELUM_DIRESPON' }];
+              }
+              return {
+                id: f.id,
+                authorId: f.author_id,
+                authorName: f.author_name,
+                date: f.date,
+                kitchenId: f.kitchen_id,
+                kitchenName: f.kitchen_name,
+                points: Array.isArray(parsedPoints) ? parsedPoints : [],
+                status: f.status,
+                createdAt: f.created_at
+              };
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Pull Field Issues error:', err);
+      }
+
       this.save();
-      console.log('✅ [Supabase Pull] Data lokal berhasil disinkronkan dari Supabase Cloud.');
+      console.log('✅ [Supabase Pull] Seluruh 9 tabel database berhasil disinkronkan secara real-time dari Supabase Cloud.');
     } catch (err) {
       console.warn('⚠️ [Supabase Pull] Gagal mengambil data:', err);
     }
