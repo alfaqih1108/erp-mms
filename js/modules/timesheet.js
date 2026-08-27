@@ -819,10 +819,7 @@ window.TimesheetModule = {
   // METODE KHUSUS LAPORAN KENDALA HARIAN LAPANGAN (PERWAKILAN YAYASAN)
   // =========================================================================
   issueFormatMode: 'BULLET',
-  currentIssuePoints: [
-    'Keterlambatan suplai sayur segar dari vendor lokal 30 menit dari jadwal standar',
-    'Gas LPG cadangan di dapur tersisa 1 tabung dan perlu penambahan DO'
-  ],
+  currentIssuePoints: [''],
 
   toggleIssueFormat: function(mode) {
     this.issueFormatMode = mode;

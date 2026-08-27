@@ -54,6 +54,7 @@ window.App = {
     const nameEl = document.getElementById('sidebar-user-name');
     const roleEl = document.getElementById('sidebar-user-role');
     const avatarEl = document.getElementById('sidebar-user-avatar');
+    const chipEl = document.querySelector('.navbar-user-chip');
 
     if (nameEl) nameEl.textContent = user.name;
     if (roleEl) roleEl.textContent = user.roleLabel;
@@ -62,6 +63,10 @@ window.App = {
       if (user.avatarGrad) {
         avatarEl.style.background = user.avatarGrad;
       }
+      avatarEl.setAttribute('title', `👤 ${user.name} (${user.roleLabel || user.jabatan})`);
+    }
+    if (chipEl) {
+      chipEl.setAttribute('title', `👤 ${user.name} (${user.roleLabel || user.jabatan})`);
     }
   },
 
