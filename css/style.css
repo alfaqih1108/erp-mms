@@ -403,11 +403,11 @@ h4 {
 .top-navbar-container {
   width: 100%;
   max-width: 100%;
-  padding: 0 40px;
-  display: flex;
+  padding: 0 32px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 20px;
 }
 
 /* Left: Brand anchored to far left */
@@ -415,7 +415,6 @@ h4 {
   display: flex;
   align-items: center;
   gap: 14px;
-  flex: 1;
   justify-content: flex-start;
 }
 
@@ -2977,6 +2976,9 @@ h4 {
   }
 
   .top-navbar-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     padding: 0 16px;
     gap: 12px;
   }
