@@ -9,7 +9,7 @@
 window.App = {
   currentTab: 'dashboard',
 
-  init: async function() {
+  init: function() {
     this.initRoleSwitcher();
     this.initEventListeners();
     this.applyRoleRestrictions();
@@ -17,16 +17,16 @@ window.App = {
     this.updateCloudBadge();
     this.switchTab('dashboard');
 
-    // Real-Time Auto Pull dari Supabase saat aplikasi dibuka di perangkat mana pun (HP / Laptop)
+    // Real-Time Background Pull dari Supabase saat startup tanpa re-render berlebih
     if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
-      try {
-        await window.DB.pullLatestFromSupabase();
+      window.DB.pullLatestFromSupabase().then(() => {
         this.updateUserHeader();
         this.applyRoleRestrictions();
-        this.refreshCurrentTab();
-      } catch (e) {
-        console.warn('Real-time sync on start error:', e);
-      }
+        this.updateSidebarBadges();
+        this.updateCloudBadge();
+      }).catch(e => {
+        console.warn('Real-time sync on start notice:', e);
+      });
     }
   },
 
@@ -565,10 +565,13 @@ window.App = {
       // 3. Masuk ke dashboard seketika tanpa jeda
       this.handleLoginAs(matchedUser.id);
 
-      // 4. Sinkronkan seluruh data transaksi di background secara paralel tanpa memblokir tampilan UI
+      // 4. Sinkronkan seluruh data transaksi di background secara senyap tanpa glitch/re-render ulang
       if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
         window.DB.pullLatestFromSupabase().then(() => {
-          this.refreshCurrentTab();
+          this.updateUserHeader();
+          this.applyRoleRestrictions();
+          this.updateSidebarBadges();
+          this.updateCloudBadge();
         }).catch(() => {});
       }
     } else {

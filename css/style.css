@@ -1121,8 +1121,57 @@ h4 {
 }
 
 /* ==========================================================================
-   APPROVAL CENTER THEMATIC FILTER PILLS
+   APPROVAL CENTER THEMATIC FILTER PILLS & TAB SWITCHER
    ========================================================================== */
+
+.approval-tab-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(22, 22, 25, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-full);
+  padding: 4px 6px;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.approval-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 20px;
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  font-family: var(--font-primary);
+  font-size: 13px;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.approval-tab-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.approval-tab-btn.active {
+  color: #fff;
+  background: rgba(255, 75, 1, 0.18);
+  border-color: rgba(255, 75, 1, 0.5);
+  box-shadow: 0 0 16px rgba(255, 75, 1, 0.25);
+  font-weight: 600;
+}
+
+.approval-tab-btn.tab-history.active {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+}
 
 .approval-filter-bar {
   display: flex;
@@ -1999,12 +2048,13 @@ h4 {
 }
 
 .animate-blur-in {
-  animation: nx-blur-in 0.4s var(--ease-spring);
+  animation: nx-blur-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
 }
 
 @keyframes nx-blur-in {
-  from { opacity: 0; filter: blur(6px); transform: translateY(8px); }
-  to { opacity: 1; filter: blur(0px); transform: translateY(0); }
+  from { opacity: 0.88; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .live-dot {
