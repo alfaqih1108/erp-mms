@@ -5,12 +5,6 @@
 
 window.PengajuanBarangModule = {
   currentAttachment: { url: null, name: null },
-  filterScope: 'MY', // 'MY' atau 'ALL'
-
-  setFilterScope: function(scope) {
-    this.filterScope = scope;
-    this.render(document.getElementById('main-content-area'));
-  },
 
   render: function(container) {
     if (!container) return;
@@ -19,7 +13,7 @@ window.PengajuanBarangModule = {
     const catalog = DB.getCatalog() || [];
     const user = DB.getCurrentUser();
 
-    // Filter fleksibel: cocokkan berdasarkan employeeId atau nama pemohon
+    // Filter ketat: Hanya tampilkan pengajuan milik akun pemohon yang sedang login
     const myPrs = allPrs.filter(p => {
       if (!p) return false;
       const matchId = (p.employeeId && user.id && p.employeeId.toLowerCase() === user.id.toLowerCase());
@@ -27,9 +21,7 @@ window.PengajuanBarangModule = {
       return matchId || matchName;
     });
 
-    const isAllScope = (this.filterScope === 'ALL');
-    const prs = isAllScope ? allPrs : myPrs;
-
+    const prs = myPrs;
     const totalSpend = prs.reduce((acc, curr) => acc + (Number(curr.totalPrice) || 0), 0);
     const pendingPrs = prs.filter(p => p.status === 'PENDING');
 
@@ -67,14 +59,14 @@ window.PengajuanBarangModule = {
 
             <div style="position: relative; z-index: 2;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span class="text-mono-badge" style="color: var(--text-muted);">${isAllScope ? 'Total Anggaran Seluruh Pengajuan (Konsolidasi)' : 'Total Anggaran Diajukan Saya'}</span>
+                <span class="text-mono-badge" style="color: var(--text-muted);">Total Anggaran Diajukan Saya</span>
                 <span style="font-size: 11px; color: #FCD34D; font-family: var(--font-mono);">${prs.length} Berkas PR</span>
               </div>
               <div style="margin: 12px 0 6px 0;">
                 <span style="font-size: 32px; font-weight: 700; color: #FCD34D; line-height: 1.1;">Rp ${totalSpend.toLocaleString('id-ID')}</span>
               </div>
               <p style="color: var(--text-muted); font-size: 12.5px; font-weight: 300; margin-bottom: 16px; line-height: 1.5;">
-                ${isAllScope ? 'Akumulasi seluruh Purchase Request fasilitas, operasional & dapur dari seluruh divisi yayasan.' : 'Akumulasi seluruh Purchase Request yang diajukan oleh akun Anda.'}
+                Akumulasi seluruh Purchase Request yang diajukan oleh akun Anda.
               </p>
 
               <div style="display: flex; gap: 18px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 12px; flex-wrap: wrap;">
@@ -118,28 +110,21 @@ window.PengajuanBarangModule = {
           </div>
         </div>
 
-        <!-- PR History Table with Filter Toggle -->
+        <!-- PR History Table (Hanya Pengajuan Saya) -->
         <div class="nalar-card" style="width: 100%;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 14px;">
             <div>
               <span class="text-mono-badge" style="color: var(--text-muted);">Riwayat Permintaan Pengadaan</span>
               <h3 style="font-size: 18px; margin-top: 2px;">
-                ${isAllScope ? 'Daftar Seluruh Purchase Requisition (PR) Organisasi' : 'Daftar Purchase Requisition (PR) yang Anda Ajukan'}
+                Daftar Purchase Requisition (PR) yang Anda Ajukan
               </h3>
             </div>
 
-            <!-- Filter Switcher Buttons (Pengajuan Saya vs Semua Pengajuan) -->
-            <div style="display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.35); padding: 4px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
-              <button type="button" class="btn-nalar-secondary ${!isAllScope ? 'active' : ''}" 
-                      style="padding: 5px 12px; font-size: 11.5px; ${!isAllScope ? 'background: rgba(245, 158, 11, 0.2); border-color: var(--brand-orange); color: #FCD34D; font-weight: 600;' : 'color: var(--text-muted);'}"
-                      onclick="PengajuanBarangModule.setFilterScope('MY')">
-                👤 Pengajuan Saya (${myPrs.length})
-              </button>
-              <button type="button" class="btn-nalar-secondary ${isAllScope ? 'active' : ''}" 
-                      style="padding: 5px 12px; font-size: 11.5px; ${isAllScope ? 'background: rgba(245, 158, 11, 0.2); border-color: var(--brand-orange); color: #FCD34D; font-weight: 600;' : 'color: var(--text-muted);'}"
-                      onclick="PengajuanBarangModule.setFilterScope('ALL')">
-                🌐 Semua Pengajuan (${allPrs.length})
-              </button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="live-status-pill">
+                <span class="live-dot" style="background: #FCD34D;"></span>
+                ${prs.length} Berkas Pengajuan Anda
+              </span>
             </div>
           </div>
 
