@@ -728,11 +728,11 @@ window.App = {
     try {
       if ('BroadcastChannel' in window) {
         this.broadcastChannel = new BroadcastChannel('ERP_MMS_REALTIME_CHANNEL');
-        this.broadcastChannel.onmessage = (ev) => {
+        this.broadcastChannel.onmessage = async (ev) => {
           if (ev && ev.data && (ev.data.type === 'DATA_SYNC' || ev.data.type === 'USER_SWITCH')) {
             console.log('⚡ [Cross-Tab Sync] Menerima sinyal sinkronisasi dari tab lain:', ev.data);
-            if (window.DB) {
-              window.DB.data = window.DB.load();
+            if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+              await window.DB.pullLatestFromSupabase();
               this.updateUserHeader();
               this.applyRoleRestrictions();
               this.updateSidebarBadges();
@@ -744,17 +744,6 @@ window.App = {
     } catch (bcErr) {
       console.warn('BroadcastChannel notice:', bcErr);
     }
-
-    // 3. Fallback Storage Event (Cross-Tab sync untuk browser lama)
-    window.addEventListener('storage', (e) => {
-      if (e.key === 'ERP_YAYASAN_DB_STABLE' && window.DB) {
-        window.DB.data = window.DB.load();
-        this.updateUserHeader();
-        this.applyRoleRestrictions();
-        this.updateSidebarBadges();
-        this.refreshCurrentTab();
-      }
-    });
 
     // 4. Fallback Periodic Heartbeat Sync (Tiap 10 Detik jika tab aktif)
     setInterval(() => {

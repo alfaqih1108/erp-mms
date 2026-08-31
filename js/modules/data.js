@@ -2277,112 +2277,65 @@ class DatabaseManager {
   }
 
   load() {
+    // =========================================================================
+    // 100% PURE CLOUD ARCHITECTURE (SUPABASE AS SINGLE SOURCE OF TRUTH)
+    // =========================================================================
+    // LocalStorage dibebaskan dari penyimpanan database aplikasi yang berat/rentan desync.
+    // Database dimuat & disinkronkan secara murni langsung dari Supabase Cloud.
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && Array.isArray(parsed.users)) {
-          // Auto-sync missing users from INITIAL_DATABASE
-          INITIAL_DATABASE.users.forEach(initUser => {
-            if (!parsed.users.some(u => u.id === initUser.id)) {
-              parsed.users.push(initUser);
-            }
-          });
-
-          // Ensure all array collections are properly initialized and persistent
-          if (!Array.isArray(parsed.itemRequests)) parsed.itemRequests = [];
-          if (!Array.isArray(parsed.kitchenReports)) parsed.kitchenReports = [];
-          if (!Array.isArray(parsed.leaves)) parsed.leaves = [];
-          if (!Array.isArray(parsed.timesheets)) parsed.timesheets = [];
-          if (!Array.isArray(parsed.cashAdvances)) parsed.cashAdvances = [];
-          if (!Array.isArray(parsed.fieldIssues)) parsed.fieldIssues = [];
-
-          // Auto-sync & heal kitchen master database from INITIAL_DATABASE
-          if (Array.isArray(parsed.kitchens) && parsed.kitchens.length > 0) {
-            parsed.kitchens = parsed.kitchens.map(k => {
-              const def = INITIAL_DATABASE.kitchens.find(dk => dk.id === k.id || dk.idSppg === k.id || dk.idSppg === k.idSppg);
-              return {
-                ...k,
-                idSppg: k.idSppg || (def ? def.idSppg : k.id),
-                namaDapur: k.namaDapur || k.name || (def ? def.namaDapur : 'Dapur SPPG'),
-                namaYayasan: k.namaYayasan || (def ? def.namaYayasan : 'Yayasan Mitra Mandiri Sejahtera'),
-                name: k.namaDapur || k.name || (def ? def.namaDapur : 'Dapur SPPG'),
-                provinsi: k.provinsi || (def ? def.provinsi : 'DKI Jakarta'),
-                kotaKabupaten: k.kotaKabupaten || (def ? def.kotaKabupaten : '-'),
-                kecamatan: k.kecamatan || (def ? def.kecamatan : '-'),
-                kelurahan: k.kelurahan || (def ? def.kelurahan : '-'),
-                alamatLengkap: k.alamatLengkap || (def ? def.alamatLengkap : (k.location || '-')),
-                location: k.location || (def ? def.location : `${k.kotaKabupaten || '-'}, ${k.provinsi || '-'}`),
-                makerYayasan: k.makerYayasan || (def ? def.makerYayasan : 'Belum Ditetapkan'),
-                perwakilanYayasan: k.perwakilanYayasan || (def ? def.perwakilanYayasan : 'Belum Ditetapkan'),
-                managerArea: k.managerArea || (def ? def.managerArea : 'Rendy Seftiana (Manajer Area Jakarta & Jabar)'),
-                status: k.status || (def ? def.status : 'AKTIF'),
-                kapasitasPorsi: Number(k.kapasitasPorsi || (def ? def.kapasitasPorsi : 500))
-              };
-            });
-          } else {
-            parsed.kitchens = INITIAL_DATABASE.kitchens || [];
-          }
-
-          // Pastikan currentUser langsung disesuaikan dengan sesi pengguna yang sedang login
-          const activeUserId = localStorage.getItem('ERP_LOGGED_USER_ID');
-          if (activeUserId) {
-            const matched = parsed.users.find(u => u.id === activeUserId);
-            if (matched) {
-              parsed.currentUser = matched;
-            }
-          }
-
-          return parsed;
+      // Bersihkan sisa kunci database lama dari localStorage agar penyimpanan browser bersih & ringan
+      ['ERP_YAYASAN_DB_STABLE', 'ERP_YAYASAN_DB_V2', 'ERP_MMS_V3_DB'].forEach(k => {
+        localStorage.removeItem(k);
+      });
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('ERP_YAYASAN_DATABASE_V')) {
+          localStorage.removeItem(k);
         }
       }
-    } catch (e) {
-      console.warn('Gagal memuat cache lokal, beralih ke inisialisasi default:', e);
-    }
-    const initialData = JSON.parse(JSON.stringify(INITIAL_DATABASE));
+    } catch (e) {}
+
+    // Inisialisasi in-memory RAM dataset dari template schema awal
+    const memoryData = JSON.parse(JSON.stringify(INITIAL_DATABASE));
+    
+    // Pastikan seluruh koleksi data terdefinisi sebagai array yang aman
+    if (!Array.isArray(memoryData.itemRequests)) memoryData.itemRequests = [];
+    if (!Array.isArray(memoryData.kitchenReports)) memoryData.kitchenReports = [];
+    if (!Array.isArray(memoryData.leaves)) memoryData.leaves = [];
+    if (!Array.isArray(memoryData.timesheets)) memoryData.timesheets = [];
+    if (!Array.isArray(memoryData.cashAdvances)) memoryData.cashAdvances = [];
+    if (!Array.isArray(memoryData.fieldIssues)) memoryData.fieldIssues = [];
+    if (!Array.isArray(memoryData.kitchens)) memoryData.kitchens = [];
+    if (!Array.isArray(memoryData.users)) memoryData.users = [];
+
+    // Sinkronkan akun pengguna aktif dari sesi login
     const activeUserId = localStorage.getItem('ERP_LOGGED_USER_ID');
-    if (activeUserId && Array.isArray(initialData.users)) {
-      const matched = initialData.users.find(u => u.id === activeUserId);
+    if (activeUserId && Array.isArray(memoryData.users)) {
+      const matched = memoryData.users.find(u => u.id === activeUserId);
       if (matched) {
-        initialData.currentUser = matched;
+        memoryData.currentUser = matched;
       }
     }
-    this.save(initialData);
-    return initialData;
+
+    return memoryData;
   }
 
   save(data) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data || this.data));
-    } catch (e) {
-      console.warn('Gagal menyimpan ke localStorage (kemungkinan ukuran attachment besar), mencoba fallback tanpa binary data:', e);
-      try {
-        const copy = JSON.parse(JSON.stringify(data || this.data));
-        if (Array.isArray(copy.guidelineDocuments)) {
-          copy.guidelineDocuments.forEach(doc => {
-            if (doc.fileData && doc.fileData.length > 50000) {
-              doc.fileData = null; // Lepaskan binary berat agar storage tidak gagal
-            }
-          });
-        }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
-      } catch (err2) {
-        console.error('Penyimpanan database fallback juga gagal:', err2);
-      }
-    }
-
-    // Broadcast instan 0ms ke tab browser lain yang sedang terbuka
+    // 100% Pure Cloud: Tidak menyimpan salinan database ke localStorage.
+    // Seluruh persistensi data ditangani langsung oleh Supabase Cloud (PostgreSQL).
+    // Hanya menyiarkan event sinkronisasi instan ke tab browser lain via BroadcastChannel
     if (window.App && window.App.broadcastChannel) {
       try {
-        window.App.broadcastChannel.postMessage({ type: 'DATA_SYNC', timestamp: Date.now(), source: 'local_save' });
+        window.App.broadcastChannel.postMessage({ type: 'DATA_SYNC', timestamp: Date.now(), source: 'cloud_sync' });
       } catch (bcErr) {}
     }
   }
 
   reset() {
-    localStorage.removeItem(STORAGE_KEY);
     this.data = JSON.parse(JSON.stringify(INITIAL_DATABASE));
-    this.save(this.data);
+    if (typeof this.pullLatestFromSupabase === 'function') {
+      this.pullLatestFromSupabase();
+    }
     return this.data;
   }
 
@@ -2941,6 +2894,7 @@ class DatabaseManager {
       const deleted = this.data.kitchens.splice(idx, 1)[0];
       this.addLog(`Dapur ${deleted.idSppg} — ${deleted.namaDapur} dinonaktifkan/dihapus dari database SPPG`, 'admin');
       this.save();
+      this.deleteFromSupabase('kitchens', deleted.id || deleted.idSppg);
       return true;
     }
     return false;
@@ -3824,6 +3778,7 @@ class DatabaseManager {
       const realTimestamp = getRealtimeTimestamp();
       this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus pengajuan Purchase Request ${deletedPR.id} (${deletedPR.itemName} · ${deletedPR.quantity} unit) pada ${realTimestamp}`, 'procurement');
       this.save();
+      this.deleteFromSupabase('item_requests', deletedPR.id);
       return true;
     }
     return false;
@@ -4914,7 +4869,8 @@ class DatabaseManager {
               'Authorization': `Bearer ${key}`,
               'Prefer': 'return=representation'
             },
-            body: JSON.stringify(data)
+            body: JSON.stringify(data),
+            keepalive: true
           });
 
           if (patchRes.ok) {
@@ -4941,7 +4897,8 @@ class DatabaseManager {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: headers,
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        keepalive: true
       });
 
       if (response.ok) {
@@ -4954,6 +4911,34 @@ class DatabaseManager {
       }
     } catch (e) {
       console.error(`❌ [Supabase Sync Exception] pada tabel ${table}:`, e);
+      return null;
+    }
+  }
+
+  async deleteFromSupabase(table, id) {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured() || !id) return null;
+    const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+    const key = window.SupabaseConfig.getAnonKey();
+    try {
+      console.log(`[Supabase Delete] Menghapus data dari tabel "${table}" (ID: ${id})...`);
+      const response = await fetch(`${url}/rest/v1/${table}?id=eq.${id}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': key,
+          'Authorization': `Bearer ${key}`
+        },
+        keepalive: true
+      });
+      if (response.ok) {
+        console.log(`✅ [Supabase Delete] Berhasil menghapus dari tabel "${table}": ${id}`);
+        return { success: true };
+      } else {
+        const err = await response.text();
+        console.error(`❌ [Supabase Delete Error] HTTP ${response.status}:`, err);
+        return { error: err };
+      }
+    } catch (e) {
+      console.error(`❌ [Supabase Delete Exception]:`, e);
       return null;
     }
   }
@@ -5469,12 +5454,15 @@ class DatabaseManager {
               picCheckerName: k.pic_checker_name || k.perwakilan_yayasan || (def ? def.perwakilanYayasan : 'Belum Ditetapkan')
             };
           });
+          const currentLocal = Array.isArray(this.data.kitchens) ? this.data.kitchens : [];
+          const localOnly = currentLocal.filter(loc => !remoteKitchens.some(rem => rem.id === loc.id));
+          this.data.kitchens = [...localOnly, ...remoteKitchens];
           hasUpdates = true;
         }
 
-        // 3. PR
+        // 3. PR (Purchase Requisitions)
         if (Array.isArray(dbPrs) && dbPrs.length > 0) {
-          this.data.itemRequests = dbPrs.map(p => ({
+          const remotePrs = dbPrs.map(p => ({
             id: p.id,
             employeeName: p.employee_name,
             role: p.role,
@@ -5488,16 +5476,18 @@ class DatabaseManager {
             originalUnitPrice: Number(p.original_unit_price || p.unit_price || 0),
             totalPrice: Number(p.total_price || 0),
             originalTotalPrice: Number(p.original_total_price || p.total_price || 0),
-            targetKitchen: p.target_kitchen,
-            targetKitchenName: p.target_kitchen_name,
-            urgency: p.urgency,
-            reason: p.reason,
+            targetKitchen: p.target_kitchen || 'KANTOR — Fasilitas & Operasional Kantor',
+            targetKitchenName: p.target_kitchen_name || p.target_kitchen || 'KANTOR — Fasilitas & Operasional Kantor',
+            urgency: p.urgency || 'MEDIUM',
+            reason: p.reason || '',
             status: p.status,
             stage: p.stage,
             approvalFlow: p.approval_flow,
             hasAdjustment: Boolean(p.has_adjustment),
             adjustments: Array.isArray(p.adjustments) ? p.adjustments : (p.adjustments ? JSON.parse(p.adjustments) : []),
             approvalHistory: Array.isArray(p.approval_history) ? p.approval_history : (p.approval_history ? JSON.parse(p.approval_history) : []),
+            attachmentUrl: p.attachment_url,
+            attachmentName: p.attachment_name,
             specs: p.specs || '',
             bankName: p.bank_name || '',
             rekeningNo: p.rekening_no || '',
@@ -5508,22 +5498,28 @@ class DatabaseManager {
             department: p.department || '',
             createdAt: p.created_at
           }));
+
+          const currentLocal = Array.isArray(this.data.itemRequests) ? this.data.itemRequests : [];
+          const localOnly = currentLocal.filter(loc => !remotePrs.some(rem => rem.id === loc.id));
+          this.data.itemRequests = [...localOnly, ...remotePrs];
           hasUpdates = true;
         }
 
-        // 4. Leaves
+        // 4. Leaves (Cuti & Izin)
         if (Array.isArray(dbLeaves) && dbLeaves.length > 0) {
-          this.data.leaves = dbLeaves.map(l => ({
+          const remoteLeaves = dbLeaves.map(l => ({
             id: l.id,
             employeeId: l.employee_id,
             employeeName: l.employee_name,
             role: l.role,
-            type: l.type,
-            leaveType: l.leave_type || l.type,
+            department: l.department || 'Yayasan MMS',
+            type: l.leave_type || l.type || 'Cuti Tahunan',
+            leaveType: l.leave_type || l.type || 'Cuti Tahunan',
             startDate: l.start_date,
             endDate: l.end_date,
             duration: Number(l.duration || 1),
-            reason: l.reason,
+            isHalfDay: Boolean(l.is_half_day || Number(l.duration) === 0.5),
+            reason: l.reason || '',
             status: l.status,
             stage: l.stage,
             approvalFlow: l.approval_flow,
@@ -5532,14 +5528,20 @@ class DatabaseManager {
             emergencyContact: l.emergency_contact,
             approver: l.approver,
             approvalHistory: Array.isArray(l.approval_history) ? l.approval_history : (l.approval_history ? JSON.parse(l.approval_history) : []),
+            attachmentUrl: l.attachment_url,
+            attachmentName: l.attachment_name,
             createdAt: l.created_at
           }));
+
+          const currentLocal = Array.isArray(this.data.leaves) ? this.data.leaves : [];
+          const localOnly = currentLocal.filter(loc => !remoteLeaves.some(rem => rem.id === loc.id));
+          this.data.leaves = [...localOnly, ...remoteLeaves];
           hasUpdates = true;
         }
 
         // 5. Kitchen Reports
         if (Array.isArray(dbKitchenReports) && dbKitchenReports.length > 0) {
-          this.data.kitchenReports = dbKitchenReports.map(kr => ({
+          const remoteReports = dbKitchenReports.map(kr => ({
             id: kr.id,
             kitchenId: kr.kitchen_id,
             kitchenName: kr.kitchen_name,
@@ -5557,12 +5559,16 @@ class DatabaseManager {
             items: Array.isArray(kr.items) ? kr.items : (kr.items ? JSON.parse(kr.items) : []),
             createdAt: kr.created_at
           }));
+
+          const currentLocal = Array.isArray(this.data.kitchenReports) ? this.data.kitchenReports : [];
+          const localOnly = currentLocal.filter(loc => !remoteReports.some(rem => rem.id === loc.id));
+          this.data.kitchenReports = [...localOnly, ...remoteReports];
           hasUpdates = true;
         }
 
         // 6. Timesheets
         if (Array.isArray(dbTimesheets) && dbTimesheets.length > 0) {
-          this.data.timesheets = dbTimesheets.map(t => ({
+          const remoteTs = dbTimesheets.map(t => ({
             id: t.id,
             employeeName: t.employee_name,
             role: t.role,
@@ -5578,12 +5584,16 @@ class DatabaseManager {
             approvalHistory: Array.isArray(t.approval_history) ? t.approval_history : (t.approval_history ? JSON.parse(t.approval_history) : []),
             createdAt: t.created_at
           }));
+
+          const currentLocal = Array.isArray(this.data.timesheets) ? this.data.timesheets : [];
+          const localOnly = currentLocal.filter(loc => !remoteTs.some(rem => rem.id === loc.id));
+          this.data.timesheets = [...localOnly, ...remoteTs];
           hasUpdates = true;
         }
 
         // 7. Cash Advances
         if (Array.isArray(dbCas) && dbCas.length > 0) {
-          this.data.cashAdvances = dbCas.map(ca => ({
+          const remoteCas = dbCas.map(ca => ({
             id: ca.id,
             employeeId: ca.employee_id,
             employeeName: ca.employee_name,
@@ -5606,6 +5616,10 @@ class DatabaseManager {
             approvalHistory: Array.isArray(ca.approval_history) ? ca.approval_history : (ca.approval_history ? JSON.parse(ca.approval_history) : []),
             settlement: typeof ca.settlement === 'object' && ca.settlement !== null ? ca.settlement : (ca.settlement ? JSON.parse(ca.settlement) : null)
           }));
+
+          const currentLocal = Array.isArray(this.data.cashAdvances) ? this.data.cashAdvances : [];
+          const localOnly = currentLocal.filter(loc => !remoteCas.some(rem => rem.id === loc.id));
+          this.data.cashAdvances = [...localOnly, ...remoteCas];
           hasUpdates = true;
         }
 
@@ -5631,7 +5645,7 @@ class DatabaseManager {
 
         // 9. Field Issues
         if (Array.isArray(dbIssues) && dbIssues.length > 0) {
-          this.data.fieldIssues = dbIssues.map(f => {
+          const remoteIssues = dbIssues.map(f => {
             let parsedPoints = [];
             try {
               parsedPoints = JSON.parse(f.issue_description);
@@ -5640,16 +5654,21 @@ class DatabaseManager {
             }
             return {
               id: f.id,
-              authorId: f.author_id,
-              authorName: f.author_name,
               date: f.date,
               kitchenId: f.kitchen_id,
+              kitchenIdSppg: f.kitchen_id_sppg || f.kitchen_id,
               kitchenName: f.kitchen_name,
+              authorName: f.author_name,
+              authorRole: f.author_role,
               points: Array.isArray(parsedPoints) ? parsedPoints : [],
               status: f.status,
               createdAt: f.created_at
             };
           });
+
+          const currentLocal = Array.isArray(this.data.fieldIssues) ? this.data.fieldIssues : [];
+          const localOnly = currentLocal.filter(loc => !remoteIssues.some(rem => rem.id === loc.id));
+          this.data.fieldIssues = [...localOnly, ...remoteIssues];
           hasUpdates = true;
         }
 

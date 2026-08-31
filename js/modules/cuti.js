@@ -258,10 +258,10 @@ window.CutiModule = {
                     <td style="color: var(--brand-orange); font-weight: 600;">${l.id}</td>
                     <td>
                       <div style="font-weight: 600; color: #fff;">${l.employeeName}</div>
-                      <div style="font-size: 11px; color: var(--text-muted);">${l.department}</div>
+                      <div style="font-size: 11px; color: var(--text-muted);">${l.department || (user ? user.department : 'Yayasan MMS')}</div>
                     </td>
                     <td>
-                      <div style="font-weight: 600; color: #fff; font-size: 13px;">${l.type}</div>
+                      <div style="font-weight: 600; color: #fff; font-size: 13px;">${l.type || l.leaveType || 'Cuti Tahunan'}</div>
                       <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 2px;">
                         ${l.isHalfDay ? '<span style="color: #FCD34D; font-weight: 600;">⚡ 0.5 Hari (Setengah Hari)</span> · ' : ''}
                         ${l.reason}
