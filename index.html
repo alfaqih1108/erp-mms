@@ -13,7 +13,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
   
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=20260831_01">
+  <link rel="stylesheet" href="css/style.css?v=20260831_02">
+
+  <!-- Immediate Session Auth Check (Prevent Login Overlay Flicker on Refresh) -->
+  <script>
+    (function() {
+      try {
+        if (localStorage.getItem('ERP_SESSION_ACTIVE') === 'true') {
+          document.documentElement.classList.add('session-authenticated');
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
 
@@ -381,7 +392,7 @@
   <!-- ==========================================================================
        SPLIT-SCREEN MODERN LOGIN PAGE WITH ANIMATED NEURAL WAVE BACKGROUND
        ========================================================================== -->
-  <div id="login-screen-overlay" class="split-login-overlay show active">
+  <div id="login-screen-overlay" class="split-login-overlay">
     <!-- Animated Neural Sine Wave Canvas Background (Matching Main Dashboard) -->
     <canvas id="login-neural-wave-canvas" class="login-bg-wave-canvas"></canvas>
 
@@ -843,19 +854,19 @@
 
   <!-- Supabase JS SDK & Configuration -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/supabase-config.js?v=20260831_01"></script>
+  <script src="js/supabase-config.js?v=20260831_03"></script>
 
   <!-- Application Modules -->
-  <script src="js/modules/data.js?v=20260831_02"></script>
-  <script src="js/modules/dashboard.js?v=20260831_02"></script>
-  <script src="js/modules/cuti.js?v=20260831_02"></script>
-  <script src="js/modules/timesheet.js?v=20260831_02"></script>
-  <script src="js/modules/pengajuan-barang.js?v=20260831_02"></script>
-  <script src="js/modules/cash-advance.js?v=20260831_02"></script>
-  <script src="js/modules/dapur-yayasan.js?v=20260831_02"></script>
-  <script src="js/modules/hc-hub.js?v=20260831_02"></script>
-  <script src="js/modules/admin-hub.js?v=20260831_02"></script>
-  <script src="js/modules/approval-center.js?v=20260831_02"></script>
-  <script src="js/app.js?v=20260831_02"></script>
+  <script src="js/modules/data.js?v=20260831_03"></script>
+  <script src="js/modules/dashboard.js?v=20260831_03"></script>
+  <script src="js/modules/cuti.js?v=20260831_03"></script>
+  <script src="js/modules/timesheet.js?v=20260831_03"></script>
+  <script src="js/modules/pengajuan-barang.js?v=20260831_03"></script>
+  <script src="js/modules/cash-advance.js?v=20260831_03"></script>
+  <script src="js/modules/dapur-yayasan.js?v=20260831_03"></script>
+  <script src="js/modules/hc-hub.js?v=20260831_03"></script>
+  <script src="js/modules/admin-hub.js?v=20260831_03"></script>
+  <script src="js/modules/approval-center.js?v=20260831_03"></script>
+  <script src="js/app.js?v=20260831_03"></script>
 </body>
 </html>

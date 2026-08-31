@@ -2327,6 +2327,13 @@ class DatabaseManager {
         console.error('Penyimpanan database fallback juga gagal:', err2);
       }
     }
+
+    // Broadcast instan 0ms ke tab browser lain yang sedang terbuka
+    if (window.App && window.App.broadcastChannel) {
+      try {
+        window.App.broadcastChannel.postMessage({ type: 'DATA_SYNC', timestamp: Date.now(), source: 'local_save' });
+      } catch (bcErr) {}
+    }
   }
 
   reset() {

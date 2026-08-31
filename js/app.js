@@ -8,6 +8,8 @@
 
 window.App = {
   currentTab: 'dashboard',
+  broadcastChannel: null,
+  realtimeSyncDebounceTimer: null,
 
   init: function() {
     this.initRoleSwitcher();
@@ -15,7 +17,25 @@ window.App = {
     this.applyRoleRestrictions();
     this.initLoginWaveAnimation();
     this.updateCloudBadge();
-    this.switchTab('dashboard');
+    this.initRealtimeSync();
+
+    // Cek status sesi autentikasi pengguna dari localStorage
+    const isSessionActive = (localStorage.getItem('ERP_SESSION_ACTIVE') === 'true');
+    const savedUserId = localStorage.getItem('ERP_LOGGED_USER_ID');
+    const lastActiveTab = localStorage.getItem('ERP_LAST_ACTIVE_TAB') || 'dashboard';
+
+    if (isSessionActive) {
+      if (savedUserId && DB.getCurrentUser().id !== savedUserId) {
+        DB.switchRole(savedUserId);
+      }
+      document.documentElement.classList.add('session-authenticated');
+      this.closeLoginScreen();
+      this.switchTab(lastActiveTab);
+    } else {
+      document.documentElement.classList.remove('session-authenticated');
+      this.openLoginScreen();
+      this.switchTab('dashboard');
+    }
 
     // Real-Time Background Pull dari Supabase saat startup tanpa re-render berlebih
     if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
@@ -24,6 +44,9 @@ window.App = {
         this.applyRoleRestrictions();
         this.updateSidebarBadges();
         this.updateCloudBadge();
+        if (isSessionActive) {
+          this.refreshCurrentTab();
+        }
       }).catch(e => {
         console.warn('Real-time sync on start notice:', e);
       });
@@ -501,6 +524,14 @@ window.App = {
     DB.switchRole(userId);
     const user = DB.getCurrentUser();
     
+    // Simpan status sesi aktif agar tidak kembali ke login saat refresh
+    try {
+      localStorage.setItem('ERP_SESSION_ACTIVE', 'true');
+      localStorage.setItem('ERP_LOGGED_USER_ID', user.id);
+      localStorage.setItem('ERP_LAST_ACTIVE_TAB', this.currentTab || 'dashboard');
+      document.documentElement.classList.add('session-authenticated');
+    } catch (e) {}
+
     // Sync select dropdown
     const select = document.getElementById('sidebar-role-select');
     if (select) select.value = user.id;
@@ -509,6 +540,13 @@ window.App = {
     this.applyRoleRestrictions();
     this.closeLoginScreen();
     this.refreshCurrentTab();
+
+    // Broadcast ke tab lain bahwa login/ganti akun telah terjadi
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({ type: 'USER_SWITCH', userId: user.id, timestamp: Date.now() });
+      } catch (bcErr) {}
+    }
 
     this.showToast(`Login berhasil sebagai: ${user.name} (${user.roleLabel})`, 'success');
   },
@@ -613,6 +651,11 @@ window.App = {
 
   confirmLogout: function() {
     this.closeModal('modal-logout-confirm');
+    try {
+      localStorage.removeItem('ERP_SESSION_ACTIVE');
+      localStorage.removeItem('ERP_LOGGED_USER_ID');
+      document.documentElement.classList.remove('session-authenticated');
+    } catch (e) {}
     this.openLoginScreen();
     this.showToast('Anda telah berhasil keluar dari sistem (Log Out). Silakan login kembali.', 'info');
   },
@@ -620,6 +663,7 @@ window.App = {
   openLoginScreen: function() {
     const screen = document.getElementById('login-screen-overlay');
     if (screen) {
+      document.documentElement.classList.remove('session-authenticated');
       screen.classList.add('show', 'active');
       // Reset input values
       const uInput = document.getElementById('login-input-username');
@@ -632,11 +676,114 @@ window.App = {
 
   closeLoginScreen: function() {
     const screen = document.getElementById('login-screen-overlay');
-    if (screen) screen.classList.remove('show', 'active');
+    if (screen) {
+      screen.classList.remove('show', 'active');
+    }
+    document.documentElement.classList.add('session-authenticated');
     if (this.loginWaveAnimationId) {
       cancelAnimationFrame(this.loginWaveAnimationId);
       this.loginWaveAnimationId = null;
     }
+  },
+
+  // =========================================================================
+  // REAL-TIME MULTI-USER SYNC ENGINE & CROSS-TAB BROADCAST
+  // =========================================================================
+  initRealtimeSync: function() {
+    const triggerDebouncedSync = (tableName, payload) => {
+      clearTimeout(this.realtimeSyncDebounceTimer);
+      this.realtimeSyncDebounceTimer = setTimeout(async () => {
+        console.log(`⚡ [Realtime Auto-Sync] Memperbarui data lokal dari cloud akibat perubahan "${tableName || 'database'}"...`);
+        if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+          await window.DB.pullLatestFromSupabase();
+          this.updateUserHeader();
+          this.applyRoleRestrictions();
+          this.updateSidebarBadges();
+          this.updateCloudBadge();
+          this.refreshCurrentTab();
+
+          // Beritahu tab lain di browser lokal
+          if (this.broadcastChannel) {
+            try {
+              this.broadcastChannel.postMessage({ type: 'DATA_SYNC', source: tableName, timestamp: Date.now() });
+            } catch (e) {}
+          }
+        }
+      }, 350);
+    };
+
+    // 1. Inisialisasi Supabase Realtime WebSocket Channels
+    if (window.SupabaseConfig && typeof window.SupabaseConfig.initRealtimeSubscription === 'function') {
+      window.SupabaseConfig.initRealtimeSubscription((table, payload) => {
+        triggerDebouncedSync(table, payload);
+      });
+    }
+
+    // 2. Cross-tab Broadcast Channel (Instant 0ms sync antar tab di browser yang sama)
+    try {
+      if ('BroadcastChannel' in window) {
+        this.broadcastChannel = new BroadcastChannel('ERP_MMS_REALTIME_CHANNEL');
+        this.broadcastChannel.onmessage = (ev) => {
+          if (ev && ev.data && (ev.data.type === 'DATA_SYNC' || ev.data.type === 'USER_SWITCH')) {
+            console.log('⚡ [Cross-Tab Sync] Menerima sinyal sinkronisasi dari tab lain:', ev.data);
+            if (window.DB) {
+              window.DB.data = window.DB.load();
+              this.updateUserHeader();
+              this.applyRoleRestrictions();
+              this.updateSidebarBadges();
+              this.refreshCurrentTab();
+            }
+          }
+        };
+      }
+    } catch (bcErr) {
+      console.warn('BroadcastChannel notice:', bcErr);
+    }
+
+    // 3. Fallback Storage Event (Cross-Tab sync untuk browser lama)
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'ERP_YAYASAN_DB_STABLE' && window.DB) {
+        window.DB.data = window.DB.load();
+        this.updateUserHeader();
+        this.applyRoleRestrictions();
+        this.updateSidebarBadges();
+        this.refreshCurrentTab();
+      }
+    });
+
+    // 4. Fallback Periodic Heartbeat Sync (Tiap 10 Detik jika tab aktif)
+    setInterval(() => {
+      if (document.visibilityState === 'visible' && localStorage.getItem('ERP_SESSION_ACTIVE') === 'true') {
+        if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+          window.DB.pullLatestFromSupabase().then(() => {
+            this.updateSidebarBadges();
+          }).catch(() => {});
+        }
+      }
+    }, 10000);
+
+    // 5. Sync Instan saat User Kembali ke Tab ERP (Window Focus & Visibility Change)
+    window.addEventListener('focus', () => {
+      if (localStorage.getItem('ERP_SESSION_ACTIVE') === 'true') {
+        if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+          window.DB.pullLatestFromSupabase().then(() => {
+            this.updateSidebarBadges();
+            this.refreshCurrentTab();
+          }).catch(() => {});
+        }
+      }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && localStorage.getItem('ERP_SESSION_ACTIVE') === 'true') {
+        if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+          window.DB.pullLatestFromSupabase().then(() => {
+            this.updateSidebarBadges();
+            this.refreshCurrentTab();
+          }).catch(() => {});
+        }
+      }
+    });
   },
 
   // Mobile Drawer Navigation
@@ -696,9 +843,11 @@ window.App = {
     });
   },
 
-  // Main Tab Router
   switchTab: function(tabId, subView = null) {
     this.currentTab = tabId;
+    try {
+      localStorage.setItem('ERP_LAST_ACTIVE_TAB', tabId);
+    } catch (e) {}
 
     // Tutup dropdown HC Hub & Admin Hub dan sidebar mobile
     const hcDropdown = document.getElementById('nav-item-hc-hub');

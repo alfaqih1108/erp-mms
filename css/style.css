@@ -2353,6 +2353,13 @@ h4 {
   overflow: hidden;
 }
 
+html.session-authenticated #login-screen-overlay {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
 .login-bg-wave-canvas {
   position: absolute;
   inset: 0;

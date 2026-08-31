@@ -116,6 +116,73 @@ window.SupabaseConfig = {
     this.client = null;
   },
 
+  // =========================================================================
+  // SUPABASE REALTIME SUBSCRIPTION ENGINE (MULTI-USER REAL-TIME SYNC)
+  // =========================================================================
+  realtimeChannel: null,
+
+  initRealtimeSubscription: function(onDataChangeCallback) {
+    if (!this.isConfigured() || !window.supabase) {
+      console.warn('⚠️ [Realtime Sync] Supabase SDK atau konfigurasi belum siap.');
+      return null;
+    }
+
+    try {
+      const client = this.getClient();
+      if (!client) return null;
+
+      // Bersihkan channel sebelumnya jika ada
+      if (this.realtimeChannel) {
+        try {
+          client.removeChannel(this.realtimeChannel);
+        } catch (err) {}
+        this.realtimeChannel = null;
+      }
+
+      const tables = [
+        'leaves',
+        'item_requests',
+        'cash_advances',
+        'timesheets',
+        'kitchen_reports',
+        'kitchens',
+        'users',
+        'guideline_documents',
+        'field_issues'
+      ];
+
+      const channelName = `erp-mms-realtime-${Date.now()}`;
+      const channel = client.channel(channelName);
+
+      tables.forEach(tableName => {
+        channel.on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: tableName },
+          (payload) => {
+            console.log(`⚡ [Realtime Event] Tabel "${tableName}" mengalami perubahan (${payload.eventType}):`, payload);
+            if (typeof onDataChangeCallback === 'function') {
+              onDataChangeCallback(tableName, payload);
+            }
+          }
+        );
+      });
+
+      channel.subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [Supabase Realtime] Terhubung & Aktif mendengarkan seluruh 9 tabel database secara real-time.');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.warn('⚠️ [Supabase Realtime Error]:', err);
+        }
+      });
+
+      this.realtimeChannel = channel;
+      return channel;
+    } catch (e) {
+      console.warn('⚠️ [Supabase Realtime] Inisialisasi subscription exception:', e);
+      return null;
+    }
+  },
+
   // Helper Pengiriman Email Notifikasi via Supabase Edge Function (Gmail SMTP)
   sendEmailNotification: async function(payload) {
     if (!this.isConfigured()) {
