@@ -432,14 +432,14 @@ window.CutiModule = {
               </div>
 
               <!-- Date Picker Range -->
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Tanggal Mulai <span style="color: #F87171;">*</span></label>
-                  <input type="date" id="leave-start-date" class="form-control" onchange="CutiModule.calculateDuration()" required>
+              <div class="form-row" id="leave-date-row" style="display: flex; gap: 12px;">
+                <div class="form-group" id="leave-start-date-group" style="flex: 1;">
+                  <label class="form-label" id="leave-start-date-label">Tanggal Mulai <span style="color: #F87171;">*</span></label>
+                  <input type="date" id="leave-start-date" class="form-control" onchange="CutiModule.handleDateChange()" required>
                 </div>
-                <div class="form-group">
-                  <label class="form-label">Tanggal Selesai <span style="color: #F87171;">*</span></label>
-                  <input type="date" id="leave-end-date" class="form-control" onchange="CutiModule.calculateDuration()" required>
+                <div class="form-group" id="leave-end-date-group" style="flex: 1;">
+                  <label class="form-label" id="leave-end-date-label">Tanggal Selesai <span style="color: #F87171;">*</span></label>
+                  <input type="date" id="leave-end-date" class="form-control" onchange="CutiModule.handleDateChange()" required>
                 </div>
               </div>
 
@@ -737,7 +737,6 @@ window.CutiModule = {
 
   openLeaveModal: function() {
     this.currentAttachment = { url: null, name: null };
-    const user = DB.getCurrentUser();
     const form = document.getElementById('form-cuti');
     if (form) form.reset();
 
@@ -746,6 +745,12 @@ window.CutiModule = {
     const endInput = document.getElementById('leave-end-date');
     if (startInput) startInput.value = todayStr;
     if (endInput) endInput.value = todayStr;
+
+    // Reset visibilitas field tanggal
+    const endGroup = document.getElementById('leave-end-date-group');
+    const startLabel = document.getElementById('leave-start-date-label');
+    if (endGroup) endGroup.style.display = 'block';
+    if (startLabel) startLabel.innerHTML = 'Tanggal Mulai <span style="color: #F87171;">*</span>';
 
     this.handleTypeChange();
     this.calculateDuration();
@@ -759,14 +764,37 @@ window.CutiModule = {
     if (!opt) return;
 
     const isHalf = opt.getAttribute('data-half') === 'true';
-    const endInput = document.getElementById('leave-end-date');
+    const endGroup = document.getElementById('leave-end-date-group');
+    const startLabel = document.getElementById('leave-start-date-label');
     const startInput = document.getElementById('leave-start-date');
+    const endInput = document.getElementById('leave-end-date');
+
+    if (isHalf) {
+      // Untuk cuti setengah hari: Sembunyikan tanggal selesai, cukup 1 input tanggal pelaksanaan
+      if (endGroup) endGroup.style.display = 'none';
+      if (startLabel) startLabel.innerHTML = 'Tanggal Cuti (Setengah Hari / 0.5 Hari) <span style="color: #F87171;">*</span>';
+      if (startInput && endInput) {
+        endInput.value = startInput.value;
+      }
+    } else {
+      // Untuk cuti reguler: Tampilkan kembali rentang tanggal mulai & selesai
+      if (endGroup) endGroup.style.display = 'block';
+      if (startLabel) startLabel.innerHTML = 'Tanggal Mulai <span style="color: #F87171;">*</span>';
+    }
+
+    this.calculateDuration();
+  },
+
+  handleDateChange: function() {
+    const select = document.getElementById('leave-type-select');
+    const opt = select ? select.selectedOptions[0] : null;
+    const isHalf = opt && opt.getAttribute('data-half') === 'true';
+
+    const startInput = document.getElementById('leave-start-date');
+    const endInput = document.getElementById('leave-end-date');
 
     if (isHalf && startInput && endInput) {
       endInput.value = startInput.value;
-      endInput.disabled = true;
-    } else if (endInput) {
-      endInput.disabled = false;
     }
 
     this.calculateDuration();
@@ -779,7 +807,7 @@ window.CutiModule = {
     const summaryEl = document.getElementById('leave-calc-summary');
     if (!summaryEl) return;
 
-    if (!startVal || !endVal || !select || !select.value) {
+    if (!startVal || !select || !select.value) {
       summaryEl.style.display = 'none';
       return;
     }
@@ -787,12 +815,16 @@ window.CutiModule = {
     const opt = select.selectedOptions[0];
     const isHalf = opt.getAttribute('data-half') === 'true';
     const deductType = opt.getAttribute('data-deduct');
-    const pasal = opt.getAttribute('data-pasal');
+    const pasal = opt.getAttribute('data-pasal') || 'PASAL_14';
 
     let duration = 0;
     if (isHalf) {
       duration = 0.5;
     } else {
+      if (!endVal) {
+        summaryEl.style.display = 'none';
+        return;
+      }
       const d1 = new Date(startVal);
       const d2 = new Date(endVal);
       const diffTime = d2 - d1;
@@ -833,15 +865,19 @@ window.CutiModule = {
     const select = document.getElementById('leave-type-select');
     const opt = select.selectedOptions[0];
     const startDate = document.getElementById('leave-start-date').value;
-    const endDate = document.getElementById('leave-end-date').value;
+    let endDate = document.getElementById('leave-end-date').value;
     const reason = document.getElementById('leave-reason').value.trim();
+
+    const isHalf = opt.getAttribute('data-half') === 'true';
+    if (isHalf) {
+      endDate = startDate;
+    }
 
     if (!select.value || !startDate || !endDate || !reason) {
       App.showToast('Mohon lengkapi seluruh field formulir cuti!', 'warn');
       return;
     }
 
-    const isHalf = opt.getAttribute('data-half') === 'true';
     const deductType = opt.getAttribute('data-deduct');
     const pasal = opt.getAttribute('data-pasal');
 

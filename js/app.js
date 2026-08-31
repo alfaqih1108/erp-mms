@@ -44,12 +44,12 @@ window.App = {
 
     // Real-Time Background Pull dari Supabase saat startup tanpa re-render berlebih
     if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
-      window.DB.pullLatestFromSupabase().then(() => {
+      window.DB.pullLatestFromSupabase().then((hasUpdates) => {
         this.updateUserHeader();
         this.applyRoleRestrictions();
         this.updateSidebarBadges();
         this.updateCloudBadge();
-        if (isSessionActive) {
+        if (isSessionActive && hasUpdates) {
           this.refreshCurrentTab();
         }
       }).catch(e => {
@@ -982,6 +982,12 @@ window.App = {
   },
 
   refreshCurrentTab: function() {
+    // Jika ada modal yang sedang aktif/terbuka (user sedang mengisi form atau membaca rincian), jangan disrupt DOM
+    const openModal = document.querySelector('.modal-backdrop.show, .modal-backdrop.active');
+    if (openModal) {
+      console.log('⚡ [Auto-Sync] Menunda refreshCurrentTab karena modal sedang aktif:', openModal.id);
+      return;
+    }
     this.switchTab(this.currentTab);
   },
 

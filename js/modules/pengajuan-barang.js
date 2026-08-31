@@ -9,9 +9,30 @@ window.PengajuanBarangModule = {
   render: function(container) {
     if (!container) return;
 
+    const user = DB.getCurrentUser();
+
+    // Maker Yayasan: Fitur Pengadaan PR Dinonaktifkan
+    if (user.role === 'MAKER_YAYASAN') {
+      container.innerHTML = `
+        <div class="animate-blur-in">
+          <div class="nalar-card" style="text-align: center; padding: 60px 24px; max-width: 680px; margin: 40px auto; border: 1px solid rgba(245,158,11,0.25);">
+            <div style="font-size: 48px; margin-bottom: 16px;">⛔</div>
+            <span class="text-mono-badge" style="color: #FCD34D;">Akses Khusus</span>
+            <h2 style="font-size: 22px; color: #fff; margin: 8px 0 12px 0;">Fitur Pengadaan Barang Tidak Tersedia</h2>
+            <p style="font-size: 13.5px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
+              Akun <strong>Maker Yayasan</strong> difokuskan untuk pencatatan & pelaporan operasional dapur SPPG harian serta administrasi kemitraan. Pengajuan pengadaan barang & aset (PR) dilakukan melalui akun <strong>Perwakilan Yayasan</strong> atau <strong>Staff Operasional</strong>.
+            </p>
+            <button class="btn-nalar-primary" onclick="App.switchTab('dapur-yayasan')" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; font-weight: 600;">
+              <span>Ke Modul Dapur & Pelaporan Yayasan ↗</span>
+            </button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     const allPrs = DB.getItemRequests() || [];
     const catalog = DB.getCatalog() || [];
-    const user = DB.getCurrentUser();
 
     // Filter ketat: Hanya tampilkan pengajuan milik akun pemohon yang sedang login
     const myPrs = allPrs.filter(p => {
@@ -297,10 +318,14 @@ window.PengajuanBarangModule = {
   },
 
   openPRModal: function() {
+    const user = DB.getCurrentUser();
+    if (user && user.role === 'MAKER_YAYASAN') {
+      App.showToast('Fitur Pengadaan Barang tidak tersedia untuk Maker Yayasan.', 'warn');
+      return;
+    }
     this.removeAttachment();
     const kitchenContainer = document.getElementById('pr-kitchen-container');
     const kitchenSelect = document.getElementById('pr-kitchen-select');
-    const user = DB.getCurrentUser();
 
     // Tampilkan pilihan Dapur Program (Khusus Perwakilan Yayasan: hanya 1 dapur yang ditugaskan)
     if (kitchenContainer && kitchenSelect) {

@@ -61,7 +61,7 @@ window.DashboardModule = {
     const userTotalPrSpend = userPrs.reduce((acc, curr) => acc + (Number(curr.totalPrice) || 0), 0);
 
     const pendingApprovals = DB.getPendingApprovalsCount() || 0;
-    const userActiveSubmissions = userPendingPrCount + userLeaves.filter(l => l.status === 'PENDING').length + userTimesheets.filter(t => t.status === 'PENDING').length;
+    const userActiveSubmissions = userPendingPrCount + userLeaves.filter(l => l.status === 'PENDING').length;
 
     const isSenior = hasWorkedOneYear(user.joinDate);
     const displayLeaveRemaining = isSenior ? (user.remainingAnnualLeave !== undefined ? user.remainingAnnualLeave : 12) : (user.remainingPersonalLeave !== undefined ? user.remainingPersonalLeave : 3);
@@ -104,7 +104,7 @@ window.DashboardModule = {
                   + Input Laporan Dapur & Saldo VA
                 </button>
               ` : `
-                <button class="btn-nalar-primary" onclick="App.openModal('modal-cuti')">
+                <button class="btn-nalar-primary" onclick="App.switchTab('cuti'); setTimeout(() => CutiModule.openLeaveModal(), 100);">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   Ajukan Cuti Baru
                 </button>
@@ -807,7 +807,7 @@ window.DashboardModule = {
                     <button type="button" class="btn-nalar-secondary" style="padding: 7px 14px; font-size: 12px; color: #34D399; border-color: rgba(52,211,153,0.4);" onclick="App.switchTab('cash-advance')">
                       + Ajukan Kasbon
                     </button>
-                    <button type="button" class="btn-nalar-secondary" style="padding: 7px 14px; font-size: 12px; color: #A78BFA; border-color: rgba(167,139,250,0.4);" onclick="App.openModal('modal-cuti')">
+                    <button type="button" class="btn-nalar-secondary" style="padding: 7px 14px; font-size: 12px; color: #A78BFA; border-color: rgba(167,139,250,0.4);" onclick="App.switchTab('cuti'); setTimeout(() => CutiModule.openLeaveModal(), 100);">
                       + Ajukan Cuti
                     </button>
                   </div>

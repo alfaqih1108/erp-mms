@@ -530,51 +530,6 @@
     </div>
   </div>
 
-  <!-- Modal 1: Pengajuan Cuti -->
-  <div id="modal-cuti" class="modal-backdrop">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h3 class="modal-title">Form Pengajuan Cuti & Izin</h3>
-        <button class="modal-close-btn" onclick="App.closeModal('modal-cuti')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <form id="form-cuti">
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">Jenis Cuti / Izin</label>
-            <select id="leave-type" class="form-control" required>
-              <option value="Cuti Tahunan">Cuti Tahunan (Potong Saldo Kuota)</option>
-              <option value="Izin Sakit">Izin Sakit (Upload Surat Dokter)</option>
-              <option value="Izin Khusus / Acara Keluarga">Izin Khusus / Acara Keluarga</option>
-              <option value="Cuti Melahirkan / Bersalin">Cuti Melahirkan / Bersalin</option>
-            </select>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Mulai Tanggal</label>
-              <input type="date" id="leave-start" class="form-control" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Sampai Tanggal</label>
-              <input type="date" id="leave-end" class="form-control" required>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Alasan Cuti / Keterangan</label>
-            <textarea id="leave-reason" class="form-control" rows="3" placeholder="Jelaskan kebutuhan pengajuan cuti Anda..." required></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-cuti')">Batal</button>
-          <button type="submit" class="btn-nalar-primary">Submit Pengajuan</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <!-- Modal 2: Pengajuan Barang (PR) -->
   <div id="modal-pr" class="modal-backdrop">
     <div class="modal-box">
@@ -854,19 +809,19 @@
 
   <!-- Supabase JS SDK & Configuration -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/supabase-config.js?v=20260831_05"></script>
+  <script src="js/supabase-config.js?v=20260831_10"></script>
 
   <!-- Application Modules -->
-  <script src="js/modules/data.js?v=20260831_05"></script>
-  <script src="js/modules/dashboard.js?v=20260831_05"></script>
-  <script src="js/modules/cuti.js?v=20260831_05"></script>
-  <script src="js/modules/timesheet.js?v=20260831_05"></script>
-  <script src="js/modules/pengajuan-barang.js?v=20260831_05"></script>
-  <script src="js/modules/cash-advance.js?v=20260831_05"></script>
-  <script src="js/modules/dapur-yayasan.js?v=20260831_05"></script>
-  <script src="js/modules/hc-hub.js?v=20260831_05"></script>
-  <script src="js/modules/admin-hub.js?v=20260831_05"></script>
-  <script src="js/modules/approval-center.js?v=20260831_05"></script>
-  <script src="js/app.js?v=20260831_05"></script>
+  <script src="js/modules/data.js?v=20260831_10"></script>
+  <script src="js/modules/dashboard.js?v=20260831_10"></script>
+  <script src="js/modules/cuti.js?v=20260831_10"></script>
+  <script src="js/modules/timesheet.js?v=20260831_10"></script>
+  <script src="js/modules/pengajuan-barang.js?v=20260831_10"></script>
+  <script src="js/modules/cash-advance.js?v=20260831_10"></script>
+  <script src="js/modules/dapur-yayasan.js?v=20260831_10"></script>
+  <script src="js/modules/hc-hub.js?v=20260831_10"></script>
+  <script src="js/modules/admin-hub.js?v=20260831_10"></script>
+  <script src="js/modules/approval-center.js?v=20260831_10"></script>
+  <script src="js/app.js?v=20260831_10"></script>
 </body>
 </html>

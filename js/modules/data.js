@@ -2997,22 +2997,28 @@ class DatabaseManager {
     });
     const id = `LV-2026-${String(maxNum + 1).padStart(3, '0')}`;
     
-    let approvalFlow = 'HC_DIRECT';
-    let stage = 'HC_REVIEW';
-    let approver = 'Tazkia Aulia (Human Capital)';
+    let approvalFlow = 'DIR_TIER';
+    let stage = 'DIR_OPS_OR_KEU_REVIEW';
+    let approver = 'Direktur Operasional (Alfaqih) / Direktur Keuangan (Kody)';
 
-    if (user.role === 'SURVEYOR' || user.role === 'PERWAKILAN_YAYASAN' || user.role === 'STAFF_OPERASIONAL') {
-      approvalFlow = 'HC_DIRECT';
-      stage = 'HC_REVIEW';
-      approver = 'Tazkia Aulia (Human Capital)';
-    } else if (user.role === 'FAT_OFFICER' || user.role === 'STAFF_AHLI_KEUANGAN' || user.role === 'MAKER_YAYASAN') {
-      approvalFlow = 'FINANCE_TIER';
-      stage = 'DIR_KEU_REVIEW';
-      approver = 'Kody Suryo Nugroho (Direktur Keuangan)';
-    } else if (user.role === 'MANAGER_AREA' || user.role === 'MANAGER_KEUANGAN' || user.role === 'HUMAN_CAPITAL') {
-      approvalFlow = 'MANAGER_TIER';
+    // Matriks Persetujuan Cuti:
+    // 1. Perwakilan Yayasan & Surveyor: Level 1 Manager Area -> Level 2 Human Capital
+    if (user.role === 'PERWAKILAN_YAYASAN' || user.role === 'SURVEYOR') {
+      approvalFlow = 'PY_TIER';
+      stage = 'MANAGER_AREA_REVIEW';
+      approver = 'Manager Area Terkait';
+    }
+    // 2. Maker Yayasan: Level 1 Staff Ahli Keuangan -> Level 2 Human Capital
+    else if (user.role === 'MAKER_YAYASAN') {
+      approvalFlow = 'MY_TIER';
+      stage = 'STAFF_AHLI_REVIEW';
+      approver = 'Staff Ahli Keuangan';
+    }
+    // 3. Manager Area, Staff Ahli Keuangan, FAT Officer, Human Capital, Staff Operasional, Manager Keuangan: Level 1 Direktur -> Level 2 Human Capital
+    else {
+      approvalFlow = 'DIR_TIER';
       stage = 'DIR_OPS_OR_KEU_REVIEW';
-      approver = 'Muhammad Arrasyid / Kody Suryo Nugroho';
+      approver = 'Direktur Operasional (Alfaqih) / Direktur Keuangan (Kody)';
     }
 
     const realTimestamp = getRealtimeTimestamp();
@@ -3070,21 +3076,18 @@ class DatabaseManager {
 
       // Cari approver dinamis dari database pengguna
       let targetApprover = null;
-      if (approvalFlow === 'MANAGER_TIER') {
-        // Utamakan Muhammad Alfaqih (DO-002) atau Direktur Operasional dengan email real
+      if (approvalFlow === 'PY_TIER') {
+        targetApprover = this.getUsers().find(u => u.role === 'MANAGER_AREA');
+      } else if (approvalFlow === 'MY_TIER') {
+        targetApprover = this.getUsers().find(u => u.role === 'STAFF_AHLI_KEUANGAN');
+      } else {
         targetApprover = this.getUsers().find(u => (u.id === 'DO-002' || u.name.includes('Alfaqih')) && u.role === 'DIREKTUR_OPERASIONAL') ||
-                         this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL' && u.email && (!u.email.includes('@erpmms.co.id') || u.email.includes('@gmail'))) ||
                          this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL') ||
                          this.getUsers().find(u => u.role === 'DIREKTUR_KEUANGAN');
-      } else if (approvalFlow === 'FINANCE_TIER') {
-        targetApprover = this.getUsers().find(u => u.role === 'DIREKTUR_KEUANGAN');
-      } else {
-        // Default untuk staff, perwakilan, surveyor: ke Human Capital
-        targetApprover = this.getUsers().find(u => u.role === 'HUMAN_CAPITAL');
       }
 
       const toEmail = targetApprover ? targetApprover.email : 'alfaqih1108@gmail.com';
-      const toName = targetApprover ? targetApprover.name : 'Muhammad Alfaqih (Direktur Operasional)';
+      const toName = targetApprover ? targetApprover.name : 'Direktur Operasional / Keuangan';
 
       this.notifyEmail({
         to: toEmail,
@@ -3127,65 +3130,65 @@ class DatabaseManager {
       });
     }
 
-    const isFinance = (leave.approvalFlow === 'FINANCE_TIER');
-    const isManagerTier = (leave.approvalFlow === 'MANAGER_TIER');
-    const isHCDirect = (leave.approvalFlow === 'HC_DIRECT');
-
-    // Catat approval audit trail real-time
-    if (leave.stage === 'DIR_KEU_REVIEW' || leave.stage === 'DIR_OPS_OR_KEU_REVIEW' || leave.stage === 'MANAGER_REVIEW') {
+    if (status === 'REJECTED') {
+      leave.stage = 'REJECTED';
+      leave.status = 'REJECTED';
       leave.approvalHistory.push({
-        stage: leave.stage,
-        level: 2,
-        action: status === 'REJECTED' ? 'REJECTED' : 'APPROVED',
+        stage: 'REJECTED',
+        level: leave.approvalHistory.length + 1,
+        action: 'REJECTED',
         actorName: `${user.name} (${user.roleLabel})`,
         actorRole: user.roleLabel,
         timestamp: realTimestamp,
-        notes: status === 'REJECTED' 
-          ? `Pengajuan cuti ditolak oleh ${user.name}` 
-          : (isFinance 
-              ? 'Persetujuan cuti diberikan oleh Direktur Keuangan & diteruskan ke HC' 
-              : 'Persetujuan cuti diberikan oleh Direksi & diteruskan ke HC')
+        notes: `Pengajuan cuti ditolak oleh ${user.name} (${user.roleLabel}).`
       });
-    } else if (leave.stage === 'HC_REVIEW' || leave.stage === 'HC_FINAL' || nextStage === 'APPROVED') {
-      const hcLevel = isHCDirect ? 2 : 3;
-      leave.approvalHistory.push({
-        stage: 'HC_FINAL',
-        level: hcLevel,
-        action: status === 'REJECTED' ? 'REJECTED' : 'APPROVED',
-        actorName: `${user.name} (${user.roleLabel})`,
-        actorRole: user.roleLabel,
-        timestamp: realTimestamp,
-        notes: status === 'REJECTED' 
-          ? `Pengajuan cuti ditolak oleh Tim Human Capital` 
-          : (leave.quotaDeductionType === 'NONE' 
+    } else {
+      // Step 1: Dari Level 1 (MANAGER_AREA_REVIEW, DIR_OPS_OR_KEU_REVIEW, STAFF_AHLI_REVIEW) ke HC_REVIEW
+      if (leave.stage === 'MANAGER_AREA_REVIEW' || leave.stage === 'DIR_OPS_OR_KEU_REVIEW' || leave.stage === 'STAFF_AHLI_REVIEW' || leave.stage === 'DIR_KEU_REVIEW') {
+        leave.approvalHistory.push({
+          stage: leave.stage,
+          level: 2,
+          action: 'APPROVED',
+          actorName: `${user.name} (${user.roleLabel})`,
+          actorRole: user.roleLabel,
+          timestamp: realTimestamp,
+          notes: `Persetujuan Level 1 disahkan oleh ${user.name} (${user.roleLabel}) & diteruskan ke Human Capital.`
+        });
+
+        // Jika pemohon adalah Human Capital sendiri dan diapprove oleh Direktur, langsung final
+        if (leave.role === 'HUMAN_CAPITAL') {
+          leave.stage = 'HC_FINAL';
+          leave.status = 'APPROVED';
+          leave.approver = `Disetujui Penuh (${user.name} - ${user.roleLabel})`;
+          this._deductLeaveQuota(leave);
+        } else {
+          leave.stage = 'HC_REVIEW';
+          leave.status = 'PENDING';
+          leave.approver = 'Tazkia Aulia (Human Capital)';
+        }
+      }
+      // Step 2: Dari HC_REVIEW ke HC_FINAL (Approved)
+      else if (leave.stage === 'HC_REVIEW' || nextStage === 'HC_FINAL' || nextStage === 'APPROVED') {
+        leave.approvalHistory.push({
+          stage: 'HC_FINAL',
+          level: 3,
+          action: 'APPROVED',
+          actorName: `${user.name} (${user.roleLabel})`,
+          actorRole: user.roleLabel,
+          timestamp: realTimestamp,
+          notes: (leave.quotaDeductionType === 'NONE' 
              ? 'Disetujui penuh dengan Upah Penuh (Izin Khusus Pasal 15-16)' 
              : `Disetujui penuh & Kuota ${leave.quotaDeductionType} otomatis dipotong -${leave.duration} hari.`)
-      });
-    }
+        });
 
-    leave.stage = nextStage;
-    leave.status = status;
-
-    if (nextStage === 'HC_REVIEW') {
-      leave.approver = 'Tazkia Aulia (Human Capital)';
-    } else if (status === 'APPROVED') {
-      leave.approver = `Disetujui Penuh (${user.name} - ${user.roleLabel})`;
-      
-      const u = this.getUsers().find(usr => usr.id === leave.employeeId);
-      const isCurrent = (this.data.currentUser.id === leave.employeeId);
-
-      if (leave.quotaDeductionType === 'ANNUAL') {
-        const deduct = Number(leave.duration) || 1;
-        if (u) u.remainingAnnualLeave = Math.max(0, Math.round(((Number(u.remainingAnnualLeave) || 12) - deduct) * 10) / 10);
-        if (isCurrent) this.data.currentUser.remainingAnnualLeave = Math.max(0, Math.round(((Number(this.data.currentUser.remainingAnnualLeave) || 12) - deduct) * 10) / 10);
-      } else if (leave.quotaDeductionType === 'PERSONAL') {
-        const deduct = Number(leave.duration) || 1;
-        if (u) u.remainingPersonalLeave = Math.max(0, Math.round(((Number(u.remainingPersonalLeave) || 3) - deduct) * 10) / 10);
-        if (isCurrent) this.data.currentUser.remainingPersonalLeave = Math.max(0, Math.round(((Number(this.data.currentUser.remainingPersonalLeave) || 3) - deduct) * 10) / 10);
+        leave.stage = 'HC_FINAL';
+        leave.status = 'APPROVED';
+        leave.approver = `Disetujui Penuh (${user.name} - ${user.roleLabel})`;
+        this._deductLeaveQuota(leave);
       }
     }
 
-    this.addLog(`${user.name} (${user.roleLabel}) memproses Cuti ${id} [${status}] pada ${realTimestamp}`, 'leave');
+    this.addLog(`${user.name} (${user.roleLabel}) memproses Cuti ${id} [${leave.status}] pada ${realTimestamp}`, 'leave');
     this.save();
 
     // Background Cloud Sync & Email ke Pemohon Cuti
@@ -3201,8 +3204,8 @@ class DatabaseManager {
       const applicant = this.getUsers().find(u => u.id === leave.employeeId);
       const applicantEmail = applicant ? applicant.email : null;
       if (applicantEmail) {
-        const isApproved = (status === 'APPROVED');
-        const isRejected = (status === 'REJECTED');
+        const isApproved = (leave.status === 'APPROVED');
+        const isRejected = (leave.status === 'REJECTED');
         this.notifyEmail({
           to: applicantEmail,
           recipientName: leave.employeeName,
@@ -3221,6 +3224,21 @@ class DatabaseManager {
     }, 0);
 
     return true;
+  }
+
+  _deductLeaveQuota(leave) {
+    const u = this.getUsers().find(usr => usr.id === leave.employeeId);
+    const isCurrent = (this.data.currentUser && this.data.currentUser.id === leave.employeeId);
+
+    if (leave.quotaDeductionType === 'ANNUAL') {
+      const deduct = Number(leave.duration) || 1;
+      if (u) u.remainingAnnualLeave = Math.max(0, Math.round(((Number(u.remainingAnnualLeave) || 12) - deduct) * 10) / 10);
+      if (isCurrent) this.data.currentUser.remainingAnnualLeave = Math.max(0, Math.round(((Number(this.data.currentUser.remainingAnnualLeave) || 12) - deduct) * 10) / 10);
+    } else if (leave.quotaDeductionType === 'PERSONAL') {
+      const deduct = Number(leave.duration) || 1;
+      if (u) u.remainingPersonalLeave = Math.max(0, Math.round(((Number(u.remainingPersonalLeave) || 3) - deduct) * 10) / 10);
+      if (isCurrent) this.data.currentUser.remainingPersonalLeave = Math.max(0, Math.round(((Number(this.data.currentUser.remainingPersonalLeave) || 3) - deduct) * 10) / 10);
+    }
   }
 
   async deleteLeave(id) {
@@ -3334,48 +3352,43 @@ class DatabaseManager {
     const id = `TS-2026-W33-${String(this.getTimesheets().length + 1).padStart(2, '0')}`;
     const realTimestamp = getRealtimeTimestamp();
     
-    const isSurveyor = (user.role === 'SURVEYOR' || user.role === 'PERWAKILAN_YAYASAN' || user.role === 'STAFF_OPERASIONAL');
-    const status = isSurveyor ? 'APPROVED' : 'PENDING';
-    const approver = isSurveyor ? 'Sistem Lapangan (Auto-Logged Mandiri)' : 'Tazkia Aulia (Human Capital)';
+    const calculatedHours = (tsData.hours !== undefined && tsData.hours !== null && !isNaN(Number(tsData.hours))) 
+      ? Number(tsData.hours) 
+      : 0;
 
     const newTs = {
       id,
       employeeId: user.id,
       employeeName: user.name,
       role: user.role,
+      roleLabel: user.roleLabel,
       department: user.department,
-      status,
-      approver,
+      status: 'RECORDED',
+      stage: 'LOGGED',
+      approver: 'Tercatat Langsung (Tanpa Approval)',
       createdAt: realTimestamp,
+      date: tsData.date || new Date().toISOString().slice(0, 10),
+      startTime: tsData.startTime || '08:00',
+      endTime: tsData.endTime || '12:00',
+      hours: calculatedHours,
+      activityPreset: tsData.activityPreset || 'Aktivitas Kerja',
+      activity: tsData.activity || tsData.activityPreset || 'Pencatatan Tugas Harian',
       approvalHistory: [
         {
-          stage: 'SUBMISSION',
+          stage: 'LOGGED',
           level: 1,
-          action: 'SUBMITTED',
+          action: 'RECORDED',
           actorName: user.name,
           actorRole: user.roleLabel || 'Karyawan',
           timestamp: realTimestamp,
-          notes: `Aktivitas: "${tsData.activityPreset || tsData.activity}" (${tsData.hours} Jam: ${tsData.startTime} - ${tsData.endTime})`
+          notes: `Aktivitas: "${tsData.activityPreset || tsData.activity}" (${calculatedHours} Jam: ${tsData.startTime} - ${tsData.endTime})`
         }
-      ],
-      ...tsData
+      ]
     };
-
-    if (isSurveyor) {
-      newTs.approvalHistory.push({
-        stage: 'HC_VALIDATION',
-        level: 3,
-        action: 'APPROVED',
-        actorName: 'Sistem Lapangan (Auto-Logged Mandiri)',
-        actorRole: 'Auto-Logged Mandiri',
-        timestamp: realTimestamp,
-        notes: 'Presensi jam kerja terverifikasi otomatis via koordinat operasional lapangan.'
-      });
-    }
 
     if (!Array.isArray(this.data.timesheets)) this.data.timesheets = [];
     this.data.timesheets.unshift(newTs);
-    this.addLog(`${user.name} mencatat log kerja: ${tsData.activityPreset || 'Aktivitas'} (${tsData.hours} Jam) [${status}] pada ${realTimestamp}`, 'timesheet');
+    this.addLog(`${user.name} mencatat log kerja: ${newTs.activityPreset} (${calculatedHours} Jam) pada ${realTimestamp}`, 'timesheet');
     this.save();
 
     this.syncToSupabase('timesheets', {
@@ -3383,13 +3396,13 @@ class DatabaseManager {
       employee_id: newTs.employeeId,
       employee_name: newTs.employeeName,
       role: newTs.role,
-      date: newTs.date || new Date().toISOString().slice(0, 10),
+      date: newTs.date,
       start_time: newTs.startTime,
       end_time: newTs.endTime,
-      activity: newTs.activity || newTs.activityPreset || 'Log Kehadiran',
-      activity_preset: newTs.activityPreset || null,
+      activity: newTs.activity,
+      activity_preset: newTs.activityPreset,
       category: newTs.category || 'Operasional',
-      status: newTs.status || 'COMPLETED'
+      status: 'RECORDED'
     });
 
     return newTs;
@@ -3455,6 +3468,13 @@ class DatabaseManager {
 
   addItemRequest(prData) {
     const user = this.getCurrentUser();
+    
+    // Maker Yayasan: di-nonaktifkan fitur Pengadaan PR
+    if (user.role === 'MAKER_YAYASAN') {
+      console.warn('⚠️ Maker Yayasan tidak diizinkan membuat pengajuan pengadaan barang.');
+      return null;
+    }
+
     const allPrs = this.getItemRequests() || [];
     let maxNum = 44;
     allPrs.forEach(p => {
@@ -3469,8 +3489,25 @@ class DatabaseManager {
     const id = `PR-2026-0${maxNum + 1}`;
     const realTimestamp = getRealtimeTimestamp();
     
-    const isManagerArea = (user.role === 'MANAGER_AREA');
-    const stage = isManagerArea ? 'FINANCE_VERIFICATION' : 'MANAGER_APPROVAL';
+    let stage = 'DIRECTOR_APPROVAL';
+    let approvalFlow = 'STAFF_1TIER';
+
+    // Matriks Persetujuan PR:
+    // 1. Perwakilan Yayasan: 3 level (Level 1 Manager Area -> Level 2 Staff Ahli Keuangan -> Level 3 Direktur Ops/Keu)
+    if (user.role === 'PERWAKILAN_YAYASAN') {
+      stage = 'MANAGER_APPROVAL';
+      approvalFlow = 'PY_3TIER';
+    }
+    // 2. Manager Area / Manager Keuangan / Human Capital: 2 level (Level 1 Staff Ahli Keuangan -> Level 2 Direktur Ops/Keu)
+    else if (user.role === 'MANAGER_AREA' || user.role === 'MANAGER_KEUANGAN' || user.role === 'HUMAN_CAPITAL') {
+      stage = 'FINANCE_VERIFICATION';
+      approvalFlow = 'MGR_2TIER';
+    }
+    // 3. Staff Operasional, FAT Officer, Staff Ahli Keuangan, Surveyor: 1 level (Langsung Level 1 Direktur Ops/Keu)
+    else {
+      stage = 'DIRECTOR_APPROVAL';
+      approvalFlow = 'STAFF_1TIER';
+    }
 
     const newPR = {
       id,
@@ -3479,6 +3516,7 @@ class DatabaseManager {
       role: user.role,
       department: user.department,
       targetKitchen: prData.targetKitchen || null,
+      approvalFlow,
       stage,
       status: 'PENDING',
       createdAt: realTimestamp,
@@ -3524,26 +3562,26 @@ class DatabaseManager {
         approval_history: newPR.approvalHistory
       });
 
-      // Kirim Notifikasi Email ke Manajer Area / Direksi secara dinamis
+      // Kirim Notifikasi Email ke approver yang tepat sesuai matriks
       let approverUser = null;
-      if (isManagerArea) {
-        approverUser = this.getUsers().find(u => (u.id === 'DO-002' || u.name.includes('Alfaqih')) && u.role === 'DIREKTUR_OPERASIONAL') ||
-                       this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL') || 
-                       this.getUsers().find(u => u.role === 'DIREKTUR_KEUANGAN');
-      } else {
+      if (approvalFlow === 'PY_3TIER') {
         const kitchen = (this.data && this.data.kitchens) ? this.data.kitchens.find(k => (k.nama_dapur === newPR.targetKitchen || k.namaDapur === newPR.targetKitchen)) : null;
         if (kitchen && kitchen.manager_area) {
           approverUser = this.getUsers().find(u => kitchen.manager_area.includes(u.name));
         }
         if (!approverUser) {
-          approverUser = this.getUsers().find(u => u.role === 'MANAGER_AREA') || 
-                         this.getUsers().find(u => (u.id === 'DO-002' || u.name.includes('Alfaqih')) && u.role === 'DIREKTUR_OPERASIONAL') ||
-                         this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL');
+          approverUser = this.getUsers().find(u => u.role === 'MANAGER_AREA');
         }
+      } else if (approvalFlow === 'MGR_2TIER') {
+        approverUser = this.getUsers().find(u => u.role === 'STAFF_AHLI_KEUANGAN');
+      } else {
+        approverUser = this.getUsers().find(u => (u.id === 'DO-002' || u.name.includes('Alfaqih')) && u.role === 'DIREKTUR_OPERASIONAL') ||
+                       this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL') ||
+                       this.getUsers().find(u => u.role === 'DIREKTUR_KEUANGAN');
       }
 
       const approverEmail = approverUser ? approverUser.email : 'alfaqih1108@gmail.com';
-      const approverName = approverUser ? approverUser.name : 'Muhammad Alfaqih (Direktur Operasional)';
+      const approverName = approverUser ? approverUser.name : 'Direktur Operasional / Keuangan';
 
       this.notifyEmail({
         to: approverEmail,
@@ -3551,14 +3589,14 @@ class DatabaseManager {
         subject: `Permintaan Pengadaan Barang Baru (${newPR.id})`,
         notificationType: 'PR_SUBMITTED',
         title: 'Pengajuan Purchase Requisition (PR) Baru',
-        summaryText: `${user.name} (${user.roleLabel}) telah mengajukan pengadaan barang untuk ${newPR.targetKitchen}. Mohon untuk meninjau dan memvalidasi permintaan ini.`,
+        summaryText: `${user.name} (${user.roleLabel}) telah mengajukan pengadaan barang untuk ${newPR.targetKitchen || 'Operasional'}. Mohon untuk meninjau dan memvalidasi permintaan ini.`,
         details: {
           'No. Pengajuan': newPR.id,
           'Pemohon': `${user.name} (${user.roleLabel})`,
           'Nama Barang': newPR.itemName,
           'Jumlah': `${newPR.quantity} Unit`,
           'Estimasi Biaya': `Rp ${Number(newPR.totalPrice).toLocaleString('id-ID')}`,
-          'Target Dapur': newPR.targetKitchen,
+          'Target Dapur': newPR.targetKitchen || '-',
           'Tingkat Urgensi': newPR.urgency
         }
       });
@@ -3587,8 +3625,6 @@ class DatabaseManager {
         notes: `Kebutuhan: "${pr.itemName}" (${pr.originalQuantity || pr.quantity} unit) — ${pr.reason || 'Kebutuhan operasional'}`
       });
     }
-
-    const isManagerRequester = (pr.role === 'MANAGER_AREA' || pr.role === 'MANAGER_KEUANGAN');
 
     // Simpan data lama jika ada penyesuaian dari Approver
     if (adjustmentData && (adjustmentData.newQty !== undefined || adjustmentData.newUnitPrice !== undefined)) {
@@ -3627,50 +3663,63 @@ class DatabaseManager {
       this.addLog(`${user.name} (${user.roleLabel}) menyetujui PR ${id} dengan penyesuaian: ${newQty} unit @ Rp ${newUnitPrice.toLocaleString('id-ID')} (Total: Rp ${newTotalPrice.toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
     }
 
-    // Catat approval history dengan real-time timestamp akurat
-    if (pr.stage === 'MANAGER_APPROVAL') {
+    if (finalStatus === 'REJECTED') {
+      pr.stage = 'REJECTED';
+      pr.status = 'REJECTED';
       pr.approvalHistory.push({
-        stage: 'MANAGER_APPROVAL',
-        level: 2,
-        action: finalStatus === 'REJECTED' ? 'REJECTED' : 'APPROVED',
+        stage: 'REJECTED',
+        level: pr.approvalHistory.length + 1,
+        action: 'REJECTED',
         actorName: `${user.name} (${user.roleLabel})`,
         actorRole: user.roleLabel,
         timestamp: realTimestamp,
-        notes: finalStatus === 'REJECTED' ? `Ditolak oleh ${user.name}` : 'Kebutuhan telah divalidasi & disetujui untuk diteruskan ke Keuangan'
+        notes: `Pengadaan barang ditolak oleh ${user.name} (${user.roleLabel}).`
       });
-    } else if (pr.stage === 'FINANCE_VERIFICATION') {
-      pr.approvalHistory.push({
-        stage: 'FINANCE_VERIFICATION',
-        level: isManagerRequester ? 2 : 3,
-        action: finalStatus === 'REJECTED' ? 'REJECTED' : adjustmentData ? 'ADJUSTED_AND_APPROVED' : 'APPROVED',
-        actorName: `${user.name} (${user.roleLabel})`,
-        actorRole: user.roleLabel,
-        timestamp: realTimestamp,
-        notes: finalStatus === 'REJECTED' 
-          ? `Ditolak oleh ${user.name}` 
-          : adjustmentData 
-          ? `✓ Disetujui dengan penyesuaian: ${pr.quantity} unit @ Rp ${pr.unitPrice.toLocaleString('id-ID')} (Total: Rp ${pr.totalPrice.toLocaleString('id-ID')}). Catatan: "${adjustmentData.notes}"` 
-          : 'Plafon anggaran terverifikasi sesuai pagu dana operasional',
-        adjustment: adjustmentData
-      });
-    } else if (pr.stage === 'DIRECTOR_APPROVAL') {
-      pr.approvalHistory.push({
-        stage: 'DIRECTOR_APPROVAL',
-        level: isManagerRequester ? 3 : 4,
-        action: finalStatus === 'REJECTED' ? 'REJECTED' : 'APPROVED',
-        actorName: `${user.name} (${user.roleLabel})`,
-        actorRole: user.roleLabel,
-        timestamp: realTimestamp,
-        notes: finalStatus === 'REJECTED' 
-          ? `Ditolak oleh ${user.name}` 
-          : `Purchase Order resmi PO-${pr.id.replace('PR-', '')} telah diterbitkan dan siap dikirim ke vendor.`
-      });
+    } else {
+      // Catat approval history sesuai tahapan
+      if (pr.stage === 'MANAGER_APPROVAL') {
+        pr.approvalHistory.push({
+          stage: 'MANAGER_APPROVAL',
+          level: 2,
+          action: 'APPROVED',
+          actorName: `${user.name} (${user.roleLabel})`,
+          actorRole: user.roleLabel,
+          timestamp: realTimestamp,
+          notes: 'Kebutuhan operasional divalidasi Manager Area & diteruskan ke Verifikasi Anggaran Keuangan'
+        });
+        pr.stage = 'FINANCE_VERIFICATION';
+        pr.status = 'PENDING';
+      } else if (pr.stage === 'FINANCE_VERIFICATION') {
+        pr.approvalHistory.push({
+          stage: 'FINANCE_VERIFICATION',
+          level: pr.approvalHistory.length + 1,
+          action: adjustmentData ? 'ADJUSTED_AND_APPROVED' : 'APPROVED',
+          actorName: `${user.name} (${user.roleLabel})`,
+          actorRole: user.roleLabel,
+          timestamp: realTimestamp,
+          notes: adjustmentData 
+            ? `✓ Anggaran diverifikasi dengan penyesuaian: ${pr.quantity} unit @ Rp ${pr.unitPrice.toLocaleString('id-ID')} (Total: Rp ${pr.totalPrice.toLocaleString('id-ID')}). Catatan: "${adjustmentData.notes}"` 
+            : 'Plafon anggaran terverifikasi sesuai pagu dana operasional & diteruskan ke Direktur',
+          adjustment: adjustmentData
+        });
+        pr.stage = 'DIRECTOR_APPROVAL';
+        pr.status = 'PENDING';
+      } else if (pr.stage === 'DIRECTOR_APPROVAL' || nextStage === 'COMPLETED' || finalStatus === 'APPROVED') {
+        pr.approvalHistory.push({
+          stage: 'DIRECTOR_APPROVAL',
+          level: pr.approvalHistory.length + 1,
+          action: 'APPROVED',
+          actorName: `${user.name} (${user.roleLabel})`,
+          actorRole: user.roleLabel,
+          timestamp: realTimestamp,
+          notes: `Purchase Order resmi PO-${pr.id.replace('PR-', '')} telah disahkan oleh Direktur dan siap dikirim ke vendor.`
+        });
+        pr.stage = 'COMPLETED';
+        pr.status = 'APPROVED';
+      }
     }
 
-    pr.stage = nextStage;
-    pr.status = finalStatus;
-
-    if (finalStatus === 'APPROVED') {
+    if (pr.status === 'APPROVED') {
       this.addLog(`Purchase Order resmi diterbitkan untuk PR ${id} (${pr.itemName} - ${pr.quantity} Unit · Rp ${Number(pr.totalPrice).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
     }
     this.save();
@@ -3691,8 +3740,8 @@ class DatabaseManager {
       const applicant = this.getUsers().find(u => u.id === pr.employeeId);
       const applicantEmail = applicant ? applicant.email : null;
       if (applicantEmail) {
-        const isApproved = (finalStatus === 'APPROVED');
-        const isRejected = (finalStatus === 'REJECTED');
+        const isApproved = (pr.status === 'APPROVED');
+        const isRejected = (pr.status === 'REJECTED');
         this.notifyEmail({
           to: applicantEmail,
           recipientName: pr.employeeName,
@@ -4297,16 +4346,15 @@ class DatabaseManager {
       const pr = this.getItemRequests().find(p => p.id === id);
       if (!pr) return null;
 
-      const isManagerRequester = (pr.role === 'MANAGER_AREA' || pr.role === 'MANAGER_KEUANGAN');
       const history = Array.isArray(pr.approvalHistory) ? pr.approvalHistory : [];
       const steps = [];
 
-      // Step 1: Submission
+      // Step 1: Submission (Semua Role)
       const hist1 = history.find(h => h.level === 1 || h.stage === 'SUBMISSION');
       steps.push({
         level: 1,
         title: 'Pengajuan Purchase Requisition (PR)',
-        subtitle: 'Inisiasi Permintaan Barang',
+        subtitle: 'Inisiasi Permintaan Barang & Justifikasi Operasional',
         actorName: hist1 ? hist1.actorName : pr.employeeName,
         actorRole: hist1 ? hist1.actorRole : (pr.role ? pr.role.replace(/_/g, ' ') : 'Pemohon'),
         department: pr.department,
@@ -4315,61 +4363,112 @@ class DatabaseManager {
         notes: hist1 ? hist1.notes : `Kebutuhan: "${pr.itemName}" (${pr.originalQuantity || pr.quantity} unit) — ${pr.reason || 'Kebutuhan operasional'}`
       });
 
-      // Step 2: Manager Review (If requester is staff/surveyor/yayasan)
-      if (!isManagerRequester) {
-        const hist2 = history.find(h => h.stage === 'MANAGER_APPROVAL' || (h.level === 2 && h.stage !== 'SUBMISSION'));
-        const isStep2Current = (pr.stage === 'MANAGER_APPROVAL' && pr.status === 'PENDING');
-        const isStep2Rejected = (pr.stage === 'REJECTED' && !hist2);
+      // MATRIKS ALUR PR:
+      // SKENARIO A: Perwakilan Yayasan (3 Level: Manager Area -> Staff Ahli Keuangan -> Direktur)
+      if (pr.role === 'PERWAKILAN_YAYASAN') {
+        // Level 1: Manager Area
+        const histMA = history.find(h => h.stage === 'MANAGER_APPROVAL' || (h.level === 2 && h.stage !== 'SUBMISSION'));
+        const isMACurrent = (pr.stage === 'MANAGER_APPROVAL' && pr.status === 'PENDING');
+        const isMARejected = (pr.status === 'REJECTED' && pr.stage === 'MANAGER_APPROVAL');
 
         steps.push({
           level: 2,
-          title: 'Review & Validasi Manager Divisi',
-          subtitle: 'Verifikasi Urgensi & Justifikasi Kebutuhan Lapangan',
-          actorName: hist2 ? hist2.actorName : (pr.department && pr.department.includes('Lapangan') ? 'Dian Ekawati / Bivaldie A.R. (Manajer Area)' : 'Viona (Manager Keuangan)'),
-          actorRole: 'Manager Divisi',
-          timestamp: hist2 ? hist2.timestamp : isStep2Current ? '⏳ Sedang Menunggu Review Manager' : isStep2Rejected ? pr.createdAt : '⚪ Menunggu Giliran',
-          status: hist2 ? (hist2.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep2Rejected ? 'REJECTED' : isStep2Current ? 'ACTIVE' : 'UPCOMING',
-          notes: hist2 ? hist2.notes : isStep2Current ? 'Dalam antrean review Manager Divisi' : 'Menunggu tahap sebelumnya'
+          title: 'Review & Validasi Manager Area (Level 1)',
+          subtitle: 'Verifikasi Urgensi & Kelayakan Kebutuhan Dapur SPPG',
+          actorName: histMA ? histMA.actorName : (pr.targetKitchen ? `Manager Area Terkait (${pr.targetKitchen})` : 'Manager Area'),
+          actorRole: 'Manager Area',
+          timestamp: histMA ? histMA.timestamp : isMACurrent ? '⏳ Sedang Menunggu Review Manager Area' : isMARejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: histMA ? (histMA.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isMARejected ? 'REJECTED' : isMACurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histMA ? histMA.notes : isMACurrent ? 'Dalam antrean telaah Manager Area' : 'Menunggu tahap pengajuan'
+        });
+
+        // Level 2: Staff Ahli Keuangan
+        const histSA = history.find(h => h.stage === 'FINANCE_VERIFICATION');
+        const isSACurrent = (pr.stage === 'FINANCE_VERIFICATION' && pr.status === 'PENDING');
+        const isSARejected = (pr.status === 'REJECTED' && pr.stage === 'FINANCE_VERIFICATION');
+        const adj = (pr.adjustments && pr.adjustments.length > 0) ? pr.adjustments[0] : (histSA ? histSA.adjustment : null);
+
+        steps.push({
+          level: 3,
+          title: 'Verifikasi Anggaran Keuangan (Level 2)',
+          subtitle: 'Pengecekan Plafon Biaya, Standar Harga & Pagu Anggaran',
+          actorName: histSA ? histSA.actorName : 'Sakhiyah Karomah Salam (Staff Ahli Keuangan)',
+          actorRole: 'Staff Ahli Keuangan',
+          timestamp: histSA ? histSA.timestamp : isSACurrent ? '⏳ Sedang Menunggu Verifikasi Anggaran' : isSARejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: histSA ? (histSA.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isSARejected ? 'REJECTED' : isSACurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histSA ? histSA.notes : isSACurrent ? 'Sedang diverifikasi ketersediaan dana kas' : 'Menunggu persetujuan Manager Area',
+          adjustment: adj
+        });
+
+        // Level 3: Direktur Operasional / Direktur Keuangan
+        const histDir = history.find(h => h.stage === 'DIRECTOR_APPROVAL');
+        const isDirCurrent = (pr.stage === 'DIRECTOR_APPROVAL' && pr.status === 'PENDING');
+        const isDirRejected = (pr.status === 'REJECTED' && pr.stage === 'DIRECTOR_APPROVAL');
+
+        steps.push({
+          level: 4,
+          title: 'Persetujuan Direksi & Terbit PO (Level 3 Final)',
+          subtitle: 'Otorisasi Akhir & Penerbitan Purchase Order Resmi',
+          actorName: histDir ? histDir.actorName : 'Muhammad Alfaqih (Direktur Operasional) / Kody Suryo (Direktur Keuangan)',
+          actorRole: 'Direksi Eksekutif',
+          timestamp: histDir ? histDir.timestamp : isDirCurrent ? '⏳ Sedang Menunggu Otorisasi Direksi' : isDirRejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: histDir ? (histDir.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isDirRejected ? 'REJECTED' : isDirCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histDir ? histDir.notes : isDirCurrent ? 'Menunggu pengesahan Direktur' : 'Menunggu verifikasi keuangan'
         });
       }
+      // SKENARIO B: Manager Area / Manager Keuangan / Human Capital (2 Level: Staff Ahli Keuangan -> Direktur)
+      else if (pr.role === 'MANAGER_AREA' || pr.role === 'MANAGER_KEUANGAN' || pr.role === 'HUMAN_CAPITAL') {
+        // Level 1: Staff Ahli Keuangan
+        const histSA = history.find(h => h.stage === 'FINANCE_VERIFICATION');
+        const isSACurrent = (pr.stage === 'FINANCE_VERIFICATION' && pr.status === 'PENDING');
+        const isSARejected = (pr.status === 'REJECTED' && pr.stage === 'FINANCE_VERIFICATION');
+        const adj = (pr.adjustments && pr.adjustments.length > 0) ? pr.adjustments[0] : (histSA ? histSA.adjustment : null);
 
-      // Step 3: Finance & Budget Verification
-      const targetLevel3 = isManagerRequester ? 2 : 3;
-      const hist3 = history.find(h => h.stage === 'FINANCE_VERIFICATION' || (h.level === targetLevel3 && h.stage !== 'SUBMISSION' && h.stage !== 'MANAGER_APPROVAL'));
-      const isStep3Current = (pr.stage === 'FINANCE_VERIFICATION' && pr.status === 'PENDING');
-      const isStep3Rejected = (pr.stage === 'REJECTED' && !hist3 && (pr.stage === 'FINANCE_VERIFICATION'));
-      const adj = (pr.adjustments && pr.adjustments.length > 0) ? pr.adjustments[0] : (hist3 ? hist3.adjustment : null);
+        steps.push({
+          level: 2,
+          title: 'Verifikasi Anggaran Keuangan (Level 1)',
+          subtitle: 'Pengecekan Plafon Biaya, Standar Harga & Pagu Anggaran',
+          actorName: histSA ? histSA.actorName : 'Sakhiyah Karomah Salam (Staff Ahli Keuangan)',
+          actorRole: 'Staff Ahli Keuangan',
+          timestamp: histSA ? histSA.timestamp : isSACurrent ? '⏳ Sedang Menunggu Verifikasi Anggaran' : isSARejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: histSA ? (histSA.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isSARejected ? 'REJECTED' : isSACurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histSA ? histSA.notes : isSACurrent ? 'Sedang diverifikasi ketersediaan dana kas' : 'Menunggu tahap pengajuan',
+          adjustment: adj
+        });
 
-      steps.push({
-        level: targetLevel3,
-        title: 'Verifikasi Anggaran Keuangan & FAT',
-        subtitle: 'Pengecekan Plafon Biaya, Budget Satuan & Ketersediaan Dana',
-        actorName: hist3 ? hist3.actorName : 'Sakhiyah Karomah Salam (Staf Ahli Keuangan) / Muhammad Imam Adamy (FAT)',
-        actorRole: 'Staf Ahli Keuangan & FAT Officer',
-        timestamp: hist3 ? hist3.timestamp : isStep3Current ? '⏳ Sedang Menunggu Verifikasi Anggaran' : isStep3Rejected ? pr.createdAt : '⚪ Menunggu Giliran',
-        status: hist3 ? (hist3.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep3Rejected ? 'REJECTED' : isStep3Current ? 'ACTIVE' : 'UPCOMING',
-        notes: hist3 
-          ? hist3.notes 
-          : isStep3Current ? 'Sedang diverifikasi ketersediaan dana kas operasional' : 'Menunggu tahap sebelumnya',
-        adjustment: adj
-      });
+        // Level 2: Direktur Operasional / Direktur Keuangan
+        const histDir = history.find(h => h.stage === 'DIRECTOR_APPROVAL');
+        const isDirCurrent = (pr.stage === 'DIRECTOR_APPROVAL' && pr.status === 'PENDING');
+        const isDirRejected = (pr.status === 'REJECTED' && pr.stage === 'DIRECTOR_APPROVAL');
 
-      // Step 4: Executive Approval & PO Issuance
-      const targetLevel4 = isManagerRequester ? 3 : 4;
-      const hist4 = history.find(h => h.stage === 'DIRECTOR_APPROVAL' || (h.level === targetLevel4 && h.stage !== 'SUBMISSION' && h.stage !== 'MANAGER_APPROVAL' && h.stage !== 'FINANCE_VERIFICATION'));
-      const isStep4Current = (pr.stage === 'DIRECTOR_APPROVAL' && pr.status === 'PENDING');
-      const isStep4Rejected = (pr.stage === 'REJECTED' && !hist4 && pr.stage === 'DIRECTOR_APPROVAL');
+        steps.push({
+          level: 3,
+          title: 'Persetujuan Direksi & Terbit PO (Level 2 Final)',
+          subtitle: 'Otorisasi Akhir & Penerbitan Purchase Order Resmi',
+          actorName: histDir ? histDir.actorName : 'Muhammad Alfaqih (Direktur Operasional) / Kody Suryo (Direktur Keuangan)',
+          actorRole: 'Direksi Eksekutif',
+          timestamp: histDir ? histDir.timestamp : isDirCurrent ? '⏳ Sedang Menunggu Otorisasi Direksi' : isDirRejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: histDir ? (histDir.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isDirRejected ? 'REJECTED' : isDirCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histDir ? histDir.notes : isDirCurrent ? 'Menunggu pengesahan Direktur' : 'Menunggu verifikasi keuangan'
+        });
+      }
+      // SKENARIO C: Staff Operasional, FAT Officer, Staff Ahli Keuangan, Surveyor (1 Level Langsung Direktur)
+      else {
+        const histDir = history.find(h => h.stage === 'DIRECTOR_APPROVAL' || (h.level === 2 && h.stage !== 'SUBMISSION'));
+        const isDirCurrent = (pr.stage === 'DIRECTOR_APPROVAL' && pr.status === 'PENDING');
+        const isDirRejected = (pr.status === 'REJECTED');
 
-      steps.push({
-        level: targetLevel4,
-        title: 'Persetujuan Direksi & Penerbitan PO',
-        subtitle: 'Otorisasi Final & Penerbitan Purchase Order Resmi',
-        actorName: hist4 ? hist4.actorName : 'Kody Suryo Nugroho (Direktur Keuangan) / Rochmad (Direktur Utama)',
-        actorRole: 'Direksi Eksekutif',
-        timestamp: hist4 ? hist4.timestamp : isStep4Current ? '⏳ Sedang Menunggu Pengesahan Direksi' : isStep4Rejected ? pr.createdAt : '⚪ Menunggu Giliran',
-        status: hist4 ? (hist4.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep4Rejected ? 'REJECTED' : isStep4Current ? 'ACTIVE' : 'UPCOMING',
-        notes: hist4 ? hist4.notes : isStep4Current ? 'Menunggu pengesahan Direktur' : 'Menunggu tahap sebelumnya'
-      });
+        steps.push({
+          level: 2,
+          title: 'Persetujuan Direksi & Terbit PO (Level 1 Final)',
+          subtitle: 'Otorisasi Langsung Direktur Operasional / Keuangan',
+          actorName: histDir ? histDir.actorName : 'Muhammad Alfaqih (Direktur Operasional) / Kody Suryo (Direktur Keuangan)',
+          actorRole: 'Direksi Eksekutif',
+          timestamp: histDir ? histDir.timestamp : isDirCurrent ? '⏳ Sedang Menunggu Otorisasi Direksi' : isDirRejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: histDir ? (histDir.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isDirRejected ? 'REJECTED' : isDirCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histDir ? histDir.notes : isDirCurrent ? 'Menunggu pengesahan Direktur' : 'Menunggu tahap pengajuan'
+        });
+      }
 
       return {
         type: 'PR',
@@ -4398,9 +4497,6 @@ class DatabaseManager {
       const leave = this.getLeaves().find(l => l.id === id);
       if (!leave) return null;
 
-      const isFinance = (leave.approvalFlow === 'FINANCE_TIER');
-      const isManagerTier = (leave.approvalFlow === 'MANAGER_TIER');
-      const isHCDirect = (leave.approvalFlow === 'HC_DIRECT');
       const history = Array.isArray(leave.approvalHistory) ? leave.approvalHistory : [];
       const steps = [];
 
@@ -4418,89 +4514,74 @@ class DatabaseManager {
         notes: hist1 ? hist1.notes : `Permohonan: ${leave.type} (${leave.duration} hari kerja: ${leave.startDate} s.d ${leave.endDate}). Alasan: "${leave.reason || '-'}"`
       });
 
-      // SKENARIO A: Jalur Langsung HC (Perwakilan Yayasan, Staff Operasional, Surveyor, Maker Yayasan)
-      if (isHCDirect) {
-        const histHC = history.find(h => h.stage === 'HC_FINAL' || h.stage === 'HC_REVIEW' || h.level === 2);
-        const isCurrent = (leave.status === 'PENDING' && (leave.stage === 'HC_REVIEW' || leave.stage === 'HC_FINAL'));
-        const isRejected = (leave.status === 'REJECTED');
+      // MATRIKS ALUR CUTI:
+      // SKENARIO A: Perwakilan Yayasan & Surveyor (Level 1 Manager Area -> Level 2 Human Capital)
+      if (leave.role === 'PERWAKILAN_YAYASAN' || leave.role === 'SURVEYOR') {
+        const histMA = history.find(h => h.stage === 'MANAGER_AREA_REVIEW' || (h.level === 2 && h.stage !== 'SUBMISSION' && h.stage !== 'HC_FINAL'));
+        const isMACurrent = (leave.stage === 'MANAGER_AREA_REVIEW' && leave.status === 'PENDING');
+        const isMARejected = (leave.status === 'REJECTED' && leave.stage === 'MANAGER_AREA_REVIEW');
 
         steps.push({
           level: 2,
-          title: 'Validasi & Pengesahan Human Capital',
-          subtitle: 'Pencatatan HRIS, Kalender Kerja & Pengesahan Hak Cuti',
-          actorName: histHC ? histHC.actorName : 'Tazkia Aulia (Human Capital & GA)',
-          actorRole: 'Human Capital & GA',
-          timestamp: histHC ? histHC.timestamp : isCurrent ? '⏳ Sedang Menunggu Validasi HC' : isRejected ? leave.createdAt : '⚪ Menunggu Giliran',
-          status: histHC ? (histHC.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isRejected ? 'REJECTED' : isCurrent ? 'ACTIVE' : 'UPCOMING',
-          notes: histHC 
-            ? histHC.notes 
-            : isCurrent ? 'Sedang diverifikasi kuota dan kelayakan oleh Tim Human Capital' : 'Menunggu verifikasi'
+          title: 'Review & Persetujuan Manager Area (Level 1)',
+          subtitle: 'Verifikasi Kesiapan Operasional Lapangan & Mitra Dapur',
+          actorName: histMA ? histMA.actorName : 'Manager Area Terkait',
+          actorRole: 'Manager Area',
+          timestamp: histMA ? histMA.timestamp : isMACurrent ? '⏳ Sedang Menunggu Persetujuan Manager Area' : isMARejected ? leave.createdAt : '⚪ Menunggu Giliran',
+          status: histMA ? (histMA.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isMARejected ? 'REJECTED' : isMACurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histMA ? histMA.notes : isMACurrent ? 'Menunggu telaah Manager Area' : 'Menunggu tahap pengajuan'
         });
       }
-      // SKENARIO B: Tim Keuangan (FAT & Staff Ahli) -> Review Direktur Keuangan -> HC
-      else if (isFinance) {
-        const hist2 = history.find(h => h.level === 2 || h.stage === 'DIR_KEU_REVIEW');
-        const isStep2Current = (leave.stage === 'DIR_KEU_REVIEW' && leave.status === 'PENDING');
-        const isStep2Rejected = (leave.status === 'REJECTED' && !hist2 && leave.stage === 'DIR_KEU_REVIEW');
+      // SKENARIO B: Maker Yayasan (Level 1 Staff Ahli Keuangan -> Level 2 Human Capital)
+      else if (leave.role === 'MAKER_YAYASAN') {
+        const histSA = history.find(h => h.stage === 'STAFF_AHLI_REVIEW' || (h.level === 2 && h.stage !== 'SUBMISSION' && h.stage !== 'HC_FINAL'));
+        const isSACurrent = (leave.stage === 'STAFF_AHLI_REVIEW' && leave.status === 'PENDING');
+        const isSARejected = (leave.status === 'REJECTED' && leave.stage === 'STAFF_AHLI_REVIEW');
 
         steps.push({
           level: 2,
-          title: 'Review & Persetujuan Direktur Keuangan',
-          subtitle: 'Verifikasi Operasional & Jadwal Tim Finansial',
-          actorName: hist2 ? hist2.actorName : 'Kody Suryo Nugroho (Direktur Keuangan)',
-          actorRole: 'Direktur Keuangan',
-          timestamp: hist2 ? hist2.timestamp : isStep2Current ? '⏳ Sedang Menunggu Persetujuan Direktur' : isStep2Rejected ? leave.createdAt : '⚪ Menunggu Giliran',
-          status: hist2 ? (hist2.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep2Rejected ? 'REJECTED' : isStep2Current ? 'ACTIVE' : 'UPCOMING',
-          notes: hist2 ? hist2.notes : isStep2Current ? 'Menunggu telaah Direktur Keuangan' : 'Menunggu tahap sebelumnya'
-        });
-
-        const hist3 = history.find(h => h.level === 3 || h.stage === 'HC_FINAL');
-        const isStep3Current = ((leave.stage === 'HC_FINAL' || leave.stage === 'HC_REVIEW') && leave.status === 'PENDING');
-        const isStep3Rejected = (leave.status === 'REJECTED' && leave.stage === 'HC_FINAL');
-
-        steps.push({
-          level: 3,
-          title: 'Pengesahan & Pemotongan Kuota Human Capital',
-          subtitle: 'Pencatatan HRIS, Kalender Kerja & Hak Cuti Normatif',
-          actorName: hist3 ? hist3.actorName : 'Tazkia Aulia (Human Capital & GA)',
-          actorRole: 'Human Capital & GA',
-          timestamp: hist3 ? hist3.timestamp : isStep3Current ? '⏳ Sedang Menunggu Validasi HC' : isStep3Rejected ? leave.createdAt : '⚪ Menunggu Giliran',
-          status: hist3 ? (hist3.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep3Rejected ? 'REJECTED' : isStep3Current ? 'ACTIVE' : 'UPCOMING',
-          notes: hist3 ? hist3.notes : isStep3Current ? 'Sedang divalidasi oleh Tim Human Capital' : 'Menunggu persetujuan Direktur Keuangan'
+          title: 'Verifikasi Staff Ahli Keuangan (Level 1)',
+          subtitle: 'Pengecekan Operasional Kemitraan & Pelaporan Yayasan',
+          actorName: histSA ? histSA.actorName : 'Sakhiyah Karomah Salam (Staff Ahli Keuangan)',
+          actorRole: 'Staff Ahli Keuangan',
+          timestamp: histSA ? histSA.timestamp : isSACurrent ? '⏳ Sedang Menunggu Verifikasi Staff Ahli' : isSARejected ? leave.createdAt : '⚪ Menunggu Giliran',
+          status: histSA ? (histSA.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isSARejected ? 'REJECTED' : isSACurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histSA ? histSA.notes : isSACurrent ? 'Menunggu verifikasi Staff Ahli Keuangan' : 'Menunggu tahap pengajuan'
         });
       }
-      // SKENARIO C: Manajerial (Manager Area, Manager Keuangan, HC) -> Direksi -> Final HC
+      // SKENARIO C: Manager Area, Staff Ahli, FAT Officer, Human Capital, Staff Operasional (Level 1 Direktur -> Level 2 Human Capital)
       else {
-        const hist2 = history.find(h => h.level === 2 || h.stage === 'DIR_OPS_OR_KEU_REVIEW' || h.stage === 'MANAGER_REVIEW');
-        const isStep2Current = ((leave.stage === 'DIR_OPS_OR_KEU_REVIEW' || leave.stage === 'MANAGER_REVIEW') && leave.status === 'PENDING');
-        const isStep2Rejected = (leave.status === 'REJECTED' && !hist2);
+        const histDir = history.find(h => h.stage === 'DIR_OPS_OR_KEU_REVIEW' || h.stage === 'DIR_KEU_REVIEW' || (h.level === 2 && h.stage !== 'SUBMISSION' && h.stage !== 'HC_FINAL'));
+        const isDirCurrent = ((leave.stage === 'DIR_OPS_OR_KEU_REVIEW' || leave.stage === 'DIR_KEU_REVIEW') && leave.status === 'PENDING');
+        const isDirRejected = (leave.status === 'REJECTED' && (leave.stage === 'DIR_OPS_OR_KEU_REVIEW' || leave.stage === 'DIR_KEU_REVIEW'));
 
         steps.push({
           level: 2,
-          title: 'Persetujuan Direksi Eksekutif',
-          subtitle: 'Verifikasi Operasional Manajerial Tingkat Wilayah',
-          actorName: hist2 ? hist2.actorName : 'Muhammad Arrasyid (Direktur Operasional) / Kody Suryo Nugroho (Direktur Keuangan)',
+          title: 'Persetujuan Direksi Eksekutif (Level 1)',
+          subtitle: 'Otorisasi Direktur Operasional (Alfaqih) / Direktur Keuangan (Kody)',
+          actorName: histDir ? histDir.actorName : 'Muhammad Alfaqih (Direktur Operasional) / Kody Suryo (Direktur Keuangan)',
           actorRole: 'Direksi Eksekutif',
-          timestamp: hist2 ? hist2.timestamp : isStep2Current ? '⏳ Sedang Menunggu Persetujuan Direksi' : isStep2Rejected ? leave.createdAt : '⚪ Menunggu Giliran',
-          status: hist2 ? (hist2.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep2Rejected ? 'REJECTED' : isStep2Current ? 'ACTIVE' : 'UPCOMING',
-          notes: hist2 ? hist2.notes : isStep2Current ? 'Dalam antrean telaah Direksi Eksekutif' : 'Menunggu tahap sebelumnya'
-        });
-
-        const hist3 = history.find(h => h.level === 3 || h.stage === 'HC_FINAL');
-        const isStep3Current = ((leave.stage === 'HC_FINAL' || leave.stage === 'HC_REVIEW') && leave.status === 'PENDING');
-        const isStep3Rejected = (leave.status === 'REJECTED' && leave.stage === 'HC_FINAL');
-
-        steps.push({
-          level: 3,
-          title: 'Pengesahan & Pencatatan Kalender Human Capital',
-          subtitle: 'Pembaruan Database HRIS & Rekapitulasi Presensi',
-          actorName: hist3 ? hist3.actorName : 'Tazkia Aulia (Human Capital & GA)',
-          actorRole: 'Human Capital & GA',
-          timestamp: hist3 ? hist3.timestamp : isStep3Current ? '⏳ Sedang Menunggu Validasi HC' : isStep3Rejected ? leave.createdAt : '⚪ Menunggu Giliran',
-          status: hist3 ? (hist3.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep3Rejected ? 'REJECTED' : isStep3Current ? 'ACTIVE' : 'UPCOMING',
-          notes: hist3 ? hist3.notes : isStep3Current ? 'Sedang divalidasi oleh Tim Human Capital' : 'Menunggu persetujuan Direksi'
+          timestamp: histDir ? histDir.timestamp : isDirCurrent ? '⏳ Sedang Menunggu Persetujuan Direksi' : isDirRejected ? leave.createdAt : '⚪ Menunggu Giliran',
+          status: histDir ? (histDir.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isDirRejected ? 'REJECTED' : isDirCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histDir ? histDir.notes : isDirCurrent ? 'Dalam antrean persetujuan Direksi Eksekutif' : 'Menunggu tahap pengajuan'
         });
       }
+
+      // Step Final untuk Semua Cuti: Human Capital (Tazkia Aulia)
+      const histHC = history.find(h => h.stage === 'HC_FINAL' || (h.stage === 'HC_REVIEW' && h.action === 'APPROVED') || (h.level === 3 && h.stage !== 'SUBMISSION'));
+      const isHCCurrent = ((leave.stage === 'HC_REVIEW' || leave.stage === 'HC_FINAL') && leave.status === 'PENDING');
+      const isHCRejected = (leave.status === 'REJECTED' && (leave.stage === 'HC_REVIEW' || leave.stage === 'HC_FINAL'));
+
+      steps.push({
+        level: steps.length + 1,
+        title: 'Pengesahan & Pemotongan Kuota Human Capital (Level 2 Final)',
+        subtitle: 'Pencatatan HRIS, Kalender Kerja & Pembaruan Sisa Hak Cuti',
+        actorName: histHC ? histHC.actorName : 'Tazkia Aulia (Human Capital & GA)',
+        actorRole: 'Human Capital & GA',
+        timestamp: histHC ? histHC.timestamp : isHCCurrent ? '⏳ Sedang Menunggu Pengesahan HC' : isHCRejected ? leave.createdAt : '⚪ Menunggu Giliran',
+        status: histHC ? (histHC.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isHCRejected ? 'REJECTED' : isHCCurrent ? 'ACTIVE' : 'UPCOMING',
+        notes: histHC ? histHC.notes : isHCCurrent ? 'Sedang divalidasi dan disahkan oleh Tim Human Capital' : 'Menunggu persetujuan Level 1'
+      });
 
       return {
         type: 'LEAVE',
@@ -4707,30 +4788,25 @@ class DatabaseManager {
 
   getPendingApprovalsCount() {
     const user = this.getCurrentUser();
-    const leaves = this.getLeaves();
-    const timesheets = this.getTimesheets();
-    const prs = this.getItemRequests();
-    const cas = this.getCashAdvances();
+    const leaves = this.getLeaves() || [];
+    const prs = this.getItemRequests() || [];
+    const cas = this.getCashAdvances() || [];
 
     let count = 0;
 
     if (user.role === 'HUMAN_CAPITAL') {
       count += leaves.filter(l => l.status === 'PENDING' && (l.stage === 'HC_REVIEW' || l.stage === 'HC_FINAL')).length;
-      count += timesheets.filter(t => t.status === 'PENDING').length;
-    } else if (user.role === 'DIREKTUR_KEUANGAN') {
-      count += leaves.filter(l => l.status === 'PENDING' && l.stage === 'DIR_KEU_REVIEW').length;
-      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL').length;
-      count += cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW').length;
-    } else if (user.role === 'DIREKTUR_OPERASIONAL') {
-      count += leaves.filter(l => l.status === 'PENDING' && l.stage === 'DIR_OPS_OR_KEU_REVIEW').length;
+    } else if (user.role === 'DIREKTUR_KEUANGAN' || user.role === 'DIREKTUR_OPERASIONAL') {
+      count += leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_OPS_OR_KEU_REVIEW' || l.stage === 'DIR_KEU_REVIEW')).length;
       count += prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL').length;
       count += cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW').length;
     } else if (user.role === 'MANAGER_AREA') {
-      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'SURVEYOR' || p.role === 'PERWAKILAN_YAYASAN' || p.role === 'STAFF_OPERASIONAL')).length;
-    } else if (user.role === 'MANAGER_KEUANGAN') {
-      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'FAT_OFFICER' || p.role === 'STAFF_AHLI_KEUANGAN')).length;
-    } else if (user.role === 'STAFF_AHLI_KEUANGAN' || user.role === 'FAT_OFFICER') {
-      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION').length;
+      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && p.role === 'PERWAKILAN_YAYASAN').length;
+      count += leaves.filter(l => l.status === 'PENDING' && l.stage === 'MANAGER_AREA_REVIEW' && (l.role === 'PERWAKILAN_YAYASAN' || l.role === 'SURVEYOR')).length;
+    } else if (user.role === 'STAFF_AHLI_KEUANGAN') {
+      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION' && (p.role === 'PERWAKILAN_YAYASAN' || p.role === 'MANAGER_AREA' || p.role === 'MANAGER_KEUANGAN' || p.role === 'HUMAN_CAPITAL')).length;
+      count += leaves.filter(l => l.status === 'PENDING' && l.stage === 'STAFF_AHLI_REVIEW' && l.role === 'MAKER_YAYASAN').length;
+    } else if (user.role === 'FAT_OFFICER') {
       count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
     } else if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') {
       count += leaves.filter(l => l.status === 'PENDING').length;
@@ -5192,49 +5268,58 @@ class DatabaseManager {
                 nik: su.nik || '',
                 statusKaryawan: su.status_karyawan || 'Tetap',
                 statusPajak: su.status_pajak || 'TK/0',
-                pendidikan: su.pendidikan || 'Sarjana (S1)',
-                bankName: su.bank_name || 'Bank Mandiri',
-                rekeningNo: su.rekening_no || '-',
-                rekeningName: su.rekening_name || su.name,
-                notes: su.notes || ''
-              });
-            }
-          }
-          this.save();
-          return true;
-        }
-      }
-    } catch (e) {
-      console.warn('Pull users error:', e);
+        pendidikan: su.pendidikan || 'Sarjana (S1)',
+        bankName: su.bank_name || 'Bank Mandiri',
+        rekeningNo: su.rekening_no || '-',
+        rekeningName: su.rekening_name || su.name,
+        notes: su.notes || ''
+      });
     }
-    return false;
   }
 
   async pullLatestFromSupabase() {
-    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
-    const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
-    const key = window.SupabaseConfig.getAnonKey();
-    const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return false;
+    
+    // Request coalescing: jika sedang berjalan, tunggu promise yang sama tanpa fetch ulang
+    if (this._isPulling && this._pullPromise) {
+      return this._pullPromise;
+    }
 
-    try {
-      console.log('[Supabase Pull] Memuat data seluruh entitas secara paralel dari Supabase Cloud...');
+    this._isPulling = true;
+    this._pullPromise = (async () => {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
 
-      // Jalankan seluruh 9 endpoint secara PARALEL untuk kecepatan instan (~200ms)
-      const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes] = await Promise.allSettled([
-        fetch(`${url}/rest/v1/users?select=*`, { headers }),
-        fetch(`${url}/rest/v1/kitchens?select=*`, { headers }),
-        fetch(`${url}/rest/v1/item_requests?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/leaves?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/kitchen_reports?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/guideline_documents?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers })
-      ]);
+      try {
+        // 1. Jalankan fetch seluruh 9 tabel secara paralel dengan timeout & keepalive
+        const fetchPromises = [
+          fetch(`${url}/rest/v1/users?select=*`, { headers, keepalive: true }),
+          fetch(`${url}/rest/v1/kitchens?select=*`, { headers, keepalive: true }),
+          fetch(`${url}/rest/v1/item_requests?select=*&order=created_at.desc`, { headers, keepalive: true }),
+          fetch(`${url}/rest/v1/leaves?select=*&order=created_at.desc`, { headers, keepalive: true }),
+          fetch(`${url}/rest/v1/kitchen_reports?select=*&order=created_at.desc`, { headers, keepalive: true }),
+          fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers, keepalive: true }),
+          fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc`, { headers, keepalive: true }),
+          fetch(`${url}/rest/v1/guideline_documents?select=*&order=created_at.desc`, { headers, keepalive: true }),
+          fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers, keepalive: true })
+        ];
 
-      // 1. Process Users
-      if (usersRes.status === 'fulfilled' && usersRes.value.ok) {
-        const dbUsers = await usersRes.value.json();
+        const results = await Promise.allSettled(fetchPromises);
+
+        // 2. Parse JSON secara paralel untuk latency super rendah
+        const [
+          dbUsers, dbKitchens, dbPrs, dbLeaves, dbKitchenReports, dbTimesheets, dbCas, dbDocs, dbIssues
+        ] = await Promise.all(results.map(async (r) => {
+          if (r.status === 'fulfilled' && r.value.ok) {
+            try { return await r.value.json(); } catch (e) { return null; }
+          }
+          return null;
+        }));
+
+        let hasUpdates = false;
+
+        // 1. Users
         if (Array.isArray(dbUsers) && dbUsers.length > 0) {
           for (const su of dbUsers) {
             const localU = this.getUsers().find(u => u.id === su.id);
@@ -5258,27 +5343,28 @@ class DatabaseManager {
             } else {
               this.data.users.push({
                 id: su.id,
-                nika: su.nika || su.id,
                 name: su.name,
                 role: su.role,
-                roleLabel: su.role_label || su.jabatan || 'Staff',
-                kodeJabatan: su.kode_jabatan || '',
-                jabatan: su.jabatan || '',
-                levelGrade: su.level_grade || '',
-                department: su.department || '',
-                avatarGrad: su.avatar_grad || 'linear-gradient(135deg, #8B5CF6, #EC4899)',
-                quotaAnnualLeave: Number(su.quota_annual_leave) || 12,
-                remainingAnnualLeave: Number(su.remaining_annual_leave) || 12,
-                quotaPersonalLeave: Number(su.quota_personal_leave) || 3,
-                remainingPersonalLeave: Number(su.remaining_personal_leave) || 3,
-                currentQuarter: su.current_quarter || 'Q3 (Juli–September 2026)',
-                joinDate: su.join_date || '2024-01-01',
-                birthPlace: su.birth_place || '',
-                birthDate: su.birth_date || '',
+                roleLabel: su.role_label,
+                department: su.department,
+                jabatan: su.jabatan,
+                levelGrade: su.level_grade,
+                kodeJabatan: su.kode_jabatan,
+                email: su.email,
+                phone: su.phone,
+                avatarGrad: su.avatar_grad || 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
+                quotaAnnualLeave: Number(su.quota_annual_leave || 12),
+                remainingAnnualLeave: Number(su.remaining_annual_leave || 12),
+                quotaMonthlyLeave: Number(su.quota_monthly_leave || 3),
+                remainingMonthlyLeave: Number(su.remaining_monthly_leave || 3),
+                cutOffPeriod: su.cut_off_period || 'Q3 (Juli–September 2026)',
+                joinDate: su.join_date || getRealtimeDateStr(),
+                tempatLahir: su.tempat_lahir || 'Jakarta',
+                tanggalLahir: su.tanggal_lahir || '1990-01-01',
                 agama: su.agama || 'Islam',
-                gender: su.gender || 'Laki-laki',
-                phone: su.phone || '',
-                email: su.email || '',
+                jenisKelamin: su.jenis_kelamin || 'Laki-laki',
+                kontakDarurat: su.kontak_darurat || '-',
+                kontakDaruratHubungan: su.kontak_darurat_hubungan || '-',
                 username: su.username || su.id.toLowerCase(),
                 password: su.password || 'password123',
                 nik: su.nik || '',
@@ -5292,198 +5378,193 @@ class DatabaseManager {
               });
             }
           }
+          hasUpdates = true;
         }
-      }
 
-      // 2. Process Kitchens
-      if (kRes.status === 'fulfilled' && kRes.value.ok) {
-        const dbKitchens = await kRes.value.json();
+        // 2. Kitchens
         if (Array.isArray(dbKitchens) && dbKitchens.length > 0) {
           this.data.kitchens = dbKitchens.map(k => ({
             id: k.id,
-            idSppg: k.id_sppg,
-            namaDapur: k.nama_dapur,
-            namaYayasan: k.nama_yayasan,
-            name: k.nama_dapur,
-            provinsi: k.provinsi,
-            kotaKabupaten: k.kota_kabupaten,
-            kecamatan: k.kecamatan,
-            kelurahan: k.kelurahan,
-            alamatLengkap: k.alamat_lengkap,
+            name: k.name,
+            code: k.code,
             location: k.location,
-            makerYayasan: k.maker_yayasan,
-            perwakilanYayasan: k.perwakilan_yayasan,
-            managerArea: k.manager_area,
+            area: k.area,
             status: k.status,
-            kapasitasPorsi: Number(k.kapasitas_porsi) || 500,
-            createdAt: k.created_at
+            targetPorsi: Number(k.target_porsi || 3000),
+            realisasiPorsi: Number(k.realisasi_porsi || 0),
+            nominalVaHarian: Number(k.nominal_va_harian || 30000000),
+            saldoVaTersedia: Number(k.saldo_va_tersedia || 0),
+            akumulasiBelanja: Number(k.akumulasi_belanja || 0),
+            nomorVa: k.nomor_va,
+            namaBankVa: k.nama_bank_va,
+            statusVa: k.status_va,
+            managerAreaName: k.manager_area_name,
+            picMakerName: k.pic_maker_name,
+            picCheckerName: k.pic_checker_name
           }));
+          hasUpdates = true;
         }
-      }
 
-      // 3. Process Item Requests
-      if (prRes.status === 'fulfilled' && prRes.value.ok) {
-        const prs = await prRes.value.json();
-        if (Array.isArray(prs) && prs.length > 0) {
-          this.data.itemRequests = prs.map(p => ({
+        // 3. PR
+        if (Array.isArray(dbPrs) && dbPrs.length > 0) {
+          this.data.itemRequests = dbPrs.map(p => ({
             id: p.id,
-            employeeId: p.employee_id,
             employeeName: p.employee_name,
             role: p.role,
-            department: p.department,
-            itemName: p.item_name,
+            roleLabel: p.role_label,
             category: p.category,
-            quantity: p.quantity,
-            unitPrice: Number(p.unit_price) || 0,
-            totalPrice: Number(p.total_price) || 0,
+            itemName: p.item_name,
+            quantity: Number(p.quantity || 1),
+            originalQuantity: Number(p.original_quantity || p.quantity || 1),
+            unit: p.unit || 'Unit',
+            unitPrice: Number(p.unit_price || 0),
+            originalUnitPrice: Number(p.original_unit_price || p.unit_price || 0),
+            totalPrice: Number(p.total_price || 0),
+            originalTotalPrice: Number(p.original_total_price || p.total_price || 0),
+            targetKitchen: p.target_kitchen,
+            targetKitchenName: p.target_kitchen_name,
             urgency: p.urgency,
             reason: p.reason,
-            targetKitchen: p.target_kitchen,
-            attachmentUrl: p.attachment_url,
-            attachmentName: p.attachment_name,
-            stage: p.stage,
             status: p.status,
-            rejectionReason: p.rejection_reason,
-            approvalHistory: p.approval_history || [],
+            stage: p.stage,
+            approvalFlow: p.approval_flow,
+            hasAdjustment: Boolean(p.has_adjustment),
+            adjustments: Array.isArray(p.adjustments) ? p.adjustments : (p.adjustments ? JSON.parse(p.adjustments) : []),
+            approvalHistory: Array.isArray(p.approval_history) ? p.approval_history : (p.approval_history ? JSON.parse(p.approval_history) : []),
+            specs: p.specs || '',
+            bankName: p.bank_name || '',
+            rekeningNo: p.rekening_no || '',
+            rekeningName: p.rekening_name || '',
+            phone: p.phone || '',
+            email: p.email || '',
+            notes: p.notes || '',
+            department: p.department || '',
             createdAt: p.created_at
           }));
+          hasUpdates = true;
         }
-      }
 
-      // 4. Process Leaves
-      if (leaveRes.status === 'fulfilled' && leaveRes.value.ok) {
-        const leaves = await leaveRes.value.json();
-        if (Array.isArray(leaves) && leaves.length > 0) {
-          this.data.leaves = leaves.map(l => ({
+        // 4. Leaves
+        if (Array.isArray(dbLeaves) && dbLeaves.length > 0) {
+          this.data.leaves = dbLeaves.map(l => ({
             id: l.id,
             employeeId: l.employee_id,
             employeeName: l.employee_name,
             role: l.role,
-            department: l.department,
-            leaveType: l.leave_type,
-            type: l.leave_type,
+            type: l.type,
+            leaveType: l.leave_type || l.type,
             startDate: l.start_date,
             endDate: l.end_date,
-            duration: l.duration,
+            duration: Number(l.duration || 1),
             reason: l.reason,
-            emergencyContact: l.emergency_contact,
-            attachmentUrl: l.attachment_url,
-            attachmentName: l.attachment_name,
-            stage: l.stage,
             status: l.status,
-            rejectionReason: l.rejection_reason,
-            approvalHistory: l.approval_history || [],
+            stage: l.stage,
+            approvalFlow: l.approval_flow,
+            quotaDeductionType: l.quota_deduction_type,
+            handoverTo: l.handover_to,
+            emergencyContact: l.emergency_contact,
+            approver: l.approver,
+            approvalHistory: Array.isArray(l.approval_history) ? l.approval_history : (l.approval_history ? JSON.parse(l.approval_history) : []),
             createdAt: l.created_at
           }));
+          hasUpdates = true;
         }
-      }
 
-      // 5. Process Kitchen Reports
-      if (krRes.status === 'fulfilled' && krRes.value.ok) {
-        const krs = await krRes.value.json();
-        if (Array.isArray(krs) && krs.length > 0) {
-          this.data.kitchenReports = krs.map(kr => ({
+        // 5. Kitchen Reports
+        if (Array.isArray(dbKitchenReports) && dbKitchenReports.length > 0) {
+          this.data.kitchenReports = dbKitchenReports.map(kr => ({
             id: kr.id,
             kitchenId: kr.kitchen_id,
             kitchenName: kr.kitchen_name,
-            date: kr.date,
-            reporterId: kr.reporter_id,
-            reporterName: kr.reporter_name,
-            rawMaterialCost: Number(kr.raw_material_cost) || 0,
-            operationalCost: Number(kr.operational_cost) || 0,
-            carRentalCost: Number(kr.car_rental_cost) || 0,
-            totalDailyExpense: Number(kr.total_daily_expense) || 0,
-            porsiBesar: Number(kr.porsi_besar) || 0,
-            porsiKecil: Number(kr.porsi_kecil) || 0,
-            beneficiariesCount: Number(kr.beneficiaries_count) || 0,
-            targetBudget: Number(kr.target_budget) || 0,
-            costPerPortion: Number(kr.cost_per_portion) || 0,
-            costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
-            spmFileName: kr.spm_file_name,
-            spmAttachmentUrl: kr.spm_attachment_url,
-            vaBankName: kr.va_bank_name,
-            vaBalance: Number(kr.va_balance) || 0,
-            notes: kr.notes,
+            tanggal: kr.tanggal,
+            totalBelanja: Number(kr.total_belanja || 0),
+            sisaSaldoVa: Number(kr.sisa_saldo_va || 0),
+            porsiMasak: Number(kr.porsi_masak || 0),
+            menuMasak: kr.menu_masak,
+            statusBelanja: kr.status_belanja,
+            inputByName: kr.input_by_name,
+            inputByRole: kr.input_by_role,
+            verifiedByName: kr.verified_by_name,
+            verificationStatus: kr.verification_status,
+            verificationNotes: kr.verification_notes,
+            items: Array.isArray(kr.items) ? kr.items : (kr.items ? JSON.parse(kr.items) : []),
             createdAt: kr.created_at
           }));
+          hasUpdates = true;
         }
-      }
 
-      // 6. Process Timesheets
-      if (tsRes.status === 'fulfilled' && tsRes.value.ok) {
-        const tss = await tsRes.value.json();
-        if (Array.isArray(tss) && tss.length > 0) {
-          this.data.timesheets = tss.map(ts => ({
-            id: ts.id,
-            employeeId: ts.employee_id,
-            employeeName: ts.employee_name,
-            role: ts.role,
-            date: ts.date,
-            startTime: ts.start_time,
-            endTime: ts.end_time,
-            activity: ts.activity,
-            activityPreset: ts.activity_preset,
-            category: ts.category,
-            status: ts.status,
-            createdAt: ts.created_at
+        // 6. Timesheets
+        if (Array.isArray(dbTimesheets) && dbTimesheets.length > 0) {
+          this.data.timesheets = dbTimesheets.map(t => ({
+            id: t.id,
+            employeeName: t.employee_name,
+            role: t.role,
+            roleLabel: t.role_label,
+            date: t.date,
+            startTime: t.start_time,
+            endTime: t.end_time,
+            hours: Number(t.hours || 8),
+            activityPreset: t.activity_preset,
+            activity: t.activity,
+            status: t.status,
+            validationNotes: t.validation_notes,
+            approvalHistory: Array.isArray(t.approval_history) ? t.approval_history : (t.approval_history ? JSON.parse(t.approval_history) : []),
+            createdAt: t.created_at
           }));
+          hasUpdates = true;
         }
-      }
 
-      // 7. Process Cash Advances
-      if (caRes.status === 'fulfilled' && caRes.value.ok) {
-        const cas = await caRes.value.json();
-        if (Array.isArray(cas) && cas.length > 0) {
-          this.data.cashAdvances = cas.map(ca => ({
+        // 7. Cash Advances
+        if (Array.isArray(dbCas) && dbCas.length > 0) {
+          this.data.cashAdvances = dbCas.map(ca => ({
             id: ca.id,
-            title: ca.purpose,
             employeeId: ca.employee_id,
             employeeName: ca.employee_name,
-            employeeRole: ca.role,
             department: ca.department,
-            targetLocation: ca.target_kitchen,
-            amountRequested: Number(ca.amount_requested) || 0,
-            amountApproved: Number(ca.amount_approved) || 0,
-            amountDisbursed: Number(ca.amount_disbursed) || 0,
+            role: ca.role,
+            roleLabel: ca.role_label,
+            amount: Number(ca.amount || 0),
+            purpose: ca.purpose,
+            targetLocation: ca.target_location,
             bankName: ca.bank_name,
-            bankAccountNo: ca.rekening_no,
-            bankAccountName: ca.rekening_name,
-            reason: ca.purpose,
-            stage: ca.stage,
+            bankAccountNo: ca.bank_account_no,
+            bankAccountName: ca.bank_account_name,
             status: ca.status,
-            settlement: ca.settlement,
-            approvalHistory: ca.approval_history || [],
-            createdAt: ca.created_at
+            stage: ca.stage,
+            createdAt: ca.created_at,
+            approvedByDirectorName: ca.approved_by_director_name,
+            directorApprovalDate: ca.director_approval_date,
+            disbursedByName: ca.disbursed_by_name,
+            disbursedAt: ca.disbursed_at,
+            approvalHistory: Array.isArray(ca.approval_history) ? ca.approval_history : (ca.approval_history ? JSON.parse(ca.approval_history) : []),
+            settlement: typeof ca.settlement === 'object' && ca.settlement !== null ? ca.settlement : (ca.settlement ? JSON.parse(ca.settlement) : null)
           }));
+          hasUpdates = true;
         }
-      }
 
-      // 8. Process Guideline Documents
-      if (docRes.status === 'fulfilled' && docRes.value.ok) {
-        const dList = await docRes.value.json();
-        if (Array.isArray(dList) && dList.length > 0) {
-          this.data.guidelineDocuments = dList.map(d => ({
+        // 8. Guideline Documents
+        if (Array.isArray(dbDocs) && dbDocs.length > 0) {
+          this.data.guidelineDocuments = dbDocs.map(d => ({
             id: d.id,
             title: d.title,
-            fileType: d.file_type,
             category: d.category,
-            targetRole: d.target_role,
-            targetLabel: d.target_label,
-            fileSize: d.file_size,
+            documentType: d.document_type,
+            targetRoles: Array.isArray(d.target_roles) ? d.target_roles : (d.target_roles ? JSON.parse(d.target_roles) : []),
             description: d.description,
-            uploadedBy: d.uploaded_by,
-            uploadDate: d.upload_date,
-            fileData: d.file_data,
-            createdAt: d.created_at
+            fileName: d.file_name,
+            fileSize: d.file_size,
+            fileUrl: d.file_url,
+            isOnlineGuide: Boolean(d.is_online_guide),
+            guideTabTarget: d.guide_tab_target,
+            uploadedAt: d.uploaded_at,
+            uploadedByName: d.uploaded_by_name
           }));
+          hasUpdates = true;
         }
-      }
 
-      // 9. Process Field Issues
-      if (issueRes.status === 'fulfilled' && issueRes.value.ok) {
-        const fList = await issueRes.value.json();
-        if (Array.isArray(fList) && fList.length > 0) {
-          this.data.fieldIssues = fList.map(f => {
+        // 9. Field Issues
+        if (Array.isArray(dbIssues) && dbIssues.length > 0) {
+          this.data.fieldIssues = dbIssues.map(f => {
             let parsedPoints = [];
             try {
               parsedPoints = JSON.parse(f.issue_description);
@@ -5502,14 +5583,23 @@ class DatabaseManager {
               createdAt: f.created_at
             };
           });
+          hasUpdates = true;
         }
-      }
 
-      this.save();
-      console.log('✅ [Supabase Pull] Seluruh 9 tabel database berhasil disinkronkan secara paralel dan instan.');
-    } catch (err) {
-      console.warn('⚠️ [Supabase Pull] Gagal mengambil data:', err);
-    }
+        if (hasUpdates) {
+          this.save();
+        }
+        return true;
+      } catch (err) {
+        console.warn('⚠️ [Supabase Pull] Gagal mengambil data:', err);
+        return false;
+      } finally {
+        this._isPulling = false;
+        this._pullPromise = null;
+      }
+    })();
+
+    return this._pullPromise;
   }
 
   // Notifikasi Email Helper
@@ -5528,14 +5618,3 @@ window.calculateTenure = calculateTenure;
 window.calculateAge = calculateAge;
 window.hasWorkedOneYear = hasWorkedOneYear;
 
-// Auto-sync: Tarik seluruh data terbaru dari Supabase Cloud sebagai Single Source of Truth
-setTimeout(async () => {
-  if (window.DB) {
-    if (typeof window.DB.pullLatestFromSupabase === 'function') {
-      await window.DB.pullLatestFromSupabase();
-    }
-  }
-  if (window.App && typeof window.App.updateUserHeader === 'function') {
-    window.App.updateUserHeader();
-  }
-}, 300);
