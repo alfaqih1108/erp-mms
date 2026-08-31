@@ -541,14 +541,14 @@
       </div>
       <form id="form-pr">
         <div class="modal-body">
-          <!-- Target Dapur (Wajib untuk semua pengajuan PR: Menampilkan ID SPPG & Nama Dapur) -->
+          <!-- Target Dapur / Kantor -->
           <div id="pr-kitchen-container" class="form-group" style="background: rgba(245, 158, 11, 0.08); border: 1px dashed rgba(245, 158, 11, 0.35); border-radius: var(--radius-sm); padding: 12px 14px;">
-            <label class="form-label" style="color: #FCD34D;">🍳 Untuk Kepentingan Dapur Apa? (Pilih Database SPPG) <span style="color: #F87171;">*</span></label>
+            <label id="pr-kitchen-label" class="form-label" style="color: #FCD34D;">🍳 Untuk Kepentingan Dapur Apa? (Pilih Database SPPG) <span style="color: #F87171;">*</span></label>
             <select id="pr-kitchen-select" class="form-control" required style="font-weight: 500; font-size: 13px;">
-              <!-- Populated dynamically: [ID SPPG] - [Nama Dapur] -->
+              <!-- Populated dynamically: Kantor atau [ID SPPG] - [Nama Dapur] -->
             </select>
-            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-              *Setiap pengajuan PR wajib ditautkan ke titik dapur operasional SPPG tujuan.
+            <div id="pr-kitchen-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              *Setiap pengajuan PR wajib ditautkan ke titik tujuan pengadaan.
             </div>
           </div>
 
@@ -809,19 +809,19 @@
 
   <!-- Supabase JS SDK & Configuration -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/supabase-config.js?v=20260901_01"></script>
+  <script src="js/supabase-config.js?v=20260901_02"></script>
 
   <!-- Application Modules -->
-  <script src="js/modules/data.js?v=20260901_01"></script>
-  <script src="js/modules/dashboard.js?v=20260901_01"></script>
-  <script src="js/modules/cuti.js?v=20260901_01"></script>
-  <script src="js/modules/timesheet.js?v=20260901_01"></script>
-  <script src="js/modules/pengajuan-barang.js?v=20260901_01"></script>
-  <script src="js/modules/cash-advance.js?v=20260901_01"></script>
-  <script src="js/modules/dapur-yayasan.js?v=20260901_01"></script>
-  <script src="js/modules/hc-hub.js?v=20260901_01"></script>
-  <script src="js/modules/admin-hub.js?v=20260901_01"></script>
-  <script src="js/modules/approval-center.js?v=20260901_01"></script>
-  <script src="js/app.js?v=20260901_01"></script>
+  <script src="js/modules/data.js?v=20260901_02"></script>
+  <script src="js/modules/dashboard.js?v=20260901_02"></script>
+  <script src="js/modules/cuti.js?v=20260901_02"></script>
+  <script src="js/modules/timesheet.js?v=20260901_02"></script>
+  <script src="js/modules/pengajuan-barang.js?v=20260901_02"></script>
+  <script src="js/modules/cash-advance.js?v=20260901_02"></script>
+  <script src="js/modules/dapur-yayasan.js?v=20260901_02"></script>
+  <script src="js/modules/hc-hub.js?v=20260901_02"></script>
+  <script src="js/modules/admin-hub.js?v=20260901_02"></script>
+  <script src="js/modules/approval-center.js?v=20260901_02"></script>
+  <script src="js/app.js?v=20260901_02"></script>
 </body>
 </html>

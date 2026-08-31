@@ -191,8 +191,8 @@ window.PengajuanBarangModule = {
                         <div>
                           <div style="font-weight: 500; color: #fff;">${p.itemName}</div>
                           ${p.targetKitchen ? `
-                            <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: #FB7185; background: rgba(225,29,72,0.12); padding: 1px 6px; border-radius: 4px; margin: 2px 0;">
-                              🍲 Untuk: ${p.targetKitchen}
+                            <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; ${p.targetKitchen.includes('KANTOR') ? 'color: #93C5FD; background: rgba(59,130,246,0.14); border: 1px solid rgba(59,130,246,0.25);' : 'color: #FB7185; background: rgba(225,29,72,0.12);'} padding: 1px 6px; border-radius: 4px; margin: 2px 0;">
+                              ${p.targetKitchen.includes('KANTOR') ? '🏢' : '🍲'} Untuk: ${p.targetKitchen}
                             </div>
                           ` : ''}
                           <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">${p.reason}</div>
@@ -326,28 +326,50 @@ window.PengajuanBarangModule = {
     this.removeAttachment();
     const kitchenContainer = document.getElementById('pr-kitchen-container');
     const kitchenSelect = document.getElementById('pr-kitchen-select');
+    const kitchenLabel = document.getElementById('pr-kitchen-label');
+    const hintEl = document.getElementById('pr-kitchen-hint');
 
-    // Tampilkan pilihan Dapur Program (Khusus Perwakilan Yayasan: hanya 1 dapur yang ditugaskan)
+    // Tampilkan pilihan Dapur Program / Kantor
     if (kitchenContainer && kitchenSelect) {
       kitchenContainer.style.display = 'block';
       const isPerwakilanYayasan = (user && user.role === 'PERWAKILAN_YAYASAN');
-      const kitchenOptions = isPerwakilanYayasan ? (DB.getKitchenDropdownOptions(user) || []) : (DB.getKitchenDropdownOptions() || []);
-      
-      kitchenSelect.innerHTML = kitchenOptions.map(k => `
-        <option value="${k.idSppg} — ${k.namaDapur}">${k.idSppg} — ${k.namaDapur}</option>
-      `).join('');
 
-      if (kitchenOptions.length > 0) {
-        kitchenSelect.value = `${kitchenOptions[0].idSppg} — ${kitchenOptions[0].namaDapur}`;
-      }
+      if (isPerwakilanYayasan) {
+        if (kitchenLabel) {
+          kitchenLabel.innerHTML = `🍳 Untuk Kepentingan Dapur Apa? (Pilih Database SPPG) <span style="color: #F87171;">*</span>`;
+        }
+        const kitchenOptions = DB.getKitchenDropdownOptions(user) || [];
+        kitchenSelect.innerHTML = kitchenOptions.map(k => `
+          <option value="${k.idSppg} — ${k.namaDapur}">${k.idSppg} — ${k.namaDapur}</option>
+        `).join('');
 
-      // Berikan penanda visual/keterangan khusus untuk Perwakilan Yayasan
-      const hintEl = kitchenContainer.querySelector('div[style*="font-size: 11px"]');
-      if (hintEl) {
-        if (isPerwakilanYayasan) {
+        if (kitchenOptions.length > 0) {
+          kitchenSelect.value = `${kitchenOptions[0].idSppg} — ${kitchenOptions[0].namaDapur}`;
+        }
+        if (hintEl) {
           hintEl.innerHTML = `🔒 <strong style="color: #FCD34D;">Dapur SPPG Penugasan:</strong> Terkunci otomatis 1 titik dapur sesuai penugasan resmi yayasan Anda (${user.name}).`;
-        } else {
-          hintEl.innerHTML = `*Setiap pengajuan PR wajib ditautkan ke titik dapur operasional SPPG tujuan.`;
+        }
+      } else {
+        // Untuk peran selain Perwakilan Yayasan & Maker: sediakan opsi Kantor & seluruh Dapur SPPG
+        if (kitchenLabel) {
+          kitchenLabel.innerHTML = `🏢 / 🍳 Untuk Keperluan Apa? (Pilih Kantor atau Database Dapur SPPG) <span style="color: #F87171;">*</span>`;
+        }
+        const allKitchens = DB.getKitchenDropdownOptions() || [];
+
+        let optionsHtml = `
+          <option value="KANTOR — Fasilitas & Operasional Kantor" selected>🏢 KANTOR — Fasilitas & Operasional Kantor</option>
+          <optgroup label="── Titik Dapur SPPG Yayasan ──">
+        `;
+        optionsHtml += allKitchens.map(k => `
+          <option value="${k.idSppg} — ${k.namaDapur}">🍳 ${k.idSppg} — ${k.namaDapur}</option>
+        `).join('');
+        optionsHtml += `</optgroup>`;
+
+        kitchenSelect.innerHTML = optionsHtml;
+        kitchenSelect.value = "KANTOR — Fasilitas & Operasional Kantor";
+
+        if (hintEl) {
+          hintEl.innerHTML = `*Pilih opsi <strong style="color: #93C5FD;">"KANTOR"</strong> jika pengadaan untuk fasilitas/kebutuhan kantor, atau pilih titik <strong style="color: #FCD34D;">Dapur SPPG</strong> jika untuk operasional dapur yayasan.`;
         }
       }
     }
@@ -427,11 +449,11 @@ window.PengajuanBarangModule = {
     if (!targetKitchen && user && user.role === 'PERWAKILAN_YAYASAN' && user.sppgId) {
       targetKitchen = `${user.sppgId} — ${user.sppgName || 'Dapur SPPG'}`;
     } else if (!targetKitchen) {
-      targetKitchen = 'WFC2L9EH — SPPG Cilangkap - Tapos 1';
+      targetKitchen = (user && user.role === 'PERWAKILAN_YAYASAN') ? 'WFC2L9EH — SPPG Cilangkap - Tapos 1' : 'KANTOR — Fasilitas & Operasional Kantor';
     }
 
     if (!itemName || !reason || unitPrice <= 0 || !targetKitchen) {
-      App.showToast('Mohon lengkapi seluruh data pengajuan barang & pilih Dapur SPPG tujuan!', 'warn');
+      App.showToast('Mohon lengkapi seluruh data pengajuan barang & pilih tujuan keperluan pengadaan!', 'warn');
       return;
     }
 

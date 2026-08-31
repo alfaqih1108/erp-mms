@@ -371,8 +371,8 @@ window.ApprovalCenterModule = {
                       ${p.hasAdjustment ? `<span style="font-size: 10.5px; color: #34D399; background: rgba(52,211,153,0.15); padding: 1px 6px; border-radius: 3px; margin-left: 6px;">📝 Telah Disesuaikan</span>` : ''}
                     </h4>
                     ${p.targetKitchen ? `
-                      <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #FCD34D; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); padding: 2px 8px; border-radius: 4px; margin: 2px 0 4px 0; font-weight: 500;">
-                        🍳 Untuk Kepentingan Dapur: ${p.targetKitchen}
+                      <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; ${p.targetKitchen.includes('KANTOR') ? 'color: #93C5FD; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3);' : 'color: #FCD34D; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3);'} padding: 2px 8px; border-radius: 4px; margin: 2px 0 4px 0; font-weight: 500;">
+                        ${p.targetKitchen.includes('KANTOR') ? '🏢 Keperluan:' : '🍳 Untuk Kepentingan Dapur:'} ${p.targetKitchen}
                       </div>
                     ` : ''}
                     <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 8px;">Alasan: ${p.reason}</p>
