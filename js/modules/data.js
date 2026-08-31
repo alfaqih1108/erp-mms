@@ -5267,13 +5267,14 @@ class DatabaseManager {
                 password: su.password || 'password123',
                 nik: su.nik || '',
                 statusKaryawan: su.status_karyawan || 'Tetap',
-                statusPajak: su.status_pajak || 'TK/0',
-        pendidikan: su.pendidikan || 'Sarjana (S1)',
-        bankName: su.bank_name || 'Bank Mandiri',
-        rekeningNo: su.rekening_no || '-',
-        rekeningName: su.rekening_name || su.name,
-        notes: su.notes || ''
-      });
+                notes: su.notes || ''
+              });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ [Supabase Users Pull] Gagal mengambil data users:', err);
     }
   }
 
