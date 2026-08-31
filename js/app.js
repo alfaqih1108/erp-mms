@@ -12,6 +12,19 @@ window.App = {
   realtimeSyncDebounceTimer: null,
 
   init: function() {
+    // 1. SINKRONKAN IDENTITAS SESI PENGGUNA SEBELUM MERENDER UI APA PUN
+    const isSessionActive = (localStorage.getItem('ERP_SESSION_ACTIVE') === 'true');
+    const savedUserId = localStorage.getItem('ERP_LOGGED_USER_ID');
+    const lastActiveTab = localStorage.getItem('ERP_LAST_ACTIVE_TAB') || 'dashboard';
+
+    if (isSessionActive && savedUserId) {
+      if (DB.getCurrentUser().id !== savedUserId) {
+        DB.switchRole(savedUserId);
+      }
+    }
+
+    // 2. Render Header Profil Pengguna & Komponen Navigasi dengan User yang Benar
+    this.updateUserHeader();
     this.initRoleSwitcher();
     this.initEventListeners();
     this.applyRoleRestrictions();
@@ -19,15 +32,7 @@ window.App = {
     this.updateCloudBadge();
     this.initRealtimeSync();
 
-    // Cek status sesi autentikasi pengguna dari localStorage
-    const isSessionActive = (localStorage.getItem('ERP_SESSION_ACTIVE') === 'true');
-    const savedUserId = localStorage.getItem('ERP_LOGGED_USER_ID');
-    const lastActiveTab = localStorage.getItem('ERP_LAST_ACTIVE_TAB') || 'dashboard';
-
     if (isSessionActive) {
-      if (savedUserId && DB.getCurrentUser().id !== savedUserId) {
-        DB.switchRole(savedUserId);
-      }
       document.documentElement.classList.add('session-authenticated');
       this.closeLoginScreen();
       this.switchTab(lastActiveTab);

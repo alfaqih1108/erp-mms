@@ -2298,14 +2298,31 @@ class DatabaseManager {
           if (!Array.isArray(parsed.cashAdvances)) parsed.cashAdvances = [];
           if (!Array.isArray(parsed.fieldIssues)) parsed.fieldIssues = [];
 
+          // Pastikan currentUser langsung disesuaikan dengan sesi pengguna yang sedang login
+          const activeUserId = localStorage.getItem('ERP_LOGGED_USER_ID');
+          if (activeUserId) {
+            const matched = parsed.users.find(u => u.id === activeUserId);
+            if (matched) {
+              parsed.currentUser = matched;
+            }
+          }
+
           return parsed;
         }
       }
     } catch (e) {
       console.warn('Gagal memuat cache lokal, beralih ke inisialisasi default:', e);
     }
-    this.save(INITIAL_DATABASE);
-    return JSON.parse(JSON.stringify(INITIAL_DATABASE));
+    const initialData = JSON.parse(JSON.stringify(INITIAL_DATABASE));
+    const activeUserId = localStorage.getItem('ERP_LOGGED_USER_ID');
+    if (activeUserId && Array.isArray(initialData.users)) {
+      const matched = initialData.users.find(u => u.id === activeUserId);
+      if (matched) {
+        initialData.currentUser = matched;
+      }
+    }
+    this.save(initialData);
+    return initialData;
   }
 
   save(data) {
