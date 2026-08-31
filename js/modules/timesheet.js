@@ -45,7 +45,7 @@ window.TimesheetModule = {
     const progressPercent = Math.min(100, Math.round((dayTotalHours / targetHours) * 100));
 
     const totalAllHours = userTimesheets.reduce((acc, curr) => acc + (Number(curr.hours) || 0), 0);
-    const defaultActivities = DB.getDefaultActivities() || [];
+    const roleTemplates = this.getActivityTemplatesByRole(user.role);
 
     container.innerHTML = `
       <div class="animate-blur-in">
@@ -331,15 +331,31 @@ window.TimesheetModule = {
                       <span id="inline-ts-duration-preview" style="color: #34D399; font-weight: 500;">⏱️ Dihitung Otomatis: 4 Jam (4.0 Jam)</span>
                     </div>
 
-                    <!-- 3. Nama Aktivitas / Pekerjaan (Input Manual dengan Tombol Silang ✕) -->
-                    <div class="form-group">
-                      <label class="form-label">3. Nama Aktivitas / Pekerjaan <span style="color: #F87171;">*</span></label>
+                    <!-- 3. Nama Aktivitas / Pekerjaan (Dropdown Template Sesuai Role + Sinkronisasi Input) -->
+                    <div class="form-group" style="margin-bottom: 14px;">
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label class="form-label" style="margin-bottom: 0;">
+                          3. Nama Aktivitas / Pekerjaan <span style="color: #F87171;">*</span>
+                        </label>
+                        <span style="font-size: 10.5px; color: #60A5FA; font-family: var(--font-mono); background: rgba(59,130,246,0.12); padding: 1px 6px; border-radius: 3px;">
+                          Template: ${user.roleLabel || user.role}
+                        </span>
+                      </div>
+
+                      <!-- Dropdown Pilihan Template Aktivitas Sesuai Role -->
+                      <select id="inline-ts-activity-select" class="form-control" style="font-size: 13px; margin-bottom: 8px; border-color: rgba(59, 130, 246, 0.4); background: rgba(15, 23, 42, 0.9); color: #fff; cursor: pointer;" onchange="TimesheetModule.onActivitySelectChange(this.value)">
+                        <option value="" disabled selected>-- Pilih Template Aktivitas (${user.roleLabel || 'Per Role'}) --</option>
+                        ${roleTemplates.map(t => `<option value="${t}">${t}</option>`).join('')}
+                        <option value="__CUSTOM__">✍️ Ketik Aktivitas Manual / Kustom...</option>
+                      </select>
+
+                      <!-- Input Text Sinkron (Bisa langsung diedit atau disesuaikan) -->
                       <div style="position: relative; display: flex; align-items: center;">
                         <input type="text" id="inline-ts-activity-name" class="form-control" 
-                               placeholder="Ketik nama aktivitas / pekerjaan harian Anda..." 
+                               placeholder="Pilih template di atas atau ketik nama pekerjaan..." 
                                required value="" 
-                               style="padding-right: 36px;" 
-                               oninput="TimesheetModule.toggleClearBtn(this.value)">
+                               style="padding-right: 36px; font-size: 13px;" 
+                               oninput="TimesheetModule.onActivityInputTyping(this.value)">
                         <button type="button" id="btn-clear-ts-activity" 
                                 onclick="TimesheetModule.clearActivityInput()" 
                                 title="Hapus / Kosongkan teks aktivitas" 
@@ -725,6 +741,177 @@ window.TimesheetModule = {
     return { valid: true, hours: decimalHours };
   },
 
+  // Master Template Aktivitas / Pekerjaan Harian Berdasarkan Role Organisasi
+  getActivityTemplatesByRole: function(role) {
+    const templates = {
+      // 1. PERWAKILAN YAYASAN (Di Dapur SPPG)
+      'PERWAKILAN_YAYASAN': [
+        'Supervisi Operasional & Alur Kerja Dapur SPPG',
+        'Monitoring Kualitas & Kesegaran Bahan Baku Masakan',
+        'Pemeriksaan Porsi & Standar Kelayakan Menu Makanan',
+        'Pengecekan Kebersihan, Sanitasi & Higienitas Area Dapur',
+        'Koordinasi Distribusi Makanan ke Titik Sekolah / Penerima Manfaat',
+        'Rekonsiliasi & Pencatatan Kendala Operasional Dapur',
+        'Koordinasi & Komunikasi Harian Bersama Mitra Pengelola',
+        'Administrasi Lainnya'
+      ],
+
+      // 2. STAFF OPERASIONAL (Tim Fasilitas Lapangan)
+      'STAFF_OPERASIONAL': [
+        'Monitoring & Inspeksi Fisik Titik Fasilitas Dapur Binaan',
+        'Pengecekan Alat Masak, Utility (Gas/Listrik/Air) & Inventaris',
+        'Koordinasi Logistik Pengiriman & Rantai Pasok Perlengkapan',
+        'Pendampingan Lapangan & Penanganan Kendala Teknis Dapur',
+        'Rekapitulasi Kebutuhan Pengadaan Barang / Perlengkapan Dapur',
+        'Penyusunan Laporan Harian Monitoring Operasional Lapangan',
+        'Administrasi Lainnya'
+      ],
+
+      // 3. SURVEYOR (Dukungan Day-to-Day Manager Area & Operasional Dapur)
+      'SURVEYOR': [
+        'Pendataan & Pengecekan Kebutuhan Logistik Harian Dapur',
+        'Pengambilan & Pengiriman (Dropping) Barang / Perlengkapan ke Dapur',
+        'Pengecekan, Perbaikan & Penanganan Cepat Fasilitas Dapur (Troubleshooting)',
+        'Pendampingan Lapangan & Monitoring Dapur Bersama Manajer Area',
+        'Pengambilan Nota, Struk Belanja & Dokumen Administrasi dari Dapur',
+        'Bantuan Teknis & Distribusi Darurat Operasional Dapur',
+        'Pengecekan Lokasi & Kesiapan Sarana Fasilitas Dapur Baru / Tambahan',
+        'Administrasi Lainnya'
+      ],
+
+      // 4. FAT OFFICER (Finance Accounting & Tax)
+      'FAT_OFFICER': [
+        'Pencatatan Jurnal & Pembukuan Transaksi Keuangan Harian',
+        'Verifikasi Dokumen Nota / Kwitansi Realisasi LPJ Kasbon',
+        'Proses Administrasi Pencairan & Transfer Dana Kasbon Operasional',
+        'Rekonsiliasi Rekening Bank & Kas Kecil (Petty Cash)',
+        'Rekapitulasi Pemotongan & Administrasi Pajak (PPh)',
+        'Penyusunan Rekapitulasi Arus Kas Harian',
+        'Administrasi Lainnya'
+      ],
+
+      // 5. STAFF AHLI KEUANGAN (Staf Ahli Administrasi & Keuangan)
+      'STAFF_AHLI_KEUANGAN': [
+        'Verifikasi Anggaran & Estimasi Biaya Pengadaan Barang (PR)',
+        'Evaluasi Justifikasi & Analisis Plafon Cash Advance',
+        'Rekonsiliasi Data Finansial Kemitraan Dapur SPPG',
+        'Analisis Realisasi Anggaran vs Rencana Biaya Operasional',
+        'Pengarsipan & Tata Kelola Dokumen Legal Keuangan',
+        'Administrasi Lainnya'
+      ],
+
+      // 6. HUMAN CAPITAL (SDM & General Affairs)
+      'HUMAN_CAPITAL': [
+        'Rekapitulasi Presensi, Jam Kerja & Validasi Timesheet Karyawan',
+        'Verifikasi & Pengelolaan Pengajuan Cuti / Izin Karyawan',
+        'Pemeliharaan & Pembaruan Master Profil Karyawan (NIKA)',
+        'Pengelolaan Fasilitas Kantor, Logistik & General Affairs',
+        'Koordinasi Evaluasi Kedisiplinan & Kinerja Karyawan',
+        'Penyusunan Laporan Bulanan SDM & Kepegawaian',
+        'Administrasi Lainnya'
+      ],
+
+      // 7. MANAGER AREA (Supervisi Wilayah Binaan)
+      'MANAGER_AREA': [
+        'Review, Evaluasi & Approval Pengajuan Barang (PR) Dapur Wilayah',
+        'Monitoring Rekap Kendala & Kinerja Dapur Wilayah Binaan',
+        'Kunjungan Supervisi Lapangan & Koordinasi Tim Wilayah',
+        'Koordinasi Strategis Bersama Direktur Operasional & Mitra',
+        'Evaluasi Standar Layanan & Mitigasi Risiko Lapangan Area',
+        'Administrasi Lainnya'
+      ],
+
+      // 8. MANAGER KEUANGAN (Pengendalian Anggaran Finansial)
+      'MANAGER_KEUANGAN': [
+        'Review & Approval Pengajuan Barang (PR) Divisi Keuangan',
+        'Evaluasi Kelayakan Anggaran & Pengendalian Pengeluaran Kasbon',
+        'Supervisi Verifikasi LPJ Belanja & Tutup Buku Kasbon',
+        'Analisis Efisiensi Biaya Operasional & Arus Kas Yayasan',
+        'Koordinasi Kebijakan Finansial Bersama Direktur Keuangan',
+        'Administrasi Lainnya'
+      ],
+
+      // 9. JAJARAN DIREKSI & PEMBINA
+      'DIREKTUR_UTAMA': [
+        'Rapat Koordinasi Strategis Eksekutif & Pengambilan Kebijakan',
+        'Otorisasi & Persetujuan Akhir (Approval) Pengadaan Barang & Kasbon',
+        'Review Laporan Kinerja Bulanan & Perkembangan Dapur SPPG',
+        'Evaluasi Tata Kelola Organisasi, Kemitraan & Perluasan Wilayah',
+        'Supervisi Pengawasan Anggaran & Keberlanjutan Program Yayasan',
+        'Administrasi Lainnya'
+      ],
+      'DIREKTUR_OPERASIONAL': [
+        'Rapat Koordinasi Strategis Eksekutif & Pengambilan Kebijakan',
+        'Otorisasi & Persetujuan Akhir (Approval) Pengadaan Barang & Kasbon',
+        'Review Laporan Kinerja Bulanan & Perkembangan Dapur SPPG',
+        'Evaluasi Tata Kelola Organisasi, Kemitraan & Perluasan Wilayah',
+        'Supervisi Pengawasan Anggaran & Keberlanjutan Program Yayasan',
+        'Administrasi Lainnya'
+      ],
+      'DIREKTUR_KEUANGAN': [
+        'Rapat Koordinasi Strategis Eksekutif & Pengambilan Kebijakan',
+        'Otorisasi & Persetujuan Akhir (Approval) Pengadaan Barang & Kasbon',
+        'Review Laporan Kinerja Bulanan & Perkembangan Dapur SPPG',
+        'Evaluasi Tata Kelola Organisasi, Kemitraan & Perluasan Wilayah',
+        'Supervisi Pengawasan Anggaran & Keberlanjutan Program Yayasan',
+        'Administrasi Lainnya'
+      ],
+      'KETUA_PEMBINA': [
+        'Rapat Koordinasi Strategis Eksekutif & Pengambilan Kebijakan',
+        'Otorisasi & Persetujuan Akhir (Approval) Pengadaan Barang & Kasbon',
+        'Review Laporan Kinerja Bulanan & Perkembangan Dapur SPPG',
+        'Evaluasi Tata Kelola Organisasi, Kemitraan & Perluasan Wilayah',
+        'Supervisi Pengawasan Anggaran & Keberlanjutan Program Yayasan',
+        'Administrasi Lainnya'
+      ],
+      'SUPER_ADMIN': [
+        'Rapat Koordinasi Strategis Eksekutif & Pengambilan Kebijakan',
+        'Otorisasi & Persetujuan Akhir (Approval) Pengadaan Barang & Kasbon',
+        'Review Laporan Kinerja Bulanan & Perkembangan Dapur SPPG',
+        'Evaluasi Tata Kelola Organisasi, Kemitraan & Perluasan Wilayah',
+        'Supervisi Pengawasan Anggaran & Keberlanjutan Program Yayasan',
+        'Administrasi Lainnya'
+      ]
+    };
+
+    return templates[role] || [
+      'Pelaksanaan Tugas & Operasional Harian',
+      'Koordinasi Tim & Komunikasi Internal',
+      'Penyusunan Laporan & Dokumentasi Kerja',
+      'Administrasi Lainnya'
+    ];
+  },
+
+  onActivitySelectChange: function(val) {
+    const input = document.getElementById('inline-ts-activity-name');
+    if (!input) return;
+
+    if (val === '__CUSTOM__') {
+      input.value = '';
+      input.placeholder = 'Ketik nama aktivitas / pekerjaan kustom Anda...';
+      input.focus();
+      this.toggleClearBtn('');
+    } else if (val) {
+      input.value = val;
+      this.toggleClearBtn(val);
+    }
+  },
+
+  onActivityInputTyping: function(val) {
+    this.toggleClearBtn(val);
+    const select = document.getElementById('inline-ts-activity-select');
+    if (select) {
+      const options = Array.from(select.options).map(o => o.value);
+      if (options.includes(val)) {
+        select.value = val;
+      } else if (val && val.trim().length > 0) {
+        select.value = '__CUSTOM__';
+      } else {
+        select.value = '';
+      }
+    }
+  },
+
   toggleClearBtn: function(val) {
     const btn = document.getElementById('btn-clear-ts-activity');
     if (btn) {
@@ -734,10 +921,14 @@ window.TimesheetModule = {
 
   clearActivityInput: function() {
     const input = document.getElementById('inline-ts-activity-name');
+    const select = document.getElementById('inline-ts-activity-select');
     if (input) {
       input.value = '';
       input.focus();
       this.toggleClearBtn('');
+    }
+    if (select) {
+      select.value = '';
     }
   },
 
