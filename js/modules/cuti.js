@@ -16,6 +16,7 @@ window.CutiModule = {
   calendarYear: new Date().getFullYear(),
   calendarMonth: new Date().getMonth(),
   selectedDateStr: null,
+  activeViewMode: 'PERSONAL',
 
   // Kamus Tanggal Merah & Libur Nasional Indonesia 2026
   holidays: {
@@ -51,8 +52,10 @@ window.CutiModule = {
     const isSenior = hasWorkedOneYear(user.joinDate);
     const tenureStr = calculateTenure(user.joinDate);
 
-    // 1. Filter Riwayat Pengajuan: HANYA menampilkan data dari user yang sedang login
+    // 1. Filter Riwayat Pengajuan
     const myLeaves = allLeaves.filter(l => l.employeeId === user.id || l.employeeName === user.name);
+    const isLeadershipRole = ['SUPER_ADMIN', 'DIREKTUR_OPERASIONAL', 'DIREKTUR_KEUANGAN', 'HUMAN_CAPITAL', 'MANAGER_AREA', 'MANAGER_KEUANGAN'].includes(user.role);
+    const displayLeaves = (this.activeViewMode === 'ALL' && isLeadershipRole) ? allLeaves : myLeaves;
 
     // Quota Calculations
     const personalQuota = user.quotaPersonalLeave || 3;
@@ -218,15 +221,29 @@ window.CutiModule = {
 
         </div>
 
-        <!-- Tabel Riwayat Pengajuan Cuti & Izin Karyawan (KHUSUS USER LOGIN) -->
+        <!-- Tabel Riwayat Pengajuan Cuti & Izin Karyawan -->
         <div class="nalar-card" style="margin-bottom: 28px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
             <div>
-              <span class="text-mono-badge" style="color: var(--text-muted);">Personal Tracking & History</span>
-              <h3 style="font-size: 18px; margin-top: 2px;">Riwayat Pengajuan Cuti & Izin Anda</h3>
+              <span class="text-mono-badge" style="color: var(--text-muted);">${(this.activeViewMode === 'ALL' && isLeadershipRole) ? 'Organization-Wide Leaves' : 'Personal Tracking & History'}</span>
+              <h3 style="font-size: 18px; margin-top: 2px;">${(this.activeViewMode === 'ALL' && isLeadershipRole) ? 'Seluruh Pengajuan Cuti Karyawan Organisasi' : 'Riwayat Pengajuan Cuti & Izin Anda'}</h3>
             </div>
-            <div style="font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
-              Menampilkan <strong style="color: #fff;">${myLeaves.length}</strong> permohonan riwayat Anda
+            
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              ${isLeadershipRole ? `
+                <div style="display: inline-flex; background: rgba(0,0,0,0.4); padding: 3px; border-radius: 8px; border: 1px solid var(--border-card);">
+                  <button type="button" class="btn-nalar-secondary" style="padding: 4px 10px; font-size: 11px; ${this.activeViewMode !== 'ALL' ? 'background: rgba(139,92,246,0.25); color: #fff; border-color: rgba(139,92,246,0.5);' : 'border-color: transparent;'}" onclick="CutiModule.setViewMode('PERSONAL')">
+                    👤 Cuti Saya (${myLeaves.length})
+                  </button>
+                  <button type="button" class="btn-nalar-secondary" style="padding: 4px 10px; font-size: 11px; ${this.activeViewMode === 'ALL' ? 'background: rgba(139,92,246,0.25); color: #fff; border-color: rgba(139,92,246,0.5);' : 'border-color: transparent;'}" onclick="CutiModule.setViewMode('ALL')">
+                    🏢 Semua Karyawan (${allLeaves.length})
+                  </button>
+                </div>
+              ` : ''}
+              
+              <div style="font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+                Menampilkan <strong style="color: #fff;">${displayLeaves.length}</strong> permohonan
+              </div>
             </div>
           </div>
 
@@ -244,13 +261,15 @@ window.CutiModule = {
                 </tr>
               </thead>
               <tbody>
-                ${myLeaves.length === 0 ? `
+                ${displayLeaves.length === 0 ? `
                   <tr>
                     <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 36px;">
-                      Belum ada riwayat permohonan cuti atau izin yang diajukan oleh akun Anda.
+                      ${(this.activeViewMode === 'PERSONAL' && isLeadershipRole) 
+                        ? `Belum ada permohonan cuti yang diajukan atas nama akun Anda sendiri (${user.name}). Pengajuan dari staf (seperti Sakhiyah Karomah Salam) dapat Anda tinjau di menu <strong>Approval Hub</strong> atau klik tombol <em>"Semua Karyawan"</em> di atas.` 
+                        : 'Belum ada riwayat permohonan cuti atau izin yang tercatat.'}
                     </td>
                   </tr>
-                ` : myLeaves.map(l => `
+                ` : displayLeaves.map(l => `
                   <tr style="cursor: pointer; transition: background 0.15s ease;" 
                       onclick="App.showApprovalTracker('leave', '${l.id}')"
                       onmouseenter="this.style.background='rgba(139, 92, 246, 0.06)'"
@@ -927,5 +946,10 @@ window.CutiModule = {
         this.render(document.getElementById('main-content-area'));
       }
     }
+  },
+
+  setViewMode: function(mode) {
+    this.activeViewMode = mode;
+    this.render(document.getElementById('main-content-area'));
   }
 };

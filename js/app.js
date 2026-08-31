@@ -42,14 +42,14 @@ window.App = {
       this.switchTab('dashboard');
     }
 
-    // Real-Time Background Pull dari Supabase saat startup tanpa re-render berlebih
+    // Real-Time Background Pull dari Supabase saat startup
     if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
-      window.DB.pullLatestFromSupabase().then((hasUpdates) => {
+      window.DB.pullLatestFromSupabase().then(() => {
         this.updateUserHeader();
         this.applyRoleRestrictions();
         this.updateSidebarBadges();
         this.updateCloudBadge();
-        if (isSessionActive && hasUpdates) {
+        if (isSessionActive) {
           this.refreshCurrentTab();
         }
       }).catch(e => {
