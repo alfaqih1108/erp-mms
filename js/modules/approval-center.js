@@ -37,16 +37,9 @@ window.ApprovalCenterModule = {
     this.render(document.getElementById('main-content-area'));
   },
 
-  // Mengumpulkan seluruh riwayat pengajuan yang telah diapprove / diproses oleh user aktif
+  // Mengumpulkan seluruh riwayat pengajuan yang BENAR-BENAR telah diapprove / diproses oleh user aktif
   getMyApprovalHistory: function(user) {
-    const isDirectorOrAdmin = (
-      user.role === 'SUPER_ADMIN' || 
-      user.role === 'DIREKTUR_UTAMA' || 
-      user.role === 'DIREKTUR_OPERASIONAL' || 
-      user.role === 'DIREKTUR_KEUANGAN' ||
-      user.role === 'FAT_OFFICER' ||
-      user.role === 'STAFF_AHLI_KEUANGAN'
-    );
+    if (!user) return [];
 
     const leaves = DB.getLeaves() || [];
     const timesheets = DB.getTimesheets() || [];
@@ -55,16 +48,34 @@ window.ApprovalCenterModule = {
 
     const history = [];
 
+    const uName = (user.name || '').trim().toLowerCase();
+    const uId = (user.id || '').trim().toLowerCase();
+    const uNika = (user.nika || '').trim().toLowerCase();
+
+    // Helper untuk memverifikasi apakah log tindakan persetujuan dilakukan oleh user aktif ini
+    const isStepByCurrentUser = (h) => {
+      if (!h) return false;
+      // Jangan masukkan aksi awal SUBMITTED oleh pemohon
+      if (h.action === 'SUBMITTED' || h.stage === 'SUBMISSION') return false;
+
+      const actorName = (h.actorName || '').toLowerCase();
+      const actorId = (h.actorId || '').toLowerCase();
+
+      return (
+        (uName && actorName.includes(uName)) ||
+        (uId && (actorId === uId || actorName.includes(uId))) ||
+        (uNika && actorName.includes(uNika))
+      );
+    };
+
     // 1. LEAVES (CUTI & IZIN)
     leaves.forEach(l => {
-      const userStep = Array.isArray(l.approvalHistory) ? l.approvalHistory.find(h => 
-        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id) || h.actorRole === user.roleLabel) && h.action !== 'SUBMITTED'
-      ) : null;
+      const historyList = Array.isArray(l.approvalHistory) ? l.approvalHistory : [];
+      const userStep = historyList.find(h => isStepByCurrentUser(h));
 
-      if (userStep || (isDirectorOrAdmin && l.status !== 'PENDING') || (l.approver && l.approver.includes(user.name))) {
-        const decisionStep = userStep || (Array.isArray(l.approvalHistory) ? l.approvalHistory[l.approvalHistory.length - 1] : null);
-        const timestamp = decisionStep ? decisionStep.timestamp : (l.updatedAt || l.createdAt || '-');
-        const action = decisionStep ? decisionStep.action : l.status;
+      if (userStep) {
+        const timestamp = userStep.timestamp || (l.updatedAt || l.createdAt || '-');
+        const action = userStep.action || l.status;
         history.push({
           type: 'LEAVE',
           id: l.id,
@@ -77,8 +88,8 @@ window.ApprovalCenterModule = {
           status: l.status,
           decision: action,
           decisionTimestamp: timestamp,
-          approverName: decisionStep ? decisionStep.actorName : (l.approver || user.name),
-          notes: decisionStep ? decisionStep.notes : (l.status === 'APPROVED' ? 'Disetujui' : 'Diproses'),
+          approverName: userStep.actorName || user.name,
+          notes: userStep.notes || (l.status === 'APPROVED' ? 'Disetujui' : 'Diproses'),
           raw: l
         });
       }
@@ -86,13 +97,11 @@ window.ApprovalCenterModule = {
 
     // 2. TIMESHEETS
     timesheets.forEach(t => {
-      const userStep = Array.isArray(t.approvalHistory) ? t.approvalHistory.find(h => 
-        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id)) && h.action !== 'SUBMITTED'
-      ) : null;
+      const historyList = Array.isArray(t.approvalHistory) ? t.approvalHistory : [];
+      const userStep = historyList.find(h => isStepByCurrentUser(h));
 
-      if (userStep || (user.role === 'HUMAN_CAPITAL' && t.status !== 'PENDING') || (isDirectorOrAdmin && t.status !== 'PENDING') || (t.approver && t.approver.includes(user.name))) {
-        const decisionStep = userStep || (Array.isArray(t.approvalHistory) ? t.approvalHistory[t.approvalHistory.length - 1] : null);
-        const timestamp = decisionStep ? decisionStep.timestamp : (t.date + ' ' + (t.endTime || '17:00'));
+      if (userStep) {
+        const timestamp = userStep.timestamp || (t.date + ' ' + (t.endTime || '17:00'));
         history.push({
           type: 'TIMESHEET',
           id: t.id,
@@ -103,10 +112,10 @@ window.ApprovalCenterModule = {
           summary: `Tanggal: ${t.date} (${t.startTime || '08:00'} - ${t.endTime || '17:00'}) · Uraian: "${t.activity || '-'}"`,
           stage: 'HC_VALIDATION',
           status: t.status,
-          decision: t.status,
+          decision: userStep.action || t.status,
           decisionTimestamp: timestamp,
-          approverName: decisionStep ? decisionStep.actorName : (t.approver || user.name),
-          notes: decisionStep ? decisionStep.notes : (t.status === 'APPROVED' ? 'Presensi tervalidasi' : 'Ditolak'),
+          approverName: userStep.actorName || user.name,
+          notes: userStep.notes || (t.status === 'APPROVED' ? 'Presensi tervalidasi' : 'Ditolak'),
           raw: t
         });
       }
@@ -114,13 +123,11 @@ window.ApprovalCenterModule = {
 
     // 3. PURCHASE REQUESTS (PR)
     prs.forEach(p => {
-      const userStep = Array.isArray(p.approvalHistory) ? p.approvalHistory.find(h => 
-        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id) || h.actorRole === user.roleLabel) && h.action !== 'SUBMITTED'
-      ) : null;
+      const historyList = Array.isArray(p.approvalHistory) ? p.approvalHistory : [];
+      const userStep = historyList.find(h => isStepByCurrentUser(h));
+      const userAdj = Array.isArray(p.adjustments) ? p.adjustments.find(a => a.adjustedBy && a.adjustedBy.toLowerCase().includes(uName)) : null;
 
-      const userAdj = Array.isArray(p.adjustments) ? p.adjustments.find(a => a.adjustedBy && a.adjustedBy.includes(user.name)) : null;
-
-      if (userStep || userAdj || (isDirectorOrAdmin && p.status !== 'PENDING') || (p.status === 'COMPLETED' || p.status === 'APPROVED')) {
+      if (userStep || userAdj) {
         const decisionStep = userStep || (Array.isArray(p.approvalHistory) ? p.approvalHistory[p.approvalHistory.length - 1] : null);
         const timestamp = decisionStep ? decisionStep.timestamp : (p.updatedAt || p.createdAt || '-');
         const action = decisionStep ? decisionStep.action : p.status;
@@ -136,7 +143,7 @@ window.ApprovalCenterModule = {
           status: p.status,
           decision: p.hasAdjustment ? 'ADJUSTED_APPROVED' : action,
           decisionTimestamp: timestamp,
-          approverName: decisionStep ? decisionStep.actorName : (p.approver || user.name),
+          approverName: decisionStep ? decisionStep.actorName : user.name,
           notes: userAdj ? `Disesuaikan (${userAdj.newQty} unit @ Rp ${Number(userAdj.newUnitPrice).toLocaleString('id-ID')})` : (decisionStep ? decisionStep.notes : '-'),
           raw: p
         });
@@ -145,14 +152,12 @@ window.ApprovalCenterModule = {
 
     // 4. CASH ADVANCE (CA)
     cas.forEach(c => {
-      const userStep = Array.isArray(c.approvalHistory) ? c.approvalHistory.find(h => 
-        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id) || h.actorRole === user.roleLabel) && h.action !== 'SUBMITTED'
-      ) : null;
+      const historyList = Array.isArray(c.approvalHistory) ? c.approvalHistory : [];
+      const userStep = historyList.find(h => isStepByCurrentUser(h));
 
-      if (userStep || (isDirectorOrAdmin && c.status !== 'PENDING') || (c.status === 'COMPLETED' || c.status === 'APPROVED' || c.status === 'SETTLED')) {
-        const decisionStep = userStep || (Array.isArray(c.approvalHistory) ? c.approvalHistory[c.approvalHistory.length - 1] : null);
-        const timestamp = decisionStep ? decisionStep.timestamp : (c.disbursedAt || c.createdAt || '-');
-        const action = decisionStep ? decisionStep.action : c.status;
+      if (userStep) {
+        const timestamp = userStep.timestamp || (c.disbursedAt || c.createdAt || '-');
+        const action = userStep.action || c.status;
         history.push({
           type: 'CA',
           id: c.id,
@@ -165,8 +170,8 @@ window.ApprovalCenterModule = {
           status: c.status,
           decision: action,
           decisionTimestamp: timestamp,
-          approverName: decisionStep ? decisionStep.actorName : (c.approver || user.name),
-          notes: decisionStep ? decisionStep.notes : '-',
+          approverName: userStep.actorName || user.name,
+          notes: userStep.notes || '-',
           raw: c
         });
       }
