@@ -2292,11 +2292,37 @@ class DatabaseManager {
           // Ensure all array collections are properly initialized and persistent
           if (!Array.isArray(parsed.itemRequests)) parsed.itemRequests = [];
           if (!Array.isArray(parsed.kitchenReports)) parsed.kitchenReports = [];
-          if (!Array.isArray(parsed.kitchens)) parsed.kitchens = INITIAL_DATABASE.kitchens || [];
           if (!Array.isArray(parsed.leaves)) parsed.leaves = [];
           if (!Array.isArray(parsed.timesheets)) parsed.timesheets = [];
           if (!Array.isArray(parsed.cashAdvances)) parsed.cashAdvances = [];
           if (!Array.isArray(parsed.fieldIssues)) parsed.fieldIssues = [];
+
+          // Auto-sync & heal kitchen master database from INITIAL_DATABASE
+          if (Array.isArray(parsed.kitchens) && parsed.kitchens.length > 0) {
+            parsed.kitchens = parsed.kitchens.map(k => {
+              const def = INITIAL_DATABASE.kitchens.find(dk => dk.id === k.id || dk.idSppg === k.id || dk.idSppg === k.idSppg);
+              return {
+                ...k,
+                idSppg: k.idSppg || (def ? def.idSppg : k.id),
+                namaDapur: k.namaDapur || k.name || (def ? def.namaDapur : 'Dapur SPPG'),
+                namaYayasan: k.namaYayasan || (def ? def.namaYayasan : 'Yayasan Mitra Mandiri Sejahtera'),
+                name: k.namaDapur || k.name || (def ? def.namaDapur : 'Dapur SPPG'),
+                provinsi: k.provinsi || (def ? def.provinsi : 'DKI Jakarta'),
+                kotaKabupaten: k.kotaKabupaten || (def ? def.kotaKabupaten : '-'),
+                kecamatan: k.kecamatan || (def ? def.kecamatan : '-'),
+                kelurahan: k.kelurahan || (def ? def.kelurahan : '-'),
+                alamatLengkap: k.alamatLengkap || (def ? def.alamatLengkap : (k.location || '-')),
+                location: k.location || (def ? def.location : `${k.kotaKabupaten || '-'}, ${k.provinsi || '-'}`),
+                makerYayasan: k.makerYayasan || (def ? def.makerYayasan : 'Belum Ditetapkan'),
+                perwakilanYayasan: k.perwakilanYayasan || (def ? def.perwakilanYayasan : 'Belum Ditetapkan'),
+                managerArea: k.managerArea || (def ? def.managerArea : 'Rendy Seftiana (Manajer Area Jakarta & Jabar)'),
+                status: k.status || (def ? def.status : 'AKTIF'),
+                kapasitasPorsi: Number(k.kapasitasPorsi || (def ? def.kapasitasPorsi : 500))
+              };
+            });
+          } else {
+            parsed.kitchens = INITIAL_DATABASE.kitchens || [];
+          }
 
           // Pastikan currentUser langsung disesuaikan dengan sesi pengguna yang sedang login
           const activeUserId = localStorage.getItem('ERP_LOGGED_USER_ID');
@@ -2743,7 +2769,31 @@ class DatabaseManager {
   // =========================================================================
 
   getKitchens() {
-    return (this.data && Array.isArray(this.data.kitchens)) ? this.data.kitchens : INITIAL_DATABASE.kitchens;
+    const list = (this.data && Array.isArray(this.data.kitchens) && this.data.kitchens.length > 0)
+      ? this.data.kitchens
+      : (INITIAL_DATABASE.kitchens || []);
+
+    return list.map(k => {
+      const def = (INITIAL_DATABASE.kitchens || []).find(dk => dk.id === k.id || dk.idSppg === k.id || dk.idSppg === k.idSppg);
+      return {
+        ...k,
+        idSppg: k.idSppg || (def ? def.idSppg : k.id),
+        namaDapur: k.namaDapur || k.name || (def ? def.namaDapur : 'Dapur SPPG'),
+        namaYayasan: k.namaYayasan || (def ? def.namaYayasan : 'Yayasan Mitra Mandiri Sejahtera'),
+        name: k.namaDapur || k.name || (def ? def.namaDapur : 'Dapur SPPG'),
+        provinsi: k.provinsi || (def ? def.provinsi : 'DKI Jakarta'),
+        kotaKabupaten: k.kotaKabupaten || (def ? def.kotaKabupaten : '-'),
+        kecamatan: k.kecamatan || (def ? def.kecamatan : '-'),
+        kelurahan: k.kelurahan || (def ? def.kelurahan : '-'),
+        alamatLengkap: k.alamatLengkap || (def ? def.alamatLengkap : (k.location || '-')),
+        location: k.location || (def ? def.location : `${k.kotaKabupaten || '-'}, ${k.provinsi || '-'}`),
+        makerYayasan: k.makerYayasan || (def ? def.makerYayasan : 'Belum Ditetapkan'),
+        perwakilanYayasan: k.perwakilanYayasan || (def ? def.perwakilanYayasan : 'Belum Ditetapkan'),
+        managerArea: k.managerArea || (def ? def.managerArea : 'Rendy Seftiana (Manajer Area Jakarta & Jabar)'),
+        status: k.status || (def ? def.status : 'AKTIF'),
+        kapasitasPorsi: Number(k.kapasitasPorsi || (def ? def.kapasitasPorsi : 500))
+      };
+    });
   }
 
   getKitchenById(id) {
@@ -5384,25 +5434,41 @@ class DatabaseManager {
 
         // 2. Kitchens
         if (Array.isArray(dbKitchens) && dbKitchens.length > 0) {
-          this.data.kitchens = dbKitchens.map(k => ({
-            id: k.id,
-            name: k.name,
-            code: k.code,
-            location: k.location,
-            area: k.area,
-            status: k.status,
-            targetPorsi: Number(k.target_porsi || 3000),
-            realisasiPorsi: Number(k.realisasi_porsi || 0),
-            nominalVaHarian: Number(k.nominal_va_harian || 30000000),
-            saldoVaTersedia: Number(k.saldo_va_tersedia || 0),
-            akumulasiBelanja: Number(k.akumulasi_belanja || 0),
-            nomorVa: k.nomor_va,
-            namaBankVa: k.nama_bank_va,
-            statusVa: k.status_va,
-            managerAreaName: k.manager_area_name,
-            picMakerName: k.pic_maker_name,
-            picCheckerName: k.pic_checker_name
-          }));
+          this.data.kitchens = dbKitchens.map(k => {
+            const def = (INITIAL_DATABASE.kitchens || []).find(dk => dk.id === k.id || dk.idSppg === k.id_sppg || dk.idSppg === k.id || dk.id === k.code);
+            return {
+              id: k.id || (def ? def.id : 'DAPUR-01'),
+              idSppg: k.id_sppg || k.idSppg || (def ? def.idSppg : (k.code || k.id)),
+              namaDapur: k.nama_dapur || k.namaDapur || (def ? def.namaDapur : (k.name || 'Dapur SPPG')),
+              namaYayasan: k.nama_yayasan || k.namaYayasan || (def ? def.namaYayasan : 'Yayasan Mitra Mandiri Sejahtera'),
+              name: k.nama_dapur || k.namaDapur || (def ? def.namaDapur : (k.name || 'Dapur SPPG')),
+              provinsi: k.provinsi || (def ? def.provinsi : 'DKI Jakarta'),
+              kotaKabupaten: k.kota_kabupaten || k.kotaKabupaten || (def ? def.kotaKabupaten : '-'),
+              kecamatan: k.kecamatan || (def ? def.kecamatan : '-'),
+              kelurahan: k.kelurahan || (def ? def.kelurahan : '-'),
+              alamatLengkap: k.alamat_lengkap || k.alamatLengkap || (def ? def.alamatLengkap : (k.location || '-')),
+              location: k.location || (def ? def.location : `${k.kota_kabupaten || '-'}, ${k.provinsi || '-'}`),
+              makerYayasan: k.maker_yayasan || k.makerYayasan || k.pic_maker_name || (def ? def.makerYayasan : 'Belum Ditetapkan'),
+              perwakilanYayasan: k.perwakilan_yayasan || k.perwakilanYayasan || (def ? def.perwakilanYayasan : 'Belum Ditetapkan'),
+              managerArea: k.manager_area || k.managerArea || k.manager_area_name || (def ? def.managerArea : 'Rendy Seftiana (Manajer Area Jakarta & Jabar)'),
+              status: k.status || (def ? def.status : 'AKTIF'),
+              kapasitasPorsi: Number(k.kapasitas_porsi || k.kapasitasPorsi || (def ? def.kapasitasPorsi : (k.target_porsi || 500))),
+              // Alternate / legacy fields compatibility
+              code: k.code || k.id_sppg || (def ? def.idSppg : k.id),
+              area: k.area || k.provinsi || (def ? def.provinsi : 'DKI Jakarta'),
+              targetPorsi: Number(k.target_porsi || k.kapasitas_porsi || (def ? def.kapasitasPorsi : 500)),
+              realisasiPorsi: Number(k.realisasi_porsi || 0),
+              nominalVaHarian: Number(k.nominal_va_harian || 30000000),
+              saldoVaTersedia: Number(k.saldo_va_tersedia || 0),
+              akumulasiBelanja: Number(k.akumulasi_belanja || 0),
+              nomorVa: k.nomor_va,
+              namaBankVa: k.nama_bank_va,
+              statusVa: k.status_va,
+              managerAreaName: k.manager_area_name || k.manager_area || (def ? def.managerArea : 'Manajer Area Terkait'),
+              picMakerName: k.pic_maker_name || k.maker_yayasan || (def ? def.makerYayasan : 'Belum Ditetapkan'),
+              picCheckerName: k.pic_checker_name || k.perwakilan_yayasan || (def ? def.perwakilanYayasan : 'Belum Ditetapkan')
+            };
+          });
           hasUpdates = true;
         }
 
