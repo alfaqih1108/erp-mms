@@ -3168,7 +3168,6 @@ class DatabaseManager {
           'Alasan': newLeave.reason || '-'
         }
       });
-    }, 0);
 
     return newLeave;
   }
