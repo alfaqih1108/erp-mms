@@ -16,7 +16,6 @@ window.CutiModule = {
   calendarYear: new Date().getFullYear(),
   calendarMonth: new Date().getMonth(),
   selectedDateStr: null,
-  activeViewMode: 'PERSONAL',
 
   // Kamus Tanggal Merah & Libur Nasional Indonesia 2026
   holidays: {
@@ -47,36 +46,13 @@ window.CutiModule = {
   render: function(container) {
     if (!container) return;
 
-    // Selalu pastikan data cuti cloud terbaru ditarik saat modul dibuka/di-refresh
-    if (!this._initialSynced && window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
-      this._initialSynced = true;
-      window.DB.pullLatestFromSupabase().then(() => {
-        const c = document.getElementById('main-content-area');
-        if (c && window.App && window.App.currentTab === 'cuti') {
-          this.render(c);
-        }
-      }).catch(() => {});
-    }
-
     const user = DB.getCurrentUser();
     const allLeaves = DB.getLeaves() || [];
     const isSenior = hasWorkedOneYear(user.joinDate);
     const tenureStr = calculateTenure(user.joinDate);
 
-    // 1. Filter Riwayat Pengajuan (Personalized & Case-Insensitive matching)
-    const myLeaves = allLeaves.filter(l => {
-      if (!l) return false;
-      const empId = (l.employeeId || l.employee_id || '').toString().trim().toUpperCase();
-      const empName = (l.employeeName || l.employee_name || '').toString().trim().toLowerCase();
-      const curUserId = (user.id || '').toString().trim().toUpperCase();
-      const curUserName = (user.name || '').toString().trim().toLowerCase();
-
-      const empIdMatch = (empId && curUserId && (empId === curUserId || empId.includes(curUserId)));
-      const empNameMatch = (empName && curUserName && (empName === curUserName || empName.includes(curUserName) || curUserName.includes(empName)));
-      return Boolean(empIdMatch || empNameMatch);
-    });
-    const isLeadershipRole = ['SUPER_ADMIN', 'DIREKTUR_OPERASIONAL', 'DIREKTUR_KEUANGAN', 'HUMAN_CAPITAL', 'MANAGER_AREA', 'MANAGER_KEUANGAN'].includes(user.role);
-    const displayLeaves = (this.activeViewMode === 'ALL' && isLeadershipRole) ? allLeaves : myLeaves;
+    // 1. Filter Riwayat Pengajuan: HANYA menampilkan data dari user yang sedang login
+    const myLeaves = allLeaves.filter(l => l.employeeId === user.id || l.employeeName === user.name);
 
     // Quota Calculations
     const personalQuota = user.quotaPersonalLeave || 3;
@@ -242,29 +218,15 @@ window.CutiModule = {
 
         </div>
 
-        <!-- Tabel Riwayat Pengajuan Cuti & Izin Karyawan -->
+        <!-- Tabel Riwayat Pengajuan Cuti & Izin Karyawan (KHUSUS USER LOGIN) -->
         <div class="nalar-card" style="margin-bottom: 28px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
             <div>
-              <span class="text-mono-badge" style="color: var(--text-muted);">${(this.activeViewMode === 'ALL' && isLeadershipRole) ? 'Organization-Wide Leaves' : 'Personal Tracking & History'}</span>
-              <h3 style="font-size: 18px; margin-top: 2px;">${(this.activeViewMode === 'ALL' && isLeadershipRole) ? 'Seluruh Pengajuan Cuti Karyawan Organisasi' : 'Riwayat Pengajuan Cuti & Izin Anda'}</h3>
+              <span class="text-mono-badge" style="color: var(--text-muted);">Personal Tracking & History</span>
+              <h3 style="font-size: 18px; margin-top: 2px;">Riwayat Pengajuan Cuti & Izin Anda</h3>
             </div>
-            
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-              ${isLeadershipRole ? `
-                <div style="display: inline-flex; background: rgba(0,0,0,0.4); padding: 3px; border-radius: 8px; border: 1px solid var(--border-card);">
-                  <button type="button" class="btn-nalar-secondary" style="padding: 4px 10px; font-size: 11px; ${this.activeViewMode !== 'ALL' ? 'background: rgba(139,92,246,0.25); color: #fff; border-color: rgba(139,92,246,0.5);' : 'border-color: transparent;'}" onclick="CutiModule.setViewMode('PERSONAL')">
-                    👤 Cuti Saya (${myLeaves.length})
-                  </button>
-                  <button type="button" class="btn-nalar-secondary" style="padding: 4px 10px; font-size: 11px; ${this.activeViewMode === 'ALL' ? 'background: rgba(139,92,246,0.25); color: #fff; border-color: rgba(139,92,246,0.5);' : 'border-color: transparent;'}" onclick="CutiModule.setViewMode('ALL')">
-                    🏢 Semua Karyawan (${allLeaves.length})
-                  </button>
-                </div>
-              ` : ''}
-              
-              <div style="font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
-                Menampilkan <strong style="color: #fff;">${displayLeaves.length}</strong> permohonan
-              </div>
+            <div style="font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+              Menampilkan <strong style="color: #fff;">${myLeaves.length}</strong> permohonan riwayat Anda
             </div>
           </div>
 
@@ -282,15 +244,13 @@ window.CutiModule = {
                 </tr>
               </thead>
               <tbody>
-                ${displayLeaves.length === 0 ? `
+                ${myLeaves.length === 0 ? `
                   <tr>
                     <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 36px;">
-                      ${(this.activeViewMode === 'PERSONAL' && isLeadershipRole) 
-                        ? `Belum ada permohonan cuti yang diajukan atas nama akun Anda sendiri (${user.name}). Pengajuan dari staf (seperti Sakhiyah Karomah Salam) dapat Anda tinjau di menu <strong>Approval Hub</strong> atau klik tombol <em>"Semua Karyawan"</em> di atas.` 
-                        : 'Belum ada riwayat permohonan cuti atau izin yang tercatat.'}
+                      Belum ada riwayat permohonan cuti atau izin yang diajukan oleh akun Anda.
                     </td>
                   </tr>
-                ` : displayLeaves.map(l => `
+                ` : myLeaves.map(l => `
                   <tr style="cursor: pointer; transition: background 0.15s ease;" 
                       onclick="App.showApprovalTracker('leave', '${l.id}')"
                       onmouseenter="this.style.background='rgba(139, 92, 246, 0.06)'"
@@ -298,10 +258,10 @@ window.CutiModule = {
                     <td style="color: var(--brand-orange); font-weight: 600;">${l.id}</td>
                     <td>
                       <div style="font-weight: 600; color: #fff;">${l.employeeName}</div>
-                      <div style="font-size: 11px; color: var(--text-muted);">${l.department || (user ? user.department : 'Yayasan MMS')}</div>
+                      <div style="font-size: 11px; color: var(--text-muted);">${l.department}</div>
                     </td>
                     <td>
-                      <div style="font-weight: 600; color: #fff; font-size: 13px;">${l.type || l.leaveType || 'Cuti Tahunan'}</div>
+                      <div style="font-weight: 600; color: #fff; font-size: 13px;">${l.type}</div>
                       <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 2px;">
                         ${l.isHalfDay ? '<span style="color: #FCD34D; font-weight: 600;">⚡ 0.5 Hari (Setengah Hari)</span> · ' : ''}
                         ${l.reason}
@@ -472,14 +432,14 @@ window.CutiModule = {
               </div>
 
               <!-- Date Picker Range -->
-              <div class="form-row" id="leave-date-row" style="display: flex; gap: 12px;">
-                <div class="form-group" id="leave-start-date-group" style="flex: 1;">
-                  <label class="form-label" id="leave-start-date-label">Tanggal Mulai <span style="color: #F87171;">*</span></label>
-                  <input type="date" id="leave-start-date" class="form-control" onchange="CutiModule.handleDateChange()" required>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Tanggal Mulai <span style="color: #F87171;">*</span></label>
+                  <input type="date" id="leave-start-date" class="form-control" onchange="CutiModule.calculateDuration()" required>
                 </div>
-                <div class="form-group" id="leave-end-date-group" style="flex: 1;">
-                  <label class="form-label" id="leave-end-date-label">Tanggal Selesai <span style="color: #F87171;">*</span></label>
-                  <input type="date" id="leave-end-date" class="form-control" onchange="CutiModule.handleDateChange()" required>
+                <div class="form-group">
+                  <label class="form-label">Tanggal Selesai <span style="color: #F87171;">*</span></label>
+                  <input type="date" id="leave-end-date" class="form-control" onchange="CutiModule.calculateDuration()" required>
                 </div>
               </div>
 
@@ -777,6 +737,7 @@ window.CutiModule = {
 
   openLeaveModal: function() {
     this.currentAttachment = { url: null, name: null };
+    const user = DB.getCurrentUser();
     const form = document.getElementById('form-cuti');
     if (form) form.reset();
 
@@ -785,12 +746,6 @@ window.CutiModule = {
     const endInput = document.getElementById('leave-end-date');
     if (startInput) startInput.value = todayStr;
     if (endInput) endInput.value = todayStr;
-
-    // Reset visibilitas field tanggal
-    const endGroup = document.getElementById('leave-end-date-group');
-    const startLabel = document.getElementById('leave-start-date-label');
-    if (endGroup) endGroup.style.display = 'block';
-    if (startLabel) startLabel.innerHTML = 'Tanggal Mulai <span style="color: #F87171;">*</span>';
 
     this.handleTypeChange();
     this.calculateDuration();
@@ -804,37 +759,14 @@ window.CutiModule = {
     if (!opt) return;
 
     const isHalf = opt.getAttribute('data-half') === 'true';
-    const endGroup = document.getElementById('leave-end-date-group');
-    const startLabel = document.getElementById('leave-start-date-label');
-    const startInput = document.getElementById('leave-start-date');
     const endInput = document.getElementById('leave-end-date');
-
-    if (isHalf) {
-      // Untuk cuti setengah hari: Sembunyikan tanggal selesai, cukup 1 input tanggal pelaksanaan
-      if (endGroup) endGroup.style.display = 'none';
-      if (startLabel) startLabel.innerHTML = 'Tanggal Cuti (Setengah Hari / 0.5 Hari) <span style="color: #F87171;">*</span>';
-      if (startInput && endInput) {
-        endInput.value = startInput.value;
-      }
-    } else {
-      // Untuk cuti reguler: Tampilkan kembali rentang tanggal mulai & selesai
-      if (endGroup) endGroup.style.display = 'block';
-      if (startLabel) startLabel.innerHTML = 'Tanggal Mulai <span style="color: #F87171;">*</span>';
-    }
-
-    this.calculateDuration();
-  },
-
-  handleDateChange: function() {
-    const select = document.getElementById('leave-type-select');
-    const opt = select ? select.selectedOptions[0] : null;
-    const isHalf = opt && opt.getAttribute('data-half') === 'true';
-
     const startInput = document.getElementById('leave-start-date');
-    const endInput = document.getElementById('leave-end-date');
 
     if (isHalf && startInput && endInput) {
       endInput.value = startInput.value;
+      endInput.disabled = true;
+    } else if (endInput) {
+      endInput.disabled = false;
     }
 
     this.calculateDuration();
@@ -847,7 +779,7 @@ window.CutiModule = {
     const summaryEl = document.getElementById('leave-calc-summary');
     if (!summaryEl) return;
 
-    if (!startVal || !select || !select.value) {
+    if (!startVal || !endVal || !select || !select.value) {
       summaryEl.style.display = 'none';
       return;
     }
@@ -855,16 +787,12 @@ window.CutiModule = {
     const opt = select.selectedOptions[0];
     const isHalf = opt.getAttribute('data-half') === 'true';
     const deductType = opt.getAttribute('data-deduct');
-    const pasal = opt.getAttribute('data-pasal') || 'PASAL_14';
+    const pasal = opt.getAttribute('data-pasal');
 
     let duration = 0;
     if (isHalf) {
       duration = 0.5;
     } else {
-      if (!endVal) {
-        summaryEl.style.display = 'none';
-        return;
-      }
       const d1 = new Date(startVal);
       const d2 = new Date(endVal);
       const diffTime = d2 - d1;
@@ -899,25 +827,21 @@ window.CutiModule = {
     reader.readAsDataURL(file);
   },
 
-  handleSubmit: async function(e) {
+  handleSubmit: function(e) {
     e.preventDefault();
     const user = DB.getCurrentUser();
     const select = document.getElementById('leave-type-select');
     const opt = select.selectedOptions[0];
     const startDate = document.getElementById('leave-start-date').value;
-    let endDate = document.getElementById('leave-end-date').value;
+    const endDate = document.getElementById('leave-end-date').value;
     const reason = document.getElementById('leave-reason').value.trim();
-
-    const isHalf = opt.getAttribute('data-half') === 'true';
-    if (isHalf) {
-      endDate = startDate;
-    }
 
     if (!select.value || !startDate || !endDate || !reason) {
       App.showToast('Mohon lengkapi seluruh field formulir cuti!', 'warn');
       return;
     }
 
+    const isHalf = opt.getAttribute('data-half') === 'true';
     const deductType = opt.getAttribute('data-deduct');
     const pasal = opt.getAttribute('data-pasal');
 
@@ -950,26 +874,10 @@ window.CutiModule = {
       attachmentUrl: this.currentAttachment.url || null
     };
 
-    const submitBtn = document.querySelector('#form-cuti button[type="submit"]');
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent = '⏳ Menyimpan ke Cloud...';
-    }
-
-    try {
-      await DB.addLeave(newLeave);
-      App.closeModal('modal-cuti');
-      App.showToast(`Permohonan cuti "${opt.text}" (${duration} Hari) berhasil diajukan & tersimpan di Cloud!`, 'success');
-      this.render(document.getElementById('main-content-area'));
-    } catch (err) {
-      console.error('Gagal mengajukan cuti:', err);
-      App.showToast('Gagal mengajukan cuti. Silakan coba kembali.', 'danger');
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Kirim Permohonan Cuti';
-      }
-    }
+    DB.addLeave(newLeave);
+    App.closeModal('modal-cuti');
+    App.showToast(`Permohonan cuti "${opt.text}" (${duration} Hari) berhasil diajukan!`, 'success');
+    this.render(document.getElementById('main-content-area'));
   },
 
   handleCancelLeave: async function(leaveId) {
@@ -983,10 +891,5 @@ window.CutiModule = {
         this.render(document.getElementById('main-content-area'));
       }
     }
-  },
-
-  setViewMode: function(mode) {
-    this.activeViewMode = mode;
-    this.render(document.getElementById('main-content-area'));
   }
 };

@@ -29,16 +29,7 @@ window.ApprovalCenterModule = {
 
   setTab: function(tab) {
     this.activeTab = tab;
-    const container = document.getElementById('main-content-area');
-    this.render(container);
-    // Selalu sinkronkan data cloud terbaru saat berpindah tab
-    if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
-      window.DB.pullLatestFromSupabase().then(() => {
-        if (this.activeTab === tab && container) {
-          this.render(container);
-        }
-      }).catch(() => {});
-    }
+    this.render(document.getElementById('main-content-area'));
   },
 
   setFilter: function(filter) {
@@ -46,134 +37,127 @@ window.ApprovalCenterModule = {
     this.render(document.getElementById('main-content-area'));
   },
 
-  // Mengumpulkan seluruh riwayat pengajuan yang BENAR-BENAR telah diapprove / diproses oleh user aktif
+  // Mengumpulkan seluruh riwayat pengajuan yang telah diapprove / diproses oleh user aktif
   getMyApprovalHistory: function(user) {
-    if (!user) return [];
+    const isDirectorOrAdmin = (
+      user.role === 'SUPER_ADMIN' || 
+      user.role === 'DIREKTUR_UTAMA' || 
+      user.role === 'DIREKTUR_OPERASIONAL' || 
+      user.role === 'DIREKTUR_KEUANGAN' ||
+      user.role === 'FAT_OFFICER' ||
+      user.role === 'STAFF_AHLI_KEUANGAN'
+    );
 
     const leaves = DB.getLeaves() || [];
+    const timesheets = DB.getTimesheets() || [];
     const prs = DB.getItemRequests() || [];
     const cas = DB.getCashAdvances() || [];
 
     const history = [];
 
-    const uName = (user.name || '').trim().toLowerCase();
-    const uId = (user.id || '').trim().toLowerCase();
-    const uNika = (user.nika || '').trim().toLowerCase();
-
-    // Helper untuk memverifikasi apakah log tindakan persetujuan dilakukan oleh user aktif ini
-    const isStepByCurrentUser = (h) => {
-      if (!h) return false;
-      // Jangan masukkan aksi awal SUBMITTED oleh pemohon
-      if (h.action === 'SUBMITTED' || h.stage === 'SUBMISSION') return false;
-
-      const actorName = (h.actorName || h.actor_name || '').toLowerCase();
-      const actorId = (h.actorId || h.actor_id || '').toLowerCase();
-      const actorRole = (h.actorRole || h.actor_role || '').toLowerCase();
-
-      // 1. Pencocokan langsung berbasis Nama, ID, atau NIKA
-      if (uName && actorName.includes(uName)) return true;
-      if (uId && (actorId === uId || actorName.includes(uId))) return true;
-      if (uNika && actorName.includes(uNika)) return true;
-
-      // 2. Pencocokan cerdas alias pimpinan
-      if (actorName.includes('alfaqih') && (uName.includes('alfaqih') || uId === 'do-002')) return true;
-      if (actorName.includes('kody') && (uName.includes('kody') || uId === 'dk-001')) return true;
-      if (actorName.includes('tazkia') && (uName.includes('tazkia') || uId === 'hc-001')) return true;
-      if (actorName.includes('dian') && (uName.includes('dian') || uId === 'ma-001')) return true;
-
-      // 3. Pencocokan berbasis Jabatan / Role Wewenang
-      if (user.role === 'DIREKTUR_OPERASIONAL' && (actorRole.includes('operasional') || actorName.includes('operasional'))) return true;
-      if (user.role === 'DIREKTUR_KEUANGAN' && (actorRole.includes('keuangan') || actorName.includes('keuangan'))) return true;
-      if (user.role === 'HUMAN_CAPITAL' && (actorRole.includes('human capital') || actorName.includes('human capital') || actorRole.includes('hc'))) return true;
-      if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') return true;
-
-      return false;
-    };
-
     // 1. LEAVES (CUTI & IZIN)
     leaves.forEach(l => {
-      let historyList = l.approvalHistory || l.approval_history || [];
-      if (typeof historyList === 'string') {
-        try { historyList = JSON.parse(historyList); } catch (e) { historyList = []; }
-      }
-      if (!Array.isArray(historyList)) historyList = [];
+      const userStep = Array.isArray(l.approvalHistory) ? l.approvalHistory.find(h => 
+        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id) || h.actorRole === user.roleLabel) && h.action !== 'SUBMITTED'
+      ) : null;
 
-      const userStep = historyList.find(h => isStepByCurrentUser(h));
-
-      if (userStep) {
-        const timestamp = userStep.timestamp || (l.updatedAt || l.createdAt || '-');
-        const action = userStep.action || l.status;
+      if (userStep || (isDirectorOrAdmin && l.status !== 'PENDING') || (l.approver && l.approver.includes(user.name))) {
+        const decisionStep = userStep || (Array.isArray(l.approvalHistory) ? l.approvalHistory[l.approvalHistory.length - 1] : null);
+        const timestamp = decisionStep ? decisionStep.timestamp : (l.updatedAt || l.createdAt || '-');
+        const action = decisionStep ? decisionStep.action : l.status;
         history.push({
           type: 'LEAVE',
           id: l.id,
           date: l.createdAt || l.startDate,
-          employeeName: l.employeeName || l.employee_name,
+          employeeName: l.employeeName,
           department: l.department || l.role,
-          title: `${l.employeeName || l.employee_name} — ${l.leaveType || l.type || l.leave_type} (${l.duration} Hari)`,
-          summary: `Periode: ${l.startDate || l.start_date} s/d ${l.endDate || l.end_date} · Alasan: "${l.reason || '-'}"`,
+          title: `${l.employeeName} — ${l.leaveType || l.type} (${l.duration} Hari)`,
+          summary: `Periode: ${l.startDate} s/d ${l.endDate} · Alasan: "${l.reason || '-'}"`,
           stage: l.stage,
           status: l.status,
           decision: action,
           decisionTimestamp: timestamp,
-          approverName: userStep.actorName || userStep.actor_name || user.name,
-          notes: userStep.notes || (l.status === 'APPROVED' ? 'Disetujui' : 'Diproses'),
+          approverName: decisionStep ? decisionStep.actorName : (l.approver || user.name),
+          notes: decisionStep ? decisionStep.notes : (l.status === 'APPROVED' ? 'Disetujui' : 'Diproses'),
           raw: l
         });
       }
     });
 
-    // 2. PURCHASE REQUESTS (PR)
-    prs.forEach(p => {
-      let historyList = p.approvalHistory || p.approval_history || [];
-      if (typeof historyList === 'string') {
-        try { historyList = JSON.parse(historyList); } catch (e) { historyList = []; }
+    // 2. TIMESHEETS
+    timesheets.forEach(t => {
+      const userStep = Array.isArray(t.approvalHistory) ? t.approvalHistory.find(h => 
+        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id)) && h.action !== 'SUBMITTED'
+      ) : null;
+
+      if (userStep || (user.role === 'HUMAN_CAPITAL' && t.status !== 'PENDING') || (isDirectorOrAdmin && t.status !== 'PENDING') || (t.approver && t.approver.includes(user.name))) {
+        const decisionStep = userStep || (Array.isArray(t.approvalHistory) ? t.approvalHistory[t.approvalHistory.length - 1] : null);
+        const timestamp = decisionStep ? decisionStep.timestamp : (t.date + ' ' + (t.endTime || '17:00'));
+        history.push({
+          type: 'TIMESHEET',
+          id: t.id,
+          date: t.date,
+          employeeName: t.employeeName,
+          department: t.department || t.role,
+          title: `${t.employeeName} — ${t.activityPreset || 'Aktivitas Kerja'} (${t.hours} Jam)`,
+          summary: `Tanggal: ${t.date} (${t.startTime || '08:00'} - ${t.endTime || '17:00'}) · Uraian: "${t.activity || '-'}"`,
+          stage: 'HC_VALIDATION',
+          status: t.status,
+          decision: t.status,
+          decisionTimestamp: timestamp,
+          approverName: decisionStep ? decisionStep.actorName : (t.approver || user.name),
+          notes: decisionStep ? decisionStep.notes : (t.status === 'APPROVED' ? 'Presensi tervalidasi' : 'Ditolak'),
+          raw: t
+        });
       }
-      if (!Array.isArray(historyList)) historyList = [];
+    });
 
-      const userStep = historyList.find(h => isStepByCurrentUser(h));
-      const userAdj = Array.isArray(p.adjustments) ? p.adjustments.find(a => a.adjustedBy && a.adjustedBy.toLowerCase().includes(uName)) : null;
+    // 3. PURCHASE REQUESTS (PR)
+    prs.forEach(p => {
+      const userStep = Array.isArray(p.approvalHistory) ? p.approvalHistory.find(h => 
+        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id) || h.actorRole === user.roleLabel) && h.action !== 'SUBMITTED'
+      ) : null;
 
-      if (userStep || userAdj) {
-        const decisionStep = userStep || (historyList.length > 0 ? historyList[historyList.length - 1] : null);
+      const userAdj = Array.isArray(p.adjustments) ? p.adjustments.find(a => a.adjustedBy && a.adjustedBy.includes(user.name)) : null;
+
+      if (userStep || userAdj || (isDirectorOrAdmin && p.status !== 'PENDING') || (p.status === 'COMPLETED' || p.status === 'APPROVED')) {
+        const decisionStep = userStep || (Array.isArray(p.approvalHistory) ? p.approvalHistory[p.approvalHistory.length - 1] : null);
         const timestamp = decisionStep ? decisionStep.timestamp : (p.updatedAt || p.createdAt || '-');
         const action = decisionStep ? decisionStep.action : p.status;
         history.push({
           type: 'PR',
           id: p.id,
           date: p.createdAt,
-          employeeName: p.employeeName || p.employee_name,
+          employeeName: p.employeeName,
           department: p.department || p.role,
-          title: `${p.itemName || p.item_name} (${p.quantity} ${p.unit || 'Unit'}) — Rp ${(p.totalPrice || p.total_price || 0).toLocaleString('id-ID')}`,
-          summary: `Kategori: ${p.category} ${p.targetKitchen || p.target_kitchen ? `· Dapur: ${p.targetKitchen || p.target_kitchen}` : ''} · Alasan: "${p.reason || '-'}"`,
+          title: `${p.itemName} (${p.quantity} ${p.unit || 'Unit'}) — Rp ${(p.totalPrice || 0).toLocaleString('id-ID')}`,
+          summary: `Kategori: ${p.category} ${p.targetKitchen ? `· Dapur: ${p.targetKitchen}` : ''} · Alasan: "${p.reason || '-'}"`,
           stage: p.stage,
           status: p.status,
-          decision: p.hasAdjustment || p.has_adjustment ? 'ADJUSTED_APPROVED' : action,
+          decision: p.hasAdjustment ? 'ADJUSTED_APPROVED' : action,
           decisionTimestamp: timestamp,
-          approverName: decisionStep ? (decisionStep.actorName || decisionStep.actor_name) : user.name,
+          approverName: decisionStep ? decisionStep.actorName : (p.approver || user.name),
           notes: userAdj ? `Disesuaikan (${userAdj.newQty} unit @ Rp ${Number(userAdj.newUnitPrice).toLocaleString('id-ID')})` : (decisionStep ? decisionStep.notes : '-'),
           raw: p
         });
       }
     });
 
-    // 3. CASH ADVANCE (CA)
+    // 4. CASH ADVANCE (CA)
     cas.forEach(c => {
-      let historyList = c.approvalHistory || c.approval_history || [];
-      if (typeof historyList === 'string') {
-        try { historyList = JSON.parse(historyList); } catch (e) { historyList = []; }
-      }
-      if (!Array.isArray(historyList)) historyList = [];
+      const userStep = Array.isArray(c.approvalHistory) ? c.approvalHistory.find(h => 
+        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id) || h.actorRole === user.roleLabel) && h.action !== 'SUBMITTED'
+      ) : null;
 
-      const userStep = historyList.find(h => isStepByCurrentUser(h));
-
-      if (userStep) {
-        const timestamp = userStep.timestamp || (c.disbursedAt || c.createdAt || '-');
-        const action = userStep.action || c.status;
+      if (userStep || (isDirectorOrAdmin && c.status !== 'PENDING') || (c.status === 'COMPLETED' || c.status === 'APPROVED' || c.status === 'SETTLED')) {
+        const decisionStep = userStep || (Array.isArray(c.approvalHistory) ? c.approvalHistory[c.approvalHistory.length - 1] : null);
+        const timestamp = decisionStep ? decisionStep.timestamp : (c.disbursedAt || c.createdAt || '-');
+        const action = decisionStep ? decisionStep.action : c.status;
         history.push({
           type: 'CA',
           id: c.id,
           date: c.createdAt,
-          employeeName: c.employeeName || c.employee_name,
+          employeeName: c.employeeName,
           department: c.department || c.role,
           title: `Kasbon: Rp ${(c.amount || 0).toLocaleString('id-ID')} — ${c.title || c.purpose || 'Kebutuhan Operasional'}`,
           summary: `Target: ${c.targetLocation || c.targetExpense || 'Operasional'} · Rekening: ${c.bankName} ${c.bankAccountNo}`,
@@ -181,8 +165,8 @@ window.ApprovalCenterModule = {
           status: c.status,
           decision: action,
           decisionTimestamp: timestamp,
-          approverName: userStep.actorName || userStep.actor_name || user.name,
-          notes: userStep.notes || '-',
+          approverName: decisionStep ? decisionStep.actorName : (c.approver || user.name),
+          notes: decisionStep ? decisionStep.notes : '-',
           raw: c
         });
       }
@@ -195,69 +179,62 @@ window.ApprovalCenterModule = {
   render: function(container) {
     if (!container) return;
 
-    // Jika render dipanggil saat data lokal masih kosong, segera tarik dari Supabase & render ulang
-    if (!this._initialSyncDone && window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
-      this._initialSyncDone = true;
-      window.DB.pullLatestFromSupabase().then(() => {
-        const c = document.getElementById('main-content-area');
-        if (c) this.render(c);
-      }).catch(() => {});
-    }
-
     const user = DB.getCurrentUser();
     const leaves = DB.getLeaves() || [];
+    const timesheets = DB.getTimesheets() || [];
     const prs = DB.getItemRequests() || [];
     const cas = DB.getCashAdvances() || [];
 
-    // Filter Items Relevan sesuai Matriks Persetujuan Resmi (Antrean Pending)
+    // Filter Items Relevan sesuai Hak Akses Role (Antrean Pending)
     let relevantLeaves = [];
+    let relevantTimesheets = [];
     let relevantPrs = [];
     let relevantCAs = [];
 
-    // 1. Human Capital: Cuti tahap HC (Level 2)
+    // 1. Human Capital: Cuti tahap HC + Timesheet tim
     if (user.role === 'HUMAN_CAPITAL') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'HC_REVIEW' || l.stage === 'HC_FINAL'));
+      relevantTimesheets = timesheets.filter(t => t.status === 'PENDING');
     }
-    // 2. Direktur Keuangan / Direktur Operasional:
-    //    - PR: Level 3 PR Perwakilan Yayasan, Level 1 PR Staff/FAT/Staff Ahli, Level 2 PR Manager
-    //    - Cuti: Level 1 Cuti Manager/Staff/FAT/Staff Ahli/HC
-    //    - Kasbon: Level 1 Kasbon Semua Role
-    else if (user.role === 'DIREKTUR_KEUANGAN' || user.role === 'DIREKTUR_OPERASIONAL') {
-      relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_OPS_OR_KEU_REVIEW' || l.stage === 'DIR_KEU_REVIEW'));
+    // 2. Direktur Keuangan: Cuti Keuangan Tahap 1 + PR Tahap Direktur + Cash Advance Tahap Direktur
+    else if (user.role === 'DIREKTUR_KEUANGAN') {
+      relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW'));
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL');
       relevantCAs = cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW');
     }
-    // 3. Manager Area:
-    //    - PR: Level 1 PR Perwakilan Yayasan (Dapur SPPG Terkait)
-    //    - Cuti: Level 1 Cuti Perwakilan Yayasan & Surveyor
+    // 3. Direktur Operasional: Cuti Manager/HC + PR Tahap Direktur + Cash Advance Tahap Direktur
+    else if (user.role === 'DIREKTUR_OPERASIONAL') {
+      relevantLeaves = leaves.filter(l => l.status === 'PENDING' && l.stage === 'DIR_OPS_OR_KEU_REVIEW');
+      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL');
+      relevantCAs = cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW');
+    }
+    // 4. Manager Area: PR dari Surveyor, Perwakilan Yayasan, & Staff Operasional
     else if (user.role === 'MANAGER_AREA') {
-      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && p.role === 'PERWAKILAN_YAYASAN');
-      relevantLeaves = leaves.filter(l => l.status === 'PENDING' && l.stage === 'MANAGER_AREA_REVIEW' && (l.role === 'PERWAKILAN_YAYASAN' || l.role === 'SURVEYOR'));
+      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'SURVEYOR' || p.role === 'PERWAKILAN_YAYASAN' || p.role === 'STAFF_OPERASIONAL'));
     }
-    // 4. Staff Ahli Keuangan:
-    //    - PR: Level 2 PR Perwakilan Yayasan, Level 1 PR Manager Area & Manager Keuangan & HC
-    //    - Cuti: Level 1 Cuti Maker Yayasan
-    else if (user.role === 'STAFF_AHLI_KEUANGAN') {
-      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION' && (p.role === 'PERWAKILAN_YAYASAN' || p.role === 'MANAGER_AREA' || p.role === 'MANAGER_KEUANGAN' || p.role === 'HUMAN_CAPITAL'));
-      relevantLeaves = leaves.filter(l => l.status === 'PENDING' && l.stage === 'STAFF_AHLI_REVIEW' && l.role === 'MAKER_YAYASAN');
+    // 5. Manager Keuangan: PR dari FAT & Staff Ahli
+    else if (user.role === 'MANAGER_KEUANGAN') {
+      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'FAT_OFFICER' || p.role === 'STAFF_AHLI_KEUANGAN'));
     }
-    // 5. FAT Officer:
-    //    - Kasbon: Pencairan Kasbon Level 2 & Verifikasi LPJ Kasbon
-    else if (user.role === 'FAT_OFFICER') {
+    // 6. Staff Ahli Keuangan & FAT Officer: Verifikasi Anggaran PR Tahap 2/3 + Pencairan Kasbon & Verifikasi LPJ Kasbon
+    else if (user.role === 'STAFF_AHLI_KEUANGAN' || user.role === 'FAT_OFFICER') {
+      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION');
       relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
     }
-    // 6. Direktur Utama & Super Admin: Oversight Semua
+    // 7. Direktur Utama & Super Admin: Oversight Semua
     else if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING');
+      relevantTimesheets = timesheets.filter(t => t.status === 'PENDING');
       relevantPrs = prs.filter(p => p.status === 'PENDING');
       relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
     }
 
-    const totalPending = relevantLeaves.length + relevantPrs.length + relevantCAs.length;
+    const totalPending = relevantLeaves.length + relevantTimesheets.length + relevantPrs.length + relevantCAs.length;
 
     // Dapatkan data riwayat approval saya
     const allHistory = this.getMyApprovalHistory(user);
     const historyLeaves = allHistory.filter(h => h.type === 'LEAVE');
+    const historyTimesheets = allHistory.filter(h => h.type === 'TIMESHEET');
     const historyPrs = allHistory.filter(h => h.type === 'PR');
     const historyCAs = allHistory.filter(h => h.type === 'CA');
     const totalHistory = allHistory.length;
@@ -298,7 +275,7 @@ window.ApprovalCenterModule = {
                   Wewenang Approval: <strong style="color: var(--brand-orange);">${user.name}</strong> (${user.roleLabel})
                 </div>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                  Sistem secara otomatis menampilkan antrean persetujuan Cuti, Pengadaan Barang (PR), dan Kasbon yang memerlukan keputusan Anda sesuai matriks wewenang resmi.
+                  Sistem secara otomatis menampilkan antrean yang memerlukan keputusan serta rekapitulasi audit log yang sudah Anda setujui.
                 </div>
               </div>
             </div>
@@ -319,7 +296,7 @@ window.ApprovalCenterModule = {
           </div>
         </div>
 
-        <!-- Thematic Floating Filter Pills (Semua, Cuti, PR, Cash Advance) -->
+        <!-- Thematic Floating Filter Pills (Semua, Cuti, Timesheet, PR, Cash Advance) -->
         <div class="approval-filter-bar">
           <button class="approval-filter-pill pill-all ${this.activeFilter === 'ALL' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('ALL')">
             <span class="filter-dot dot-orange"></span>
@@ -331,6 +308,12 @@ window.ApprovalCenterModule = {
             <span class="filter-dot dot-violet"></span>
             <span>Cuti & Izin</span>
             <span class="filter-badge">${this.activeTab === 'PENDING' ? relevantLeaves.length : historyLeaves.length}</span>
+          </button>
+
+          <button class="approval-filter-pill pill-timesheet ${this.activeFilter === 'TIMESHEET' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('TIMESHEET')">
+            <span class="filter-dot dot-blue"></span>
+            <span>Timesheet</span>
+            <span class="filter-badge">${this.activeTab === 'PENDING' ? relevantTimesheets.length : historyTimesheets.length}</span>
           </button>
 
           <button class="approval-filter-pill pill-pr ${this.activeFilter === 'PR' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('PR')">
@@ -353,7 +336,7 @@ window.ApprovalCenterModule = {
               <div class="nalar-card" style="text-align: center; padding: 48px;">
                 <div style="font-size: 32px; margin-bottom: 8px;">🎉</div>
                 <h3 style="font-size: 18px; color: #fff; margin-bottom: 4px;">Tidak Ada Antrean Approval</h3>
-                <p style="font-size: 12.5px; color: var(--text-muted);">Seluruh pengajuan cuti, PR, atau kasbon yang membutuhkan wewenang Anda telah selesai diproses.</p>
+                <p style="font-size: 12.5px; color: var(--text-muted);">Seluruh pengajuan cuti, timesheet, PR, atau kasbon yang membutuhkan wewenang Anda telah selesai diproses.</p>
               </div>
             ` : ''}
 
@@ -369,13 +352,13 @@ window.ApprovalCenterModule = {
                       <span class="text-mono-badge" style="color: #A78BFA;">CUTI / IZIN · ${l.id}</span>
                       <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${l.createdAt}</span>
                       <span style="font-size: 10px; color: #C4B5FD; background: rgba(139,92,246,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                        Tahap: ${l.stage === 'MANAGER_AREA_REVIEW' ? 'Review Manager Area' : l.stage === 'STAFF_AHLI_REVIEW' ? 'Verifikasi Staff Ahli Keuangan' : l.stage === 'DIR_OPS_OR_KEU_REVIEW' || l.stage === 'DIR_KEU_REVIEW' ? 'Review Direksi' : 'Verifikasi Final Human Capital'}
+                        Tahap: ${l.stage === 'DIR_KEU_REVIEW' ? 'Review Direktur Keuangan' : l.stage === 'DIR_OPS_OR_KEU_REVIEW' ? 'Review Direktur' : 'Verifikasi Final Human Capital'}
                       </span>
                       <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10px; color: #A78BFA; border-color: rgba(139,92,246,0.4);" onclick="App.showApprovalTracker('leave', '${l.id}')">
                         🔍 Cek Level Approval
                       </button>
                     </div>
-                    <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 500;">${l.employeeName} — ${l.leaveType || l.type} (${l.duration} Hari)</h4>
+                    <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 500;">${l.employeeName} — ${l.type} (${l.duration} Hari)</h4>
                     <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px;">Alasan: ${l.reason}</p>
                     <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
                       Periode: ${l.startDate} s/d ${l.endDate} · Divisi: ${l.department}
@@ -388,7 +371,41 @@ window.ApprovalCenterModule = {
                     Tolak
                   </button>
                   <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B;" onclick="ApprovalCenterModule.approveLeave('${l.id}', '${l.stage}')">
-                    ${l.stage === 'HC_REVIEW' ? 'Setujui Cuti Final' : 'Setujui & Teruskan ke HC'}
+                    ${l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW' ? 'Setujui & Teruskan ke HC' : 'Setujui Cuti Final'}
+                  </button>
+                </div>
+              </div>
+            `).join('') : ''}
+
+            <!-- Pending Timesheets -->
+            ${(this.activeFilter === 'ALL' || this.activeFilter === 'TIMESHEET') ? relevantTimesheets.map(t => `
+              <div class="nalar-card aura-box-blue" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #3B82F6; margin-bottom: 0;">
+                <div style="display: flex; align-items: flex-start; gap: 16px;">
+                  <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); display: flex; align-items: center; justify-content: center; color: #60A5FA; flex-shrink: 0;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  </div>
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                      <span class="text-mono-badge" style="color: #60A5FA;">TIMESHEET · ${t.id}</span>
+                      <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${t.date}</span>
+                      <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10px; color: #60A5FA; border-color: rgba(59,130,246,0.4);" onclick="App.showApprovalTracker('timesheet', '${t.id}')">
+                        🔍 Cek Level Approval
+                      </button>
+                    </div>
+                    <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 500;">${t.employeeName} — ${t.activityPreset || 'Aktivitas Kerja'} (${t.hours} Jam)</h4>
+                    <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px;">Aktivitas: ${t.activity}</p>
+                    <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+                      Rentang: ${t.startTime || '08:00'} - ${t.endTime || '12:00'} · Divisi: ${t.department}
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                  <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectTimesheet('${t.id}')">
+                    Tolak
+                  </button>
+                  <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B;" onclick="ApprovalCenterModule.approveTimesheet('${t.id}')">
+                    Validasi Jam Kerja
                   </button>
                 </div>
               </div>
@@ -407,7 +424,7 @@ window.ApprovalCenterModule = {
                       <span class="text-mono-badge" style="color: #FCD34D;">PURCHASE REQ · ${p.id}</span>
                       <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${p.createdAt}</span>
                       <span style="font-size: 10px; color: #FDE68A; background: rgba(245,158,11,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                        Tahap: ${p.stage === 'MANAGER_APPROVAL' ? '1. Review Manager Area' : p.stage === 'FINANCE_VERIFICATION' ? '2. Verifikasi Anggaran Keuangan' : '3. Persetujuan Akhir Direktur'}
+                        Tahap: ${p.stage === 'MANAGER_APPROVAL' ? '1. Review Manager' : p.stage === 'FINANCE_VERIFICATION' ? '2. Verifikasi Anggaran Keuangan' : '3. Persetujuan Akhir Direktur'}
                       </span>
                       <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10px; color: #FCD34D; border-color: rgba(245,158,11,0.4);" onclick="App.showApprovalTracker('pr', '${p.id}')">
                         🔍 Cek Level Approval
@@ -418,8 +435,8 @@ window.ApprovalCenterModule = {
                       ${p.hasAdjustment ? `<span style="font-size: 10.5px; color: #34D399; background: rgba(52,211,153,0.15); padding: 1px 6px; border-radius: 3px; margin-left: 6px;">📝 Telah Disesuaikan</span>` : ''}
                     </h4>
                     ${p.targetKitchen ? `
-                      <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; ${p.targetKitchen.includes('KANTOR') ? 'color: #93C5FD; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3);' : 'color: #FCD34D; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3);'} padding: 2px 8px; border-radius: 4px; margin: 2px 0 4px 0; font-weight: 500;">
-                        ${p.targetKitchen.includes('KANTOR') ? '🏢 Keperluan:' : '🍳 Untuk Kepentingan Dapur:'} ${p.targetKitchen}
+                      <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #FCD34D; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); padding: 2px 8px; border-radius: 4px; margin: 2px 0 4px 0; font-weight: 500;">
+                        🍳 Untuk Kepentingan Dapur: ${p.targetKitchen}
                       </div>
                     ` : ''}
                     <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 8px;">Alasan: ${p.reason}</p>
@@ -626,12 +643,12 @@ window.ApprovalCenterModule = {
   },
 
   approveLeave: function(id, currentStage) {
-    if (currentStage === 'HC_REVIEW') {
-      DB.advanceLeaveStage(id, 'HC_FINAL', 'APPROVED');
-      App.showToast(`Cuti ${id} disetujui penuh oleh Human Capital! Saldo kuota karyawan otomatis dipotong.`, 'success');
+    if (currentStage === 'DIR_KEU_REVIEW' || currentStage === 'DIR_OPS_OR_KEU_REVIEW') {
+      DB.advanceLeaveStage(id, 'HC_FINAL', 'PENDING');
+      App.showToast(`Persetujuan tingkat Direktur untuk ${id} berhasil! Pengajuan diteruskan ke Human Capital untuk pemotongan kuota.`, 'success');
     } else {
-      DB.advanceLeaveStage(id, 'HC_REVIEW', 'PENDING');
-      App.showToast(`Persetujuan Level 1 untuk ${id} berhasil! Pengajuan diteruskan ke Human Capital untuk pengesahan kuota.`, 'success');
+      DB.advanceLeaveStage(id, 'APPROVED', 'APPROVED');
+      App.showToast(`Cuti ${id} disetujui penuh oleh Human Capital! Saldo kuota karyawan otomatis dipotong.`, 'success');
     }
     App.refreshCurrentTab();
   },
@@ -642,10 +659,25 @@ window.ApprovalCenterModule = {
     App.refreshCurrentTab();
   },
 
+  approveTimesheet: function(id) {
+    DB.updateTimesheetStatus ? DB.updateTimesheetStatus(id, 'APPROVED') : (function() {
+      const ts = DB.getTimesheets().find(t => t.id === id);
+      if (ts) { ts.status = 'APPROVED'; DB.save(); }
+    })();
+    App.showToast(`Timesheet ${id} berhasil divalidasi oleh Human Capital!`, 'success');
+    App.refreshCurrentTab();
+  },
+
+  rejectTimesheet: function(id) {
+    DB.updateTimesheetStatus(id, 'REJECTED');
+    App.showToast(`Timesheet ${id} ditolak.`, 'warn');
+    App.refreshCurrentTab();
+  },
+
   advancePR: function(id, currentStage) {
     if (currentStage === 'MANAGER_APPROVAL') {
       DB.advanceItemRequestStage(id, 'FINANCE_VERIFICATION', 'PENDING');
-      App.showToast(`PR ${id} disetujui Manager Area & diteruskan ke Verifikasi Anggaran Keuangan (Staff Ahli Keuangan)!`, 'success');
+      App.showToast(`PR ${id} disetujui Manager & diteruskan ke Verifikasi Anggaran Keuangan (Staff Ahli/FAT)!`, 'success');
     } else if (currentStage === 'FINANCE_VERIFICATION') {
       DB.advanceItemRequestStage(id, 'DIRECTOR_APPROVAL', 'PENDING');
       App.showToast(`Anggaran PR ${id} telah diverifikasi & diteruskan ke Direktur untuk persetujuan akhir!`, 'success');
@@ -1256,8 +1288,9 @@ window.ApprovalCenterModule = {
           <div class="form-group">
             <label class="form-label" style="font-weight: 600;">1. Kategori Pengajuan yang Ingin Diexport <span style="color: #F87171;">*</span></label>
             <select id="export-modal-category" class="form-control" style="font-size: 13px;">
-              <option value="ALL" selected>📑 Semua Pengajuan (Master Konsolidasi: Cuti, PR & Kasbon)</option>
+              <option value="ALL" selected>📑 Semua Pengajuan (Master Konsolidasi: Cuti, Timesheet, PR & Kasbon)</option>
               <option value="LEAVE">🌴 Cuti & Izin Karyawan</option>
+              <option value="TIMESHEET">⏱️ Timesheet & Presensi Kerja</option>
               <option value="PR">📦 Pengadaan Barang & Pembelian (PR)</option>
               <option value="CA">💰 Cash Advance & LPJ Kasbon</option>
             </select>
@@ -1335,6 +1368,7 @@ window.ApprovalCenterModule = {
     const endDate = document.getElementById('export-modal-end-date')?.value || '';
 
     const leaves = DB.getLeaves() || [];
+    const timesheets = DB.getTimesheets() || [];
     const prs = DB.getItemRequests() || [];
     const cas = DB.getCashAdvances() || [];
 
@@ -1422,6 +1456,64 @@ window.ApprovalCenterModule = {
                   <td style="text-align: center; font-weight: bold; color: #059669; border: 1px solid #CBD5E1;">${approvalTime}</td>
                   <td style="border: 1px solid #CBD5E1;">${approver}</td>
                   <td style="border: 1px solid #CBD5E1;">${notes}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+    // 2. EXPORT KHUSUS TIMESHEET
+    else if (category === 'TIMESHEET') {
+      categoryTitle = 'TIMESHEET & PRESENSI KERJA';
+      filenameSuffix = 'Timesheet_Presensi';
+      const filteredTimesheets = timesheets.filter(t => isDateInRange(t.date) && isStatusMatch(t.status));
+
+      tableHtml = `
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-family: 'Segoe UI', Arial, sans-serif; width: 100%;">
+          <thead>
+            <tr style="background-color: #1E40AF; color: #FFFFFF; font-weight: bold; text-align: center;">
+              <th style="padding: 10px;">No</th>
+              <th style="padding: 10px;">ID Log</th>
+              <th style="padding: 10px;">Tanggal Kerja</th>
+              <th style="padding: 10px;">NIKA</th>
+              <th style="padding: 10px;">Nama Karyawan</th>
+              <th style="padding: 10px;">Divisi / Jabatan</th>
+              <th style="padding: 10px;">Jam Mulai</th>
+              <th style="padding: 10px;">Jam Selesai</th>
+              <th style="padding: 10px;">Total Jam Kerja</th>
+              <th style="padding: 10px;">Kategori Aktivitas</th>
+              <th style="padding: 10px;">Uraian Aktivitas / Tugas</th>
+              <th style="padding: 10px;">Status Validasi</th>
+              <th style="padding: 10px;">Waktu Approval (Tgl & Jam)</th>
+              <th style="padding: 10px;">Pejabat Penyetuju (HC)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredTimesheets.map((t, idx) => {
+              const bgRow = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC';
+              const lastStep = Array.isArray(t.approvalHistory) && t.approvalHistory.length > 0 ? t.approvalHistory[t.approvalHistory.length - 1] : null;
+              const approvalTime = lastStep ? lastStep.timestamp : (t.status === 'APPROVED' ? t.date + ' ' + (t.endTime || '17:00') : '-');
+
+              let statusBg = t.status === 'APPROVED' ? '#D1FAE5' : t.status === 'REJECTED' ? '#FEE2E2' : '#FEF3C7';
+              let statusColor = t.status === 'APPROVED' ? '#065F46' : t.status === 'REJECTED' ? '#991B1B' : '#92400E';
+
+              return `
+                <tr style="background-color: ${bgRow};">
+                  <td style="text-align: center; border: 1px solid #CBD5E1;">${idx + 1}</td>
+                  <td style="text-align: center; font-weight: bold; border: 1px solid #CBD5E1;">${t.id}</td>
+                  <td style="text-align: center; font-weight: bold; border: 1px solid #CBD5E1;">${t.date}</td>
+                  <td style="text-align: center; border: 1px solid #CBD5E1;">${t.nika || '-'}</td>
+                  <td style="font-weight: 600; border: 1px solid #CBD5E1;">${t.employeeName}</td>
+                  <td style="border: 1px solid #CBD5E1;">${t.department || t.role}</td>
+                  <td style="text-align: center; border: 1px solid #CBD5E1;">${t.startTime || '08:00'}</td>
+                  <td style="text-align: center; border: 1px solid #CBD5E1;">${t.endTime || '17:00'}</td>
+                  <td style="text-align: center; font-weight: bold; border: 1px solid #CBD5E1;">${Number(t.hours || 0).toFixed(1)} Jam</td>
+                  <td style="border: 1px solid #CBD5E1;">${t.activityPreset || 'Reguler'}</td>
+                  <td style="border: 1px solid #CBD5E1;">${t.activity || '-'}</td>
+                  <td style="background-color: ${statusBg}; color: ${statusColor}; font-weight: bold; text-align: center; border: 1px solid #CBD5E1;">${t.status}</td>
+                  <td style="text-align: center; font-weight: bold; color: #059669; border: 1px solid #CBD5E1;">${approvalTime}</td>
+                  <td style="border: 1px solid #CBD5E1;">${t.approver || 'Human Capital'}</td>
                 </tr>
               `;
             }).join('')}

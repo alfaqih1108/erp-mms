@@ -5,60 +5,31 @@
 
 window.PengajuanBarangModule = {
   currentAttachment: { url: null, name: null },
+  filterScope: 'MY', // 'MY' atau 'ALL'
+
+  setFilterScope: function(scope) {
+    this.filterScope = scope;
+    this.render(document.getElementById('main-content-area'));
+  },
 
   render: function(container) {
     if (!container) return;
 
-    const user = DB.getCurrentUser();
-
-    // Maker Yayasan: Fitur Pengadaan PR Dinonaktifkan
-    if (user.role === 'MAKER_YAYASAN') {
-      container.innerHTML = `
-        <div class="animate-blur-in">
-          <div class="nalar-card" style="text-align: center; padding: 60px 24px; max-width: 680px; margin: 40px auto; border: 1px solid rgba(245,158,11,0.25);">
-            <div style="font-size: 48px; margin-bottom: 16px;">⛔</div>
-            <span class="text-mono-badge" style="color: #FCD34D;">Akses Khusus</span>
-            <h2 style="font-size: 22px; color: #fff; margin: 8px 0 12px 0;">Fitur Pengadaan Barang Tidak Tersedia</h2>
-            <p style="font-size: 13.5px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
-              Akun <strong>Maker Yayasan</strong> difokuskan untuk pencatatan & pelaporan operasional dapur SPPG harian serta administrasi kemitraan. Pengajuan pengadaan barang & aset (PR) dilakukan melalui akun <strong>Perwakilan Yayasan</strong> atau <strong>Staff Operasional</strong>.
-            </p>
-            <button class="btn-nalar-primary" onclick="App.switchTab('dapur-yayasan')" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; font-weight: 600;">
-              <span>Ke Modul Dapur & Pelaporan Yayasan ↗</span>
-            </button>
-          </div>
-        </div>
-      `;
-      return;
-    }
-
-    // Selalu pastikan data pengadaan cloud terbaru ditarik saat modul dibuka/di-refresh
-    if (!this._initialSynced && window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
-      this._initialSynced = true;
-      window.DB.pullLatestFromSupabase().then(() => {
-        const c = document.getElementById('main-content-area');
-        if (c && window.App && window.App.currentTab === 'pengajuan-barang') {
-          this.render(c);
-        }
-      }).catch(() => {});
-    }
-
     const allPrs = DB.getItemRequests() || [];
     const catalog = DB.getCatalog() || [];
+    const user = DB.getCurrentUser();
 
-    // Filter ketat: Hanya tampilkan pengajuan milik akun pemohon yang sedang login
+    // Filter fleksibel: cocokkan berdasarkan employeeId atau nama pemohon
     const myPrs = allPrs.filter(p => {
       if (!p) return false;
-      const empId = (p.employeeId || p.employee_id || '').toString().trim().toUpperCase();
-      const empName = (p.employeeName || p.employee_name || '').toString().trim().toLowerCase();
-      const curUserId = (user.id || '').toString().trim().toUpperCase();
-      const curUserName = (user.name || '').toString().trim().toLowerCase();
-
-      const matchId = (empId && curUserId && (empId === curUserId || empId.includes(curUserId)));
-      const matchName = (empName && curUserName && (empName === curUserName || empName.includes(curUserName) || curUserName.includes(empName)));
-      return Boolean(matchId || matchName);
+      const matchId = (p.employeeId && user.id && p.employeeId.toLowerCase() === user.id.toLowerCase());
+      const matchName = (p.employeeName && user.name && p.employeeName.toLowerCase().includes(user.name.toLowerCase()));
+      return matchId || matchName;
     });
 
-    const prs = myPrs;
+    const isAllScope = (this.filterScope === 'ALL');
+    const prs = isAllScope ? allPrs : myPrs;
+
     const totalSpend = prs.reduce((acc, curr) => acc + (Number(curr.totalPrice) || 0), 0);
     const pendingPrs = prs.filter(p => p.status === 'PENDING');
 
@@ -96,14 +67,14 @@ window.PengajuanBarangModule = {
 
             <div style="position: relative; z-index: 2;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span class="text-mono-badge" style="color: var(--text-muted);">Total Anggaran Diajukan Saya</span>
+                <span class="text-mono-badge" style="color: var(--text-muted);">${isAllScope ? 'Total Anggaran Seluruh Pengajuan (Konsolidasi)' : 'Total Anggaran Diajukan Saya'}</span>
                 <span style="font-size: 11px; color: #FCD34D; font-family: var(--font-mono);">${prs.length} Berkas PR</span>
               </div>
               <div style="margin: 12px 0 6px 0;">
                 <span style="font-size: 32px; font-weight: 700; color: #FCD34D; line-height: 1.1;">Rp ${totalSpend.toLocaleString('id-ID')}</span>
               </div>
               <p style="color: var(--text-muted); font-size: 12.5px; font-weight: 300; margin-bottom: 16px; line-height: 1.5;">
-                Akumulasi seluruh Purchase Request yang diajukan oleh akun Anda.
+                ${isAllScope ? 'Akumulasi seluruh Purchase Request fasilitas, operasional & dapur dari seluruh divisi yayasan.' : 'Akumulasi seluruh Purchase Request yang diajukan oleh akun Anda.'}
               </p>
 
               <div style="display: flex; gap: 18px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 12px; flex-wrap: wrap;">
@@ -147,21 +118,28 @@ window.PengajuanBarangModule = {
           </div>
         </div>
 
-        <!-- PR History Table (Hanya Pengajuan Saya) -->
+        <!-- PR History Table with Filter Toggle -->
         <div class="nalar-card" style="width: 100%;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 14px;">
             <div>
               <span class="text-mono-badge" style="color: var(--text-muted);">Riwayat Permintaan Pengadaan</span>
               <h3 style="font-size: 18px; margin-top: 2px;">
-                Daftar Purchase Requisition (PR) yang Anda Ajukan
+                ${isAllScope ? 'Daftar Seluruh Purchase Requisition (PR) Organisasi' : 'Daftar Purchase Requisition (PR) yang Anda Ajukan'}
               </h3>
             </div>
 
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="live-status-pill">
-                <span class="live-dot" style="background: #FCD34D;"></span>
-                ${prs.length} Berkas Pengajuan Anda
-              </span>
+            <!-- Filter Switcher Buttons (Pengajuan Saya vs Semua Pengajuan) -->
+            <div style="display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.35); padding: 4px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+              <button type="button" class="btn-nalar-secondary ${!isAllScope ? 'active' : ''}" 
+                      style="padding: 5px 12px; font-size: 11.5px; ${!isAllScope ? 'background: rgba(245, 158, 11, 0.2); border-color: var(--brand-orange); color: #FCD34D; font-weight: 600;' : 'color: var(--text-muted);'}"
+                      onclick="PengajuanBarangModule.setFilterScope('MY')">
+                👤 Pengajuan Saya (${myPrs.length})
+              </button>
+              <button type="button" class="btn-nalar-secondary ${isAllScope ? 'active' : ''}" 
+                      style="padding: 5px 12px; font-size: 11.5px; ${isAllScope ? 'background: rgba(245, 158, 11, 0.2); border-color: var(--brand-orange); color: #FCD34D; font-weight: 600;' : 'color: var(--text-muted);'}"
+                      onclick="PengajuanBarangModule.setFilterScope('ALL')">
+                🌐 Semua Pengajuan (${allPrs.length})
+              </button>
             </div>
           </div>
 
@@ -207,8 +185,8 @@ window.PengajuanBarangModule = {
                         <div>
                           <div style="font-weight: 500; color: #fff;">${p.itemName}</div>
                           ${p.targetKitchen ? `
-                            <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; ${p.targetKitchen.includes('KANTOR') ? 'color: #93C5FD; background: rgba(59,130,246,0.14); border: 1px solid rgba(59,130,246,0.25);' : 'color: #FB7185; background: rgba(225,29,72,0.12);'} padding: 1px 6px; border-radius: 4px; margin: 2px 0;">
-                              ${p.targetKitchen.includes('KANTOR') ? '🏢' : '🍲'} Untuk: ${p.targetKitchen}
+                            <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: #FB7185; background: rgba(225,29,72,0.12); padding: 1px 6px; border-radius: 4px; margin: 2px 0;">
+                              🍲 Untuk: ${p.targetKitchen}
                             </div>
                           ` : ''}
                           <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">${p.reason}</div>
@@ -334,58 +312,32 @@ window.PengajuanBarangModule = {
   },
 
   openPRModal: function() {
-    const user = DB.getCurrentUser();
-    if (user && user.role === 'MAKER_YAYASAN') {
-      App.showToast('Fitur Pengadaan Barang tidak tersedia untuk Maker Yayasan.', 'warn');
-      return;
-    }
     this.removeAttachment();
     const kitchenContainer = document.getElementById('pr-kitchen-container');
     const kitchenSelect = document.getElementById('pr-kitchen-select');
-    const kitchenLabel = document.getElementById('pr-kitchen-label');
-    const hintEl = document.getElementById('pr-kitchen-hint');
+    const user = DB.getCurrentUser();
 
-    // Tampilkan pilihan Dapur Program / Kantor
+    // Tampilkan pilihan Dapur Program (Khusus Perwakilan Yayasan: hanya 1 dapur yang ditugaskan)
     if (kitchenContainer && kitchenSelect) {
       kitchenContainer.style.display = 'block';
       const isPerwakilanYayasan = (user && user.role === 'PERWAKILAN_YAYASAN');
+      const kitchenOptions = isPerwakilanYayasan ? (DB.getKitchenDropdownOptions(user) || []) : (DB.getKitchenDropdownOptions() || []);
+      
+      kitchenSelect.innerHTML = kitchenOptions.map(k => `
+        <option value="${k.idSppg} — ${k.namaDapur}">${k.idSppg} — ${k.namaDapur}</option>
+      `).join('');
 
-      if (isPerwakilanYayasan) {
-        if (kitchenLabel) {
-          kitchenLabel.innerHTML = `🍳 Untuk Kepentingan Dapur Apa? (Pilih Database SPPG) <span style="color: #F87171;">*</span>`;
-        }
-        const kitchenOptions = DB.getKitchenDropdownOptions(user) || [];
-        kitchenSelect.innerHTML = kitchenOptions.map(k => `
-          <option value="${k.idSppg} — ${k.namaDapur}">${k.idSppg} — ${k.namaDapur}</option>
-        `).join('');
+      if (kitchenOptions.length > 0) {
+        kitchenSelect.value = `${kitchenOptions[0].idSppg} — ${kitchenOptions[0].namaDapur}`;
+      }
 
-        if (kitchenOptions.length > 0) {
-          kitchenSelect.value = `${kitchenOptions[0].idSppg} — ${kitchenOptions[0].namaDapur}`;
-        }
-        if (hintEl) {
+      // Berikan penanda visual/keterangan khusus untuk Perwakilan Yayasan
+      const hintEl = kitchenContainer.querySelector('div[style*="font-size: 11px"]');
+      if (hintEl) {
+        if (isPerwakilanYayasan) {
           hintEl.innerHTML = `🔒 <strong style="color: #FCD34D;">Dapur SPPG Penugasan:</strong> Terkunci otomatis 1 titik dapur sesuai penugasan resmi yayasan Anda (${user.name}).`;
-        }
-      } else {
-        // Untuk peran selain Perwakilan Yayasan & Maker: sediakan opsi Kantor & seluruh Dapur SPPG
-        if (kitchenLabel) {
-          kitchenLabel.innerHTML = `🏢 / 🍳 Untuk Keperluan Apa? (Pilih Kantor atau Database Dapur SPPG) <span style="color: #F87171;">*</span>`;
-        }
-        const allKitchens = DB.getKitchenDropdownOptions() || [];
-
-        let optionsHtml = `
-          <option value="KANTOR — Fasilitas & Operasional Kantor" selected>🏢 KANTOR — Fasilitas & Operasional Kantor</option>
-          <optgroup label="── Titik Dapur SPPG Yayasan ──">
-        `;
-        optionsHtml += allKitchens.map(k => `
-          <option value="${k.idSppg} — ${k.namaDapur}">🍳 ${k.idSppg} — ${k.namaDapur}</option>
-        `).join('');
-        optionsHtml += `</optgroup>`;
-
-        kitchenSelect.innerHTML = optionsHtml;
-        kitchenSelect.value = "KANTOR — Fasilitas & Operasional Kantor";
-
-        if (hintEl) {
-          hintEl.innerHTML = `*Pilih opsi <strong style="color: #93C5FD;">"KANTOR"</strong> jika pengadaan untuk fasilitas/kebutuhan kantor, atau pilih titik <strong style="color: #FCD34D;">Dapur SPPG</strong> jika untuk operasional dapur yayasan.`;
+        } else {
+          hintEl.innerHTML = `*Setiap pengajuan PR wajib ditautkan ke titik dapur operasional SPPG tujuan.`;
         }
       }
     }
@@ -450,7 +402,7 @@ window.PengajuanBarangModule = {
     App.openModal('modal-image-preview');
   },
 
-  handleSubmit: async function(e) {
+  handleSubmit: function(e) {
     e.preventDefault();
     const user = DB.getCurrentUser();
     const itemName = document.getElementById('pr-name').value;
@@ -465,47 +417,32 @@ window.PengajuanBarangModule = {
     if (!targetKitchen && user && user.role === 'PERWAKILAN_YAYASAN' && user.sppgId) {
       targetKitchen = `${user.sppgId} — ${user.sppgName || 'Dapur SPPG'}`;
     } else if (!targetKitchen) {
-      targetKitchen = (user && user.role === 'PERWAKILAN_YAYASAN') ? 'WFC2L9EH — SPPG Cilangkap - Tapos 1' : 'KANTOR — Fasilitas & Operasional Kantor';
+      targetKitchen = 'WFC2L9EH — SPPG Cilangkap - Tapos 1';
     }
 
     if (!itemName || !reason || unitPrice <= 0 || !targetKitchen) {
-      App.showToast('Mohon lengkapi seluruh data pengajuan barang & pilih tujuan keperluan pengadaan!', 'warn');
+      App.showToast('Mohon lengkapi seluruh data pengajuan barang & pilih Dapur SPPG tujuan!', 'warn');
       return;
     }
 
     const totalPrice = quantity * unitPrice;
 
-    const submitBtn = e.target.querySelector('button[type="submit"]');
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span>⏳ Menyimpan ke Cloud...</span>';
-    }
+    DB.addItemRequest({
+      itemName,
+      category,
+      quantity,
+      unitPrice,
+      totalPrice,
+      urgency,
+      reason,
+      targetKitchen,
+      attachmentUrl: this.currentAttachment.url,
+      attachmentName: this.currentAttachment.name
+    });
 
-    try {
-      await DB.addItemRequest({
-        itemName,
-        category,
-        quantity,
-        unitPrice,
-        totalPrice,
-        urgency,
-        reason,
-        targetKitchen,
-        attachmentUrl: this.currentAttachment.url,
-        attachmentName: this.currentAttachment.name
-      });
-
-      App.closeModal('modal-pr');
-      this.removeAttachment();
-      App.showToast(`Pengajuan ${itemName} (${quantity} unit untuk ${targetKitchen}) berhasil disubmit ke Cloud!`, 'success');
-      App.refreshCurrentTab();
-    } catch (err) {
-      App.showToast('Gagal mengirim pengajuan ke cloud. Silakan coba lagi.', 'danger');
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<span>Kirim Pengajuan PR</span>';
-      }
-    }
+    App.closeModal('modal-pr');
+    this.removeAttachment();
+    App.showToast(`Pengajuan ${itemName} (${quantity} unit untuk ${targetKitchen}) berhasil disubmit!`, 'success');
+    App.refreshCurrentTab();
   }
 };

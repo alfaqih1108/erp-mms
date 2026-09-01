@@ -17,17 +17,6 @@ window.TimesheetModule = {
   render: function(container) {
     if (!container) return;
 
-    // Selalu pastikan data timesheet cloud terbaru ditarik saat modul dibuka/di-refresh
-    if (!this._initialSynced && window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
-      this._initialSynced = true;
-      window.DB.pullLatestFromSupabase().then(() => {
-        const c = document.getElementById('main-content-area');
-        if (c && window.App && window.App.currentTab === 'timesheet') {
-          this.render(c);
-        }
-      }).catch(() => {});
-    }
-
     if (!this.selectedDate) {
       this.selectedDate = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10));
     }
@@ -39,7 +28,7 @@ window.TimesheetModule = {
 
     const user = DB.getCurrentUser();
     const allTimesheets = DB.getTimesheets() || [];
-    const userTimesheets = allTimesheets.filter(t => (t.employeeId || t.employee_id) === user.id);
+    const userTimesheets = allTimesheets.filter(t => t.employeeId === user.id);
     
     // Check Integrasi Cuti: Apakah user sedang Cuti Approved pada tanggal yang dipilih?
     const approvedLeave = DB.getUserApprovedLeaveOnDate(user.id, this.selectedDate);
@@ -56,7 +45,7 @@ window.TimesheetModule = {
     const progressPercent = Math.min(100, Math.round((dayTotalHours / targetHours) * 100));
 
     const totalAllHours = userTimesheets.reduce((acc, curr) => acc + (Number(curr.hours) || 0), 0);
-    const roleTemplates = this.getActivityTemplatesByRole(user.role);
+    const defaultActivities = DB.getDefaultActivities() || [];
 
     container.innerHTML = `
       <div class="animate-blur-in">
@@ -213,46 +202,49 @@ window.TimesheetModule = {
                   </div>
                 ` : `
                   <div style="display: flex; flex-direction: column; gap: 12px;">
-                    ${dayTimesheets.map(t => {
-                      const hVal = (t.hours !== undefined && t.hours !== null && !isNaN(Number(t.hours))) ? Number(t.hours).toFixed(1) : '0.0';
-                      return `
-                        <div style="background: rgba(14, 18, 28, 0.9); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: var(--radius-md); padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; box-shadow: 0 4px 14px rgba(0,0,0,0.3); transition: all 0.15s ease;"
-                             onmouseenter="this.style.borderColor='#60A5FA'; this.style.transform='translateY(-1px)'"
-                             onmouseleave="this.style.borderColor='rgba(59, 130, 246, 0.25)'; this.style.transform='none'">
-                          <div style="display: flex; align-items: flex-start; gap: 14px;">
-                            <!-- Time Range Chip -->
-                            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: var(--radius-sm); padding: 8px 12px; text-align: center; min-width: 100px;">
-                              <div style="font-size: 13px; font-weight: 600; color: #60A5FA;">
-                                ${t.startTime || '08:00'} - ${t.endTime || '12:00'}
-                              </div>
-                              <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">
-                                Durasi: ${hVal} Jam
-                              </div>
+                    ${dayTimesheets.map(t => `
+                      <div style="background: rgba(14, 18, 28, 0.9); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: var(--radius-md); padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; box-shadow: 0 4px 14px rgba(0,0,0,0.3); cursor: pointer; transition: all 0.15s ease;"
+                           onclick="App.showApprovalTracker('timesheet', '${t.id}')"
+                           onmouseenter="this.style.borderColor='#60A5FA'; this.style.transform='translateY(-1px)'"
+                           onmouseleave="this.style.borderColor='rgba(59, 130, 246, 0.25)'; this.style.transform='none'">
+                        <div style="display: flex; align-items: flex-start; gap: 14px;">
+                          <!-- Time Range Chip -->
+                          <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: var(--radius-sm); padding: 8px 12px; text-align: center; min-width: 100px;">
+                            <div style="font-size: 13px; font-weight: 600; color: #60A5FA;">
+                              ${t.startTime || '08:00'} - ${t.endTime || '12:00'}
                             </div>
-
-                            <div>
-                              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                <span class="text-mono-badge" style="color: #60A5FA; background: rgba(59, 130, 246, 0.12); padding: 3px 8px; border-radius: 4px; font-size: 10px;">
-                                  ${t.activityPreset || 'Aktivitas Kerja'}
-                                </span>
-                                <span style="font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);">${t.id}</span>
-                              </div>
-                              <h4 style="font-size: 14.5px; color: #fff; margin: 6px 0 3px 0; font-weight: 500;">${t.activity}</h4>
-                              <div style="font-size: 11px; color: #34D399; display: flex; align-items: center; gap: 4px;">
-                                <span>✓</span> <span>Tersimpan & Tercatat di Database</span>
-                              </div>
+                            <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">
+                              Durasi: ${t.hours} Jam
                             </div>
                           </div>
 
-                          <div style="display: flex; align-items: center; gap: 8px;">
-                            <button class="btn-nalar-secondary" style="padding: 6px 12px; font-size: 11.5px; color: #F87171; border-color: rgba(248, 113, 113, 0.35); background: rgba(239, 68, 68, 0.08);" title="Hapus aktivitas ini" onclick="TimesheetModule.deleteEntry('${t.id}')">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                              Hapus Log
-                            </button>
+                          <div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                              <span class="text-mono-badge" style="color: #60A5FA; background: rgba(59, 130, 246, 0.12); padding: 3px 8px; border-radius: 4px; font-size: 10px;">
+                                ${t.activityPreset || 'Aktivitas Kerja'}
+                              </span>
+                              <span style="font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);">${t.id}</span>
+                            </div>
+                            <h4 style="font-size: 14.5px; color: #fff; margin: 6px 0 3px 0; font-weight: 500;">${t.activity}</h4>
+                            <div style="font-size: 11px; color: var(--text-dim);">
+                              Status: <strong style="color: ${t.status === 'APPROVED' ? '#34D399' : '#FBBF24'};">${t.status}</strong> · Reviewer: ${t.approver || 'Manager'}
+                            </div>
                           </div>
                         </div>
-                      `;
-                    }).join('')}
+
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                          <button class="btn-nalar-secondary" style="padding: 4px 10px; font-size: 11px; color: #60A5FA; border-color: rgba(59,130,246,0.4);" onclick="event.stopPropagation(); App.showApprovalTracker('timesheet', '${t.id}')">
+                            🔍 Detail Alur
+                          </button>
+                          <span class="badge-status ${t.status === 'APPROVED' ? 'badge-approved' : t.status === 'PENDING' ? 'badge-pending' : 'badge-rejected'}">
+                            ${t.status}
+                          </span>
+                          <button class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; color: var(--text-dim);" title="Hapus aktivitas ini" onclick="event.stopPropagation(); TimesheetModule.deleteEntry('${t.id}')">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                    `).join('')}
                   </div>
                 `}
               </div>
@@ -339,31 +331,15 @@ window.TimesheetModule = {
                       <span id="inline-ts-duration-preview" style="color: #34D399; font-weight: 500;">⏱️ Dihitung Otomatis: 4 Jam (4.0 Jam)</span>
                     </div>
 
-                    <!-- 3. Nama Aktivitas / Pekerjaan (Dropdown Template Sesuai Role + Sinkronisasi Input) -->
-                    <div class="form-group" style="margin-bottom: 14px;">
-                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <label class="form-label" style="margin-bottom: 0;">
-                          3. Nama Aktivitas / Pekerjaan <span style="color: #F87171;">*</span>
-                        </label>
-                        <span style="font-size: 10.5px; color: #60A5FA; font-family: var(--font-mono); background: rgba(59,130,246,0.12); padding: 1px 6px; border-radius: 3px;">
-                          Template: ${user.roleLabel || user.role}
-                        </span>
-                      </div>
-
-                      <!-- Dropdown Pilihan Template Aktivitas Sesuai Role -->
-                      <select id="inline-ts-activity-select" class="form-control" style="font-size: 13px; margin-bottom: 8px; border-color: rgba(59, 130, 246, 0.4); background: rgba(15, 23, 42, 0.9); color: #fff; cursor: pointer;" onchange="TimesheetModule.onActivitySelectChange(this.value)">
-                        <option value="" disabled selected>-- Pilih Template Aktivitas (${user.roleLabel || 'Per Role'}) --</option>
-                        ${roleTemplates.map(t => `<option value="${t}">${t}</option>`).join('')}
-                        <option value="__CUSTOM__">✍️ Ketik Aktivitas Manual / Kustom...</option>
-                      </select>
-
-                      <!-- Input Text Sinkron (Bisa langsung diedit atau disesuaikan) -->
+                    <!-- 3. Nama Aktivitas / Pekerjaan (Input Manual dengan Tombol Silang ✕) -->
+                    <div class="form-group">
+                      <label class="form-label">3. Nama Aktivitas / Pekerjaan <span style="color: #F87171;">*</span></label>
                       <div style="position: relative; display: flex; align-items: center;">
                         <input type="text" id="inline-ts-activity-name" class="form-control" 
-                               placeholder="Pilih template di atas atau ketik nama pekerjaan..." 
+                               placeholder="Ketik nama aktivitas / pekerjaan harian Anda..." 
                                required value="" 
-                               style="padding-right: 36px; font-size: 13px;" 
-                               oninput="TimesheetModule.onActivityInputTyping(this.value)">
+                               style="padding-right: 36px;" 
+                               oninput="TimesheetModule.toggleClearBtn(this.value)">
                         <button type="button" id="btn-clear-ts-activity" 
                                 onclick="TimesheetModule.clearActivityInput()" 
                                 title="Hapus / Kosongkan teks aktivitas" 
@@ -390,10 +366,12 @@ window.TimesheetModule = {
 
             <!-- =========================================================================
                  KONTAINER TAMBAHAN KHUSUS ROLE: PERWAKILAN YAYASAN & STAFF OPERASIONAL
+                 (LEBAR SAMA PERSIS DENGAN FORM INPUT LANGSUNG DI ATASNYA)
                  ========================================================================= -->
             ${(user.role === 'PERWAKILAN_YAYASAN' || user.role === 'STAFF_OPERASIONAL' || user.role === 'SURVEYOR') ? (function() {
               const dayIssues = (DB.getFieldIssues() || []).filter(f => f.authorId === user.id && f.date === TimesheetModule.selectedDate);
               const allKitchens = DB.getKitchens() || [];
+              // Filter khusus titik dapur SPPG yang didelegasikan ke Perwakilan Yayasan / Staff Operasional yang sedang login
               const delegatedKitchens = allKitchens.filter(k => {
                 if (!k) return false;
                 const matchPerwakilan = k.perwakilanYayasan && (
@@ -409,76 +387,166 @@ window.TimesheetModule = {
                 return matchPerwakilan || matchAssigned;
               });
 
+              // Jika ada delegasi spesifik gunakan delegatedKitchens, jika belum diatur penugasan gunakan master dapur aktif
               const kitchens = delegatedKitchens.length > 0 ? delegatedKitchens : allKitchens;
               const formatMode = TimesheetModule.issueFormatMode || 'BULLET';
 
               return `
                 <div class="nalar-card hud-corner-box aura-box-amber" style="margin-bottom: 0; background: linear-gradient(180deg, rgba(26, 20, 16, 0.95) 0%, rgba(16, 14, 12, 0.98) 100%); border: 1px solid rgba(245, 158, 11, 0.35);">
                   <div class="card-aura-glow aura-amber" style="top: -20%; right: -20%; opacity: 0.18;"></div>
+
                   <div style="position: relative; z-index: 2;">
+                    
+                    <!-- Header Kontainer Kendala -->
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; border-bottom: 1px solid rgba(245, 158, 11, 0.2); padding-bottom: 14px;">
                       <div>
-                        <span class="text-mono-badge" style="color: #FCD34D; background: rgba(245, 158, 11, 0.15); padding: 2px 8px; border-radius: 4px; font-size: 10.5px;">Pelaporan Lapangan</span>
-                        <h3 style="font-size: 17.5px; font-weight: 600; margin-top: 4px; color: #fff;">Laporan Kendala Harian</h3>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                          <span class="text-mono-badge" style="color: #FCD34D; background: rgba(245, 158, 11, 0.15); padding: 2px 8px; border-radius: 4px; font-size: 10.5px;">
+                            Pelaporan Lapangan
+                          </span>
+                          <span class="text-mono-badge" style="color: #F87171; background: rgba(239, 68, 68, 0.12); padding: 2px 6px; border-radius: 4px; font-size: 10px;">
+                            ${user.roleLabel || 'Perwakilan / Staff Ops'}
+                          </span>
+                        </div>
+                        <h3 style="font-size: 17.5px; font-weight: 600; margin-top: 4px; color: #fff;">
+                          Laporan Kendala Harian di Dapur
+                        </h3>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-top: 3px; line-height: 1.4;">
+                          Tuliskan kendala di hari ini (<strong style="color: #FCD34D;">${TimesheetModule.selectedDate}</strong>). Otomatis tampil di <strong>Dashboard Manager Area</strong>.
+                        </p>
                       </div>
-                      <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); display: flex; align-items: center; justify-content: center; font-size: 18px; color: #FCD34D;">🚨</div>
+                      <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); display: flex; align-items: center; justify-content: center; font-size: 18px; color: #FCD34D; flex-shrink: 0; box-shadow: 0 4px 12px rgba(245,158,11,0.2);">
+                        🚨
+                      </div>
                     </div>
+
+                    <!-- Form Input Kendala (Hanya Berbasis Pilihan Dapur & Rincian Poin) -->
                     <form id="form-field-issue" onsubmit="TimesheetModule.handleFieldIssueSubmit(event)">
+                      
+                      <!-- 1. Pilihan Dapur SPPG Binaan -->
                       <div class="form-group" style="margin-bottom: 16px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                          <label class="form-label" style="font-size: 12px; color: #fff; margin-bottom: 0;">1. Titik Dapur SPPG Binaan <span style="color: #F87171;">*</span></label>
-                          <span style="font-size: 11px; color: #FCD34D; font-family: var(--font-mono);">${delegatedKitchens.length > 0 ? `(${delegatedKitchens.length} Dapur Terdelegasi)` : ''}</span>
+                          <label class="form-label" style="font-size: 12px; color: #fff; margin-bottom: 0;">
+                            1. Titik Dapur SPPG Binaan <span style="color: #F87171;">*</span>
+                          </label>
+                          <span style="font-size: 11px; color: #FCD34D; font-family: var(--font-mono);">
+                            ${delegatedKitchens.length > 0 ? `(${delegatedKitchens.length} Dapur Terdelegasi)` : ''}
+                          </span>
                         </div>
-                        <select id="field-issue-kitchen" class="form-control" style="font-size: 13px;" required>
-                          <option value="" disabled selected>-- Pilih Titik Dapur SPPG --</option>
-                          ${kitchens.map(k => `
-                            <option value="${k.idSppg || k.id}">
-                              ${k.namaDapur || k.name} (${k.idSppg || k.code || k.id}) — Kec. ${k.kecamatan || k.location || '-'}
+                        <select id="issue-kitchen-id" class="form-control" style="font-size: 13px;" required>
+                          ${kitchens.map((k, idx) => `
+                            <option value="${k.id}" ${idx === 0 ? 'selected' : ''}>
+                              ${k.idSppg || k.id} — ${k.namaDapur || k.name} (${k.kotaKabupaten || k.provinsi || 'Wilayah'})
                             </option>
                           `).join('')}
                         </select>
                       </div>
-                      <div class="form-group" style="margin-bottom: 16px;">
+
+                      <!-- 2. Rincian Poin-Poin Kendala (Bullet / Numbering Toolbar) -->
+                      <div class="form-group" style="margin-bottom: 18px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-                          <label class="form-label" style="font-size: 12px; color: #fff; margin-bottom: 0;">2. Rincian Poin-Poin Kendala di Lapangan <span style="color: #F87171;">*</span></label>
-                          <div style="display: inline-flex; align-items: center; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 2px;">
-                            <button type="button" id="btn-mode-bullet" class="btn-format-toggle" onclick="TimesheetModule.toggleIssueFormat('BULLET')" 
-                                    style="padding: 3px 8px; font-size: 10.5px; border-radius: 4px; border: none; cursor: pointer; transition: all 0.15s ease; ${formatMode === 'BULLET' ? 'background: rgba(245,158,11,0.25); color: #FCD34D; font-weight: 600;' : 'background: transparent; color: var(--text-muted);'}">• Bullets</button>
-                            <button type="button" id="btn-mode-number" class="btn-format-toggle" onclick="TimesheetModule.toggleIssueFormat('NUMBER')" 
-                                    style="padding: 3px 8px; font-size: 10.5px; border-radius: 4px; border: none; cursor: pointer; transition: all 0.15s ease; ${formatMode === 'NUMBER' ? 'background: rgba(245,158,11,0.25); color: #FCD34D; font-weight: 600;' : 'background: transparent; color: var(--text-muted);'}">1. Numbering</button>
+                          <label class="form-label" style="margin-bottom: 0; font-size: 12px; color: #fff;">
+                            2. Rincian Poin-Poin Kendala di Dapur <span style="color: #F87171;">*</span>
+                          </label>
+
+                          <!-- Toolbar Poin (Bullet / Numbering Switcher) -->
+                          <div style="display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.5); padding: 2px 4px; border-radius: 6px; border: 1px solid var(--border-subtle);">
+                            <button type="button" id="btn-mode-bullet" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 11px; border-radius: 4px; ${formatMode === 'BULLET' ? 'background: rgba(245,158,11,0.25); color: #FCD34D; border-color: #FCD34D; font-weight: 600;' : 'color: var(--text-muted);'}" onclick="TimesheetModule.toggleIssueFormat('BULLET')">
+                              • Bullet
+                            </button>
+                            <button type="button" id="btn-mode-number" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 11px; border-radius: 4px; ${formatMode === 'NUMBER' ? 'background: rgba(245,158,11,0.25); color: #FCD34D; border-color: #FCD34D; font-weight: 600;' : 'color: var(--text-muted);'}" onclick="TimesheetModule.toggleIssueFormat('NUMBER')">
+                              1. Numbering
+                            </button>
                           </div>
                         </div>
-                        <div id="issue-points-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
+
+                        <!-- Dynamic Point Rows List -->
+                        <div id="issue-points-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
                           ${TimesheetModule.renderIssuePointRows(formatMode)}
                         </div>
-                        <button type="button" class="btn-nalar-secondary" onclick="TimesheetModule.addIssuePointRow()" style="width: 100%; justify-content: center; font-size: 11.5px; padding: 7px; color: #FCD34D; border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.06);">+ Tambah Poin Kendala Baru</button>
+
+                        <button type="button" class="btn-nalar-secondary" onclick="TimesheetModule.addIssuePointRow()" style="width: 100%; justify-content: center; padding: 7px 12px; font-size: 12px; color: #FCD34D; border-color: rgba(245,158,11,0.35); border-style: dashed; background: rgba(245,158,11,0.04);">
+                          + Tambah Poin Kendala Berikutnya
+                        </button>
                       </div>
-                      <button type="submit" id="btn-submit-field-issue" class="btn-nalar-primary" style="width: 100%; justify-content: center; padding: 11px; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.25); color: #000; font-weight: 600;">🚨 Laporkan Kendala Hari Ini</button>
+
+                      <!-- Submit Button -->
+                      <button type="submit" class="btn-nalar-primary" style="width: 100%; justify-content: center; padding: 12px; font-weight: 700; font-size: 13px; background: linear-gradient(135deg, #D97706 0%, #B45309 100%); border-color: #FCD34D; color: #fff; box-shadow: 0 4px 18px rgba(217, 119, 6, 0.35);">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        Simpan & Teruskan Laporan Kendala ke Manager Area
+                      </button>
                     </form>
+
+                    <!-- Riwayat Kendala Tanggal Terpilih & Status Bertingkat Per Poin -->
                     ${dayIssues.length > 0 ? `
-                      <div style="margin-top: 20px; padding-top: 16px; border-top: 1px dashed rgba(245, 158, 11, 0.3);">
+                      <div style="margin-top: 22px; padding-top: 16px; border-top: 1px dashed rgba(245, 158, 11, 0.25);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                          <span style="font-size: 11.5px; font-weight: 600; color: #FCD34D;">Laporan Kendala Hari Ini:</span>
-                          <span class="text-mono-badge" style="color: #FCD34D; font-size: 10px;">${dayIssues.length} Titik</span>
+                          <span class="text-mono-badge" style="color: #FCD34D; font-size: 10.5px;">
+                            Laporan Hari ${TimesheetModule.selectedDate} (${dayIssues.length})
+                          </span>
+                          <span style="font-size: 10.5px; color: var(--text-dim); font-family: var(--font-mono);">
+                            Status Bertingkat Per Poin
+                          </span>
                         </div>
-                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                        
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
                           ${dayIssues.map(issue => `
-                            <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(245,158,11,0.25); border-radius: var(--radius-sm); padding: 12px 14px;">
-                              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <strong style="color: #fff; font-size: 13px;">${issue.kitchenName || issue.kitchenId}</strong>
-                                <span class="badge-status badge-pending" style="font-size: 10px; padding: 1px 6px;">${issue.status}</span>
+                            <div style="background: rgba(0, 0, 0, 0.45); border: 1px solid ${issue.status === 'FOLLOWED_UP' ? 'rgba(52, 211, 153, 0.35)' : issue.status === 'IN_PROGRESS' ? 'rgba(59, 130, 246, 0.35)' : 'rgba(245, 158, 11, 0.35)'}; border-radius: var(--radius-sm); padding: 14px 16px;">
+                              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;">
+                                <div>
+                                  <strong style="color: #fff; font-size: 13.5px;">🍳 ${issue.kitchenName}</strong>
+                                  <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 1px;">
+                                    ${issue.id} · ${issue.createdAt ? issue.createdAt.split(' ')[1] : ''}
+                                  </div>
+                                </div>
+                                <span class="badge-status ${issue.status === 'FOLLOWED_UP' ? 'badge-approved' : issue.status === 'IN_PROGRESS' ? 'badge-pending' : 'badge-rejected'}" style="font-size: 10.5px;">
+                                  ${issue.status === 'FOLLOWED_UP' ? '🟢 Seluruh Poin Selesai' : issue.status === 'IN_PROGRESS' ? '🔵 Sedang Ditindaklanjuti' : '🟡 Menunggu Respon'}
+                                </span>
                               </div>
-                              <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary);">
-                                ${(issue.points || []).map((p) => {
-                                  const text = typeof p === 'string' ? p : p.text;
-                                  return `<div style="display: flex; align-items: flex-start; gap: 6px;"><span style="color: #FCD34D;">•</span><span>${text}</span></div>`;
+
+                              <!-- Rincian Status Per Poin -->
+                              <div style="display: flex; flex-direction: column; gap: 8px;">
+                                ${issue.points.map((pt, pIdx) => {
+                                  const pText = typeof pt === 'object' ? pt.text : pt;
+                                  const pStatus = typeof pt === 'object' ? (pt.status || 'BELUM_DIRESPON') : (issue.status === 'FOLLOWED_UP' ? 'SUDAH_SELESAI' : 'BELUM_DIRESPON');
+                                  const pResponse = typeof pt === 'object' ? pt.response : issue.managerResponse;
+                                  const pRespondedBy = typeof pt === 'object' ? pt.respondedBy : issue.managerRespondedBy;
+
+                                  const prefix = issue.formatType === 'NUMBER' ? `${pIdx + 1}. ` : `• `;
+
+                                  return `
+                                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; padding: 10px 12px;">
+                                      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                                        <div style="font-size: 12.5px; color: #fff; line-height: 1.5;">
+                                          <strong style="color: #FCD34D;">${prefix}</strong>${pText}
+                                        </div>
+                                        <span class="badge-status ${pStatus === 'SUDAH_SELESAI' ? 'badge-approved' : pStatus === 'SUDAH_DITANGGAPI' ? 'badge-settled' : pStatus === 'SUDAH_DIRESPON' ? 'badge-disbursed' : 'badge-pending'}" style="font-size: 10px; font-weight: 600; white-space: nowrap; flex-shrink: 0;">
+                                          ${pStatus === 'SUDAH_SELESAI' ? '✓ Selesai' : pStatus === 'SUDAH_DITANGGAPI' ? '💬 Ditanggapi' : pStatus === 'SUDAH_DIRESPON' ? '👁️ Direspon' : '⏳ Belum Direspon'}
+                                        </span>
+                                      </div>
+
+                                      ${pResponse ? `
+                                        <div style="margin-top: 8px; padding: 6px 10px; background: rgba(52, 211, 153, 0.08); border-left: 2px solid #34D399; border-radius: 4px; font-size: 11.5px; color: #A7F3D0; line-height: 1.4;">
+                                          <strong>Arahan Manager:</strong> "${pResponse}"
+                                          ${pRespondedBy ? `<div style="font-size: 10px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-mono);">${pRespondedBy}</div>` : ''}
+                                        </div>
+                                      ` : ''}
+                                    </div>
+                                  `;
                                 }).join('')}
+                              </div>
+
+                              <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+                                <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: var(--text-dim);" onclick="TimesheetModule.deleteFieldIssueEntry('${issue.id}')">
+                                  Hapus Laporan
+                                </button>
                               </div>
                             </div>
                           `).join('')}
                         </div>
                       </div>
                     ` : ''}
+
                   </div>
                 </div>
               `;
@@ -487,6 +555,63 @@ window.TimesheetModule = {
 
         </div>
 
+        <!-- Master History Table (All Records & Approved Leaves) -->
+        <div class="nalar-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <span class="text-mono-badge" style="color: var(--text-muted);">Riwayat Kumulatif</span>
+              <h3 style="font-size: 18px; margin-top: 2px;">Seluruh Catatan Timesheet & Log Aktivitas Anda</h3>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted);">
+              Total Terakumulasi: <strong style="color: #60A5FA;">${totalAllHours} Jam</strong>
+            </div>
+          </div>
+
+          <div class="nalar-table-container">
+            <table class="nalar-table">
+              <thead>
+                <tr>
+                  <th>ID Log</th>
+                  <th>Tanggal</th>
+                  <th>Rentang Jam</th>
+                  <th>Kategori Aktivitas</th>
+                  <th>Rincian Tugas Detail</th>
+                  <th>Durasi</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${userTimesheets.length === 0 ? `
+                  <tr>
+                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">Belum ada riwayat timesheet.</td>
+                  </tr>
+                ` : userTimesheets.map(t => `
+                  <tr>
+                    <td style="color: #60A5FA; font-weight: 500;">${t.id}</td>
+                    <td>${t.date}</td>
+                    <td style="color: #fff;">${t.startTime || '08:00'} - ${t.endTime || '12:00'}</td>
+                    <td>
+                      <span class="text-mono-badge" style="color: var(--text-secondary); font-size: 9.5px;">${t.activityPreset || 'Aktivitas'}</span>
+                    </td>
+                    <td style="max-width: 260px; color: var(--text-secondary); font-size: 13px;">${t.activity}</td>
+                    <td><strong style="color: #fff; font-size: 13.5px;">${t.hours}</strong> Jam</td>
+                    <td>
+                      <span class="badge-status ${t.status === 'APPROVED' ? 'badge-approved' : t.status === 'PENDING' ? 'badge-pending' : 'badge-rejected'}">
+                        ${t.status}
+                      </span>
+                    </td>
+                    <td>
+                      <button class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 11px; color: var(--text-dim);" title="Hapus entri" onclick="TimesheetModule.deleteEntry('${t.id}')">
+                        Hapus
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     `;
 
@@ -600,177 +725,6 @@ window.TimesheetModule = {
     return { valid: true, hours: decimalHours };
   },
 
-  // Master Template Aktivitas / Pekerjaan Harian Berdasarkan Role Organisasi
-  getActivityTemplatesByRole: function(role) {
-    const templates = {
-      // 1. PERWAKILAN YAYASAN (Di Dapur SPPG)
-      'PERWAKILAN_YAYASAN': [
-        'Supervisi Operasional & Alur Kerja Dapur SPPG',
-        'Monitoring Kualitas & Kesegaran Bahan Baku Masakan',
-        'Pemeriksaan Porsi & Standar Kelayakan Menu Makanan',
-        'Pengecekan Kebersihan, Sanitasi & Higienitas Area Dapur',
-        'Koordinasi Distribusi Makanan ke Titik Sekolah / Penerima Manfaat',
-        'Rekonsiliasi & Pencatatan Kendala Operasional Dapur',
-        'Koordinasi & Komunikasi Harian Bersama Mitra Pengelola',
-        'Administrasi Lainnya'
-      ],
-
-      // 2. STAFF OPERASIONAL (Tim Fasilitas Lapangan)
-      'STAFF_OPERASIONAL': [
-        'Monitoring & Inspeksi Fisik Titik Fasilitas Dapur Binaan',
-        'Pengecekan Alat Masak, Utility (Gas/Listrik/Air) & Inventaris',
-        'Koordinasi Logistik Pengiriman & Rantai Pasok Perlengkapan',
-        'Pendampingan Lapangan & Penanganan Kendala Teknis Dapur',
-        'Rekapitulasi Kebutuhan Pengadaan Barang / Perlengkapan Dapur',
-        'Penyusunan Laporan Harian Monitoring Operasional Lapangan',
-        'Administrasi Lainnya'
-      ],
-
-      // 3. SURVEYOR (Dukungan Day-to-Day Manager Area & Operasional Dapur)
-      'SURVEYOR': [
-        'Pendataan & Pengecekan Kebutuhan Logistik Harian Dapur',
-        'Pengambilan & Pengiriman (Dropping) Barang / Perlengkapan ke Dapur',
-        'Pengecekan, Perbaikan & Penanganan Cepat Fasilitas Dapur (Troubleshooting)',
-        'Pendampingan Lapangan & Monitoring Dapur Bersama Manajer Area',
-        'Pengambilan Nota, Struk Belanja & Dokumen Administrasi dari Dapur',
-        'Bantuan Teknis & Distribusi Darurat Operasional Dapur',
-        'Pengecekan Lokasi & Kesiapan Sarana Fasilitas Dapur Baru / Tambahan',
-        'Administrasi Lainnya'
-      ],
-
-      // 4. FAT OFFICER (Finance Accounting & Tax)
-      'FAT_OFFICER': [
-        'Pencatatan Jurnal & Pembukuan Transaksi Keuangan Harian',
-        'Verifikasi Dokumen Nota / Kwitansi Realisasi LPJ Kasbon',
-        'Proses Administrasi Pencairan & Transfer Dana Kasbon Operasional',
-        'Rekonsiliasi Rekening Bank & Kas Kecil (Petty Cash)',
-        'Rekapitulasi Pemotongan & Administrasi Pajak (PPh)',
-        'Penyusunan Rekapitulasi Arus Kas Harian',
-        'Administrasi Lainnya'
-      ],
-
-      // 5. STAFF AHLI KEUANGAN (Staf Ahli Administrasi & Keuangan)
-      'STAFF_AHLI_KEUANGAN': [
-        'Verifikasi Anggaran & Estimasi Biaya Pengadaan Barang (PR)',
-        'Evaluasi Justifikasi & Analisis Plafon Cash Advance',
-        'Rekonsiliasi Data Finansial Kemitraan Dapur SPPG',
-        'Analisis Realisasi Anggaran vs Rencana Biaya Operasional',
-        'Pengarsipan & Tata Kelola Dokumen Legal Keuangan',
-        'Administrasi Lainnya'
-      ],
-
-      // 6. HUMAN CAPITAL (SDM & General Affairs)
-      'HUMAN_CAPITAL': [
-        'Rekapitulasi Presensi, Jam Kerja & Validasi Timesheet Karyawan',
-        'Verifikasi & Pengelolaan Pengajuan Cuti / Izin Karyawan',
-        'Pemeliharaan & Pembaruan Master Profil Karyawan (NIKA)',
-        'Pengelolaan Fasilitas Kantor, Logistik & General Affairs',
-        'Koordinasi Evaluasi Kedisiplinan & Kinerja Karyawan',
-        'Penyusunan Laporan Bulanan SDM & Kepegawaian',
-        'Administrasi Lainnya'
-      ],
-
-      // 7. MANAGER AREA (Supervisi Wilayah Binaan)
-      'MANAGER_AREA': [
-        'Review, Evaluasi & Approval Pengajuan Barang (PR) Dapur Wilayah',
-        'Monitoring Rekap Kendala & Kinerja Dapur Wilayah Binaan',
-        'Kunjungan Supervisi Lapangan & Koordinasi Tim Wilayah',
-        'Koordinasi Strategis Bersama Direktur Operasional & Mitra',
-        'Evaluasi Standar Layanan & Mitigasi Risiko Lapangan Area',
-        'Administrasi Lainnya'
-      ],
-
-      // 8. MANAGER KEUANGAN (Pengendalian Anggaran Finansial)
-      'MANAGER_KEUANGAN': [
-        'Review & Approval Pengajuan Barang (PR) Divisi Keuangan',
-        'Evaluasi Kelayakan Anggaran & Pengendalian Pengeluaran Kasbon',
-        'Supervisi Verifikasi LPJ Belanja & Tutup Buku Kasbon',
-        'Analisis Efisiensi Biaya Operasional & Arus Kas Yayasan',
-        'Koordinasi Kebijakan Finansial Bersama Direktur Keuangan',
-        'Administrasi Lainnya'
-      ],
-
-      // 9. JAJARAN DIREKSI & PEMBINA
-      'DIREKTUR_UTAMA': [
-        'Rapat Koordinasi Strategis Eksekutif & Pengambilan Kebijakan',
-        'Otorisasi & Persetujuan Akhir (Approval) Pengadaan Barang & Kasbon',
-        'Review Laporan Kinerja Bulanan & Perkembangan Dapur SPPG',
-        'Evaluasi Tata Kelola Organisasi, Kemitraan & Perluasan Wilayah',
-        'Supervisi Pengawasan Anggaran & Keberlanjutan Program Yayasan',
-        'Administrasi Lainnya'
-      ],
-      'DIREKTUR_OPERASIONAL': [
-        'Rapat Koordinasi Strategis Eksekutif & Pengambilan Kebijakan',
-        'Otorisasi & Persetujuan Akhir (Approval) Pengadaan Barang & Kasbon',
-        'Review Laporan Kinerja Bulanan & Perkembangan Dapur SPPG',
-        'Evaluasi Tata Kelola Organisasi, Kemitraan & Perluasan Wilayah',
-        'Supervisi Pengawasan Anggaran & Keberlanjutan Program Yayasan',
-        'Administrasi Lainnya'
-      ],
-      'DIREKTUR_KEUANGAN': [
-        'Rapat Koordinasi Strategis Eksekutif & Pengambilan Kebijakan',
-        'Otorisasi & Persetujuan Akhir (Approval) Pengadaan Barang & Kasbon',
-        'Review Laporan Kinerja Bulanan & Perkembangan Dapur SPPG',
-        'Evaluasi Tata Kelola Organisasi, Kemitraan & Perluasan Wilayah',
-        'Supervisi Pengawasan Anggaran & Keberlanjutan Program Yayasan',
-        'Administrasi Lainnya'
-      ],
-      'KETUA_PEMBINA': [
-        'Rapat Koordinasi Strategis Eksekutif & Pengambilan Kebijakan',
-        'Otorisasi & Persetujuan Akhir (Approval) Pengadaan Barang & Kasbon',
-        'Review Laporan Kinerja Bulanan & Perkembangan Dapur SPPG',
-        'Evaluasi Tata Kelola Organisasi, Kemitraan & Perluasan Wilayah',
-        'Supervisi Pengawasan Anggaran & Keberlanjutan Program Yayasan',
-        'Administrasi Lainnya'
-      ],
-      'SUPER_ADMIN': [
-        'Rapat Koordinasi Strategis Eksekutif & Pengambilan Kebijakan',
-        'Otorisasi & Persetujuan Akhir (Approval) Pengadaan Barang & Kasbon',
-        'Review Laporan Kinerja Bulanan & Perkembangan Dapur SPPG',
-        'Evaluasi Tata Kelola Organisasi, Kemitraan & Perluasan Wilayah',
-        'Supervisi Pengawasan Anggaran & Keberlanjutan Program Yayasan',
-        'Administrasi Lainnya'
-      ]
-    };
-
-    return templates[role] || [
-      'Pelaksanaan Tugas & Operasional Harian',
-      'Koordinasi Tim & Komunikasi Internal',
-      'Penyusunan Laporan & Dokumentasi Kerja',
-      'Administrasi Lainnya'
-    ];
-  },
-
-  onActivitySelectChange: function(val) {
-    const input = document.getElementById('inline-ts-activity-name');
-    if (!input) return;
-
-    if (val === '__CUSTOM__') {
-      input.value = '';
-      input.placeholder = 'Ketik nama aktivitas / pekerjaan kustom Anda...';
-      input.focus();
-      this.toggleClearBtn('');
-    } else if (val) {
-      input.value = val;
-      this.toggleClearBtn(val);
-    }
-  },
-
-  onActivityInputTyping: function(val) {
-    this.toggleClearBtn(val);
-    const select = document.getElementById('inline-ts-activity-select');
-    if (select) {
-      const options = Array.from(select.options).map(o => o.value);
-      if (options.includes(val)) {
-        select.value = val;
-      } else if (val && val.trim().length > 0) {
-        select.value = '__CUSTOM__';
-      } else {
-        select.value = '';
-      }
-    }
-  },
-
   toggleClearBtn: function(val) {
     const btn = document.getElementById('btn-clear-ts-activity');
     if (btn) {
@@ -780,14 +734,10 @@ window.TimesheetModule = {
 
   clearActivityInput: function() {
     const input = document.getElementById('inline-ts-activity-name');
-    const select = document.getElementById('inline-ts-activity-select');
     if (input) {
       input.value = '';
       input.focus();
       this.toggleClearBtn('');
-    }
-    if (select) {
-      select.value = '';
     }
   },
 

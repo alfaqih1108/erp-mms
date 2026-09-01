@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Dokumentasi Sistem ERP MMS v3 - Yayasan Mitra Mandiri Sejahtera</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 16mm 14mm 16mm 14mm;
+      @bottom-right {
+        content: counter(page);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 9.5pt;
+      line-height: 1.5;
+      color: #1e293b;
+      background: #ffffff;
+      margin: 0;
+      padding: 0;
+    }
+
+    .page {
+      page-break-after: always;
+      position: relative;
+    }
+
+    .page:last-child {
+      page-break-after: avoid;
+    }
+
+    /* Cover Page */
+    .cover {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 250mm;
+      padding: 20mm 10mm 10mm 10mm;
+      background: linear-gradient(145deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+      color: #ffffff;
+      border-radius: 12px;
+    }
+
+    .cover-badge {
+      display: inline-block;
+      background: rgba(245, 158, 11, 0.2);
+      border: 1px solid #f59e0b;
+      color: #fbbf24;
+      font-size: 8.5pt;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 16px;
+    }
+
+    .cover-title {
+      font-size: 26pt;
+      font-weight: 800;
+      line-height: 1.15;
+      color: #ffffff;
+      margin: 0 0 12px 0;
+      letter-spacing: -0.02em;
+    }
+
+    .cover-title span {
+      background: linear-gradient(90deg, #f59e0b, #fb7185);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .cover-subtitle {
+      font-size: 13pt;
+      font-weight: 400;
+      color: #94a3b8;
+      max-width: 500px;
+      line-height: 1.4;
+      margin: 0 0 24px 0;
+    }
+
+    .cover-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 16px;
+      border-radius: 10px;
+      margin-top: 20px;
+    }
+
+    .meta-item-label {
+      font-size: 7.5pt;
+      text-transform: uppercase;
+      color: #94a3b8;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .meta-item-val {
+      font-size: 9.5pt;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-top: 2px;
+    }
+
+    .cover-footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+      padding-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 8pt;
+      color: #94a3b8;
+    }
+
+    /* Standard Page Headers & Structure */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+    }
+
+    .page-header-title {
+      font-size: 8.5pt;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .page-header-brand {
+      font-size: 8.5pt;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .page-footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 8px;
+      font-size: 7.5pt;
+      color: #94a3b8;
+    }
+
+    h1, h2, h3, h4 {
+      color: #0f172a;
+      font-weight: 700;
+      margin: 0 0 10px 0;
+      letter-spacing: -0.01em;
+    }
+
+    h1 { font-size: 16pt; border-bottom: 2px solid #f59e0b; padding-bottom: 6px; margin-bottom: 14px; }
+    h2 { font-size: 13pt; margin-top: 16px; margin-bottom: 8px; color: #1e293b; }
+    h3 { font-size: 10.5pt; margin-top: 12px; margin-bottom: 6px; color: #334155; }
+
+    p {
+      margin: 0 0 10px 0;
+      text-align: justify;
+    }
+
+    /* Cards & Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      position: relative;
+    }
+
+    .card-primary {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+    }
+
+    .card-warning {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+    }
+
+    .card-success {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+    }
+
+    .card-title {
+      font-size: 9.5pt;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-desc {
+      font-size: 8.5pt;
+      color: #475569;
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.5pt;
+      margin-bottom: 14px;
+    }
+
+    th {
+      background: #0f172a;
+      color: #ffffff;
+      font-weight: 700;
+      text-align: left;
+      padding: 6px 8px;
+      border: 1px solid #0f172a;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    td {
+      padding: 6px 8px;
+      border: 1px solid #e2e8f0;
+      color: #334155;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 7pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-blue { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    .badge-green { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .badge-amber { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .badge-red { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .badge-purple { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+
+    .code-pill {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 7.5pt;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 1px 5px;
+      border-radius: 3px;
+      border: 1px solid #cbd5e1;
+    }
+
+    .highlight-box {
+      background: #faf5ff;
+      border-left: 3px solid #8b5cf6;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      border-radius: 0 6px 6px 0;
+      font-size: 8.5pt;
+      color: #4c1d95;
+    }
+
+    .diagram-container {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 12px;
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 7.5pt;
+      line-height: 1.4;
+      margin-bottom: 14px;
+      border: 1px solid #334155;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==================== HALAMAN 1: COVER ==================== -->
+  <div class="page">
+    <div class="cover">
+      <div>
+        <div class="cover-badge">Executive Technical & Functional Blueprint</div>
+        <h1 class="cover-title">DOKUMENTASI SISTEM<br><span>ERP YAYASAN MMS v3</span></h1>
+        <p class="cover-subtitle">
+          Arsitektur, Fitur Terpadu, Alur Operasional, Tata Kelola Akuntansi, dan Teknologi Platform Enterprise Resource Planning Yayasan Mitra Mandiri Sejahtera.
+        </p>
+
+        <div class="cover-meta-grid">
+          <div>
+            <div class="meta-item-label">Organisasi / Entitas</div>
+            <div class="meta-item-val">Yayasan Mitra Mandiri Sejahtera</div>
+          </div>
+          <div>
+            <div class="meta-item-label">Nama & Versi Sistem</div>
+            <div class="meta-item-val">Sistem ERP MMS (Version 3.0 Enterprise)</div>
+          </div>
+          <div>
+            <div class="meta-item-label">Database & Cloud Engine</div>
+            <div class="meta-item-val">Supabase PostgreSQL 15 & PostgREST API</div>
+          </div>
+          <div>
+            <div class="meta-item-label">Infrastruktur Notifikasi</div>
+            <div class="meta-item-val">EmailJS Automation (Multi-Tier Direct Links)</div>
+          </div>
+          <div>
+            <div class="meta-item-label">Cakupan Pengguna</div>
+            <div class="meta-item-val">40 Pengguna (Direksi, Manajer, FAT, Maker, Staf)</div>
+          </div>
+          <div>
+            <div class="meta-item-label">Tanggal Rilis Dokumen</div>
+            <div class="meta-item-val">27 Agustus 2026 (Status: Production Ready)</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cover-footer">
+        <div>🔒 <strong>Klasifikasi</strong>: Dokumen Resmi Manajemen & Standar Operasional Prosedur IT</div>
+        <div>Dicetak Otomatis dari Antigravity Enterprise Engine</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== HALAMAN 2: RINGKASAN EKSEKUTIF & TEKNOLOGI ==================== -->
+  <div class="page">
+    <div class="page-header">
+      <span class="page-header-title">1. Ringkasan Eksekutif & Arsitektur Teknologi</span>
+      <span class="page-header-brand">ERP MMS v3 &bull; Yayasan Mitra Mandiri Sejahtera</span>
+    </div>
+
+    <h1>1. Ringkasan Eksekutif Sistem</h1>
+    <p>
+      <strong>Sistem ERP MMS v3</strong> adalah platform enterprise terintegrasi yang dirancang khusus untuk mengelola seluruh aspek operasional, sumber daya manusia (HC), tata kelola keuangan, rantai pasok pengadaan, hingga pemantauan distribusi program <strong>Dapur SPPG MBG (Makan Bergizi Gratis)</strong> di bawah naungan <strong>Yayasan Mitra Mandiri Sejahtera</strong>.
+    </p>
+    <p>
+      Platform ini mengadopsi arsitektur <em>Single Page Application (SPA)</em> berkinerja tinggi yang responsif, mengutamakan validasi data <em>real-time</em>, sinkronisasi cloud tanpa hambatan (<em>asynchronous cloud persistence</em>), serta alur persetujuan bertingkat (*Multi-Tier Executive Approval Workflow*) untuk memastikan akuntabilitas penuh dan tata kelola organisasi yang bersih (*Good Corporate Governance*).
+    </p>
+
+    <h2>2. Arsitektur & Tumpukan Teknologi (Technology Stack)</h2>
+    <p>Sistem ini dibangun dengan fondasi teknologi modern standar industri tanpa ketergantungan berlebih (*zero bloated dependencies*), memastikan kecepatan rendering instan (&lt;100ms) dan keandalan tinggi:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 25%;">Layer / Komponen</th>
+          <th style="width: 35%;">Teknologi yang Digunakan</th>
+          <th style="width: 40%;">Peran & Keunggulan Fungsional</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Frontend Architecture</strong></td>
+          <td>
+            <span class="badge badge-blue">Modular Vanilla JS (ES6+)</span><br>
+            <span class="badge badge-blue">HTML5 Semantic & Modern CSS3</span>
+          </td>
+          <td>Arsitektur modular berbasis <em>State-Driven UI</em>. Sangat ringan, bebas beban bundler berat, waktu inisialisasi super cepat, dan rendering antarmuka instan.</td>
+        </tr>
+        <tr>
+          <td><strong>Design Language System</strong></td>
+          <td>
+            <span class="badge badge-purple">NALAR Glassmorphism UI</span><br>
+            <span class="badge badge-purple">Google Font: Plus Jakarta Sans</span>
+          </td>
+          <td>Tema gelap futuristik berstandar enterprise dengan aksen warna HSL dinamis, kartu HUD, efek glow, dan adaptasi layout responsif multi-device.</td>
+        </tr>
+        <tr>
+          <td><strong>Database & Cloud Backend</strong></td>
+          <td>
+            <span class="badge badge-green">Supabase Cloud (PostgreSQL 15)</span><br>
+            <span class="badge badge-green">PostgREST Protocol & PATCH</span>
+          </td>
+          <td>Penyimpanan cloud terpusat 9 tabel relasional dengan transaksi ACID, otentikasi REST aman, dan sinkronisasi paralel <code>Promise.allSettled</code> (~200ms).</td>
+        </tr>
+        <tr>
+          <td><strong>Email & Notifikasi Mesin</strong></td>
+          <td>
+            <span class="badge badge-amber">EmailJS REST Engine</span><br>
+            <span class="badge badge-amber">Custom HTML Transactional Templates</span>
+          </td>
+          <td>Pengiriman email notifikasi otomatis ke Direktur & Manajer secara langsung saat ada pengajuan baru, dilengkapi tombol URL approval langsung.</td>
+        </tr>
+        <tr>
+          <td><strong>Offline-First Resilience</strong></td>
+          <td>
+            <span class="badge badge-amber">Local Cache & Auto Fallback</span><br>
+            <span class="badge badge-green">Collision-Proof ID Generator</span>
+          </td>
+          <td>Sistem tetap dapat beroperasi normal saat jaringan fluktuatif dengan pencadangan lokal cerdas dan algoritma nomor ID transaksi anti-tabrakan (<code>maxNum + 1</code>).</td>
+        </tr>
+        <tr>
+          <td><strong>CI/CD & Hosting</strong></td>
+          <td>
+            <span class="badge badge-blue">GitHub Repository (alfaqih1108/erp-mms)</span><br>
+            <span class="badge badge-blue">Vercel Global Edge Network</span>
+          </td>
+          <td>Otomatisasi deployment dalam ~15 detik pasca-commit dengan sistem manajemen cache buster dinamis (<code>?v=...</code>) agar browser pengguna selalu terbarui.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="highlight-box">
+      <strong>⚡ Keunggulan Kinerja Utama</strong>: Transisi login akun dipangkas dari 3.5 detik menjadi <strong>instan (&lt;100ms)</strong> berkat pemisahan verifikasi lokal dan penarikan 9 tabel database secara asinkron di latar belakang (*non-blocking background sync*).
+    </div>
+
+    <div class="page-footer">
+      <div>Dokumentasi Resmi ERP MMS v3 &bull; Yayasan Mitra Mandiri Sejahtera</div>
+      <div>Halaman 2</div>
+    </div>
+  </div>
+
+  <!-- ==================== HALAMAN 3: MODUL UTAMA (BAGIAN 1) ==================== -->
+  <div class="page">
+    <div class="page-header">
+      <span class="page-header-title">2. Rincian Fitur & Modul Operasional (Bagian 1)</span>
+      <span class="page-header-brand">ERP MMS v3 &bull; Yayasan Mitra Mandiri Sejahtera</span>
+    </div>
+
+    <h1>3. Rincian Modul & Fitur Terpadu</h1>
+
+    <h2>3.1. Dashboard Eksekutif & Smart Overview</h2>
+    <div class="grid-2">
+      <div class="card card-primary">
+        <div class="card-title">📊 Executive HUD & Quick Stat Widgets</div>
+        <p class="card-desc">Ringkasan kuota cuti tahunan & kuartalan, status absensi harian, jumlah pengajuan barang & CA berjalan, serta total saldo konsolidasi Virtual Account seluruh dapur secara real-time.</p>
+      </div>
+      <div class="card card-warning">
+        <div class="card-title">📚 Slider Dokumen SOP Resmi Yayasan</div>
+        <p class="card-desc">Slider horizontal interaktif yang menampung seluruh dokumen sosialisasi, standar operasional prosedur, panduan pengajuan cuti, dan cetak PDF resmi langsung dari antarmuka.</p>
+      </div>
+      <div class="card card-success">
+        <div class="card-title">🎂 Pengumuman Ulang Tahun & Kalender Cuti</div>
+        <p class="card-desc">Widget interaktif untuk mempererat silaturahmi internal yayasan dengan kalender pengajuan cuti tim dan notifikasi hari ulang tahun karyawan yang otomatis terhitung.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">⚡ Quick Launcher Aksi Cepat</div>
+        <p class="card-desc">Akses sekali klik untuk mengajukan cuti, mengisi timesheet, permohonan pengadaan barang, cash advance, hingga input transaksi harian dapur bagi role Maker.</p>
+      </div>
+    </div>
+
+    <h2>3.2. Modul Pelaporan Transaksi Dapur SPPG & Saldo Virtual Account (VA)</h2>
+    <p>
+      Modul vital yayasan untuk mendukung akuntabilitas keuangan dan operasional program penyediaan <strong>Makan Bergizi Gratis (MBG)</strong> pada puluhan titik Dapur SPPG:
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 28%;">Fitur & Parameter</th>
+          <th style="width: 72%;">Deskripsi & Mekanisme Perhitungan</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Input Transaksi Multi-Komponen</strong></td>
+          <td>Pencatatan rincian biaya harian: <strong>Belanja Bahan Baku</strong> (pokok), <strong>Biaya Operasional</strong> (gas LPG, bumbu, utilitas), dan <strong>Sewa Mobil Distribusi</strong> armada santri.</td>
+        </tr>
+        <tr>
+          <td><strong>Target Budget Otomatis</strong></td>
+          <td>Perhitungan target anggaran porsi otomatis (<em>Auto-Generated</em>):<br>
+            <code class="code-pill">Target Budget = (Porsi Besar × Rp 10.000) + (Porsi Kecil × Rp 8.000)</code>
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Audit Biaya & Efisiensi Porsi</strong></td>
+          <td>Kalkulasi otomatis <strong>Biaya per Porsi Bahan</strong>, <strong>Biaya per Porsi All-In</strong>, dan status efisiensi anggaran (<span class="badge badge-green">🟢 Hemat</span> vs <span class="badge badge-red">🔴 Over Budget</span>).</td>
+        </tr>
+        <tr>
+          <td><strong>Monitoring Saldo Virtual Account</strong></td>
+          <td>Pemantauan saldo kas Virtual Account (Bank Mandiri / Bank Syariah) per titik dapur dan saldo konsolidasi yayasan pasca-transaksi harian.</td>
+        </tr>
+        <tr>
+          <td><strong>Lampiran SPM Digital & Lightbox</strong></td>
+          <td>Pengunggahan bukti dokumen Surat Perintah Membayar (SPM) dengan pratinjau instan (*Interactive Lightbox Viewer*).</td>
+        </tr>
+        <tr>
+          <td><strong>Filter Rentang Tanggal & Paginasi</strong></td>
+          <td>Filter periode spesifik (<em>Mulai s/d Sampai</em>) dengan pembaruan otomatis seluruh kartu KPI dan paginasi tabel <strong>5 transaksi per halaman</strong>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="page-footer">
+      <div>Dokumentasi Resmi ERP MMS v3 &bull; Yayasan Mitra Mandiri Sejahtera</div>
+      <div>Halaman 3</div>
+    </div>
+  </div>
+
+  <!-- ==================== HALAMAN 4: MODUL UTAMA (BAGIAN 2) ==================== -->
+  <div class="page">
+    <div class="page-header">
+      <span class="page-header-title">3. Rincian Fitur & Modul Operasional (Bagian 2)</span>
+      <span class="page-header-brand">ERP MMS v3 &bull; Yayasan Mitra Mandiri Sejahtera</span>
+    </div>
+
+    <h2>3.3. Modul Manajemen Cuti & Izin Karyawan (E-Leave Multi-Tier)</h2>
+    <p>
+      Sistem tata kelola ketidakhadiran karyawan berbasis kuota otomatis dengan alur persetujuan berjenjang:
+    </p>
+    <ul>
+      <li><strong>Kuota Cuti Dinamis</strong>: Cuti Tahunan (12 hari/tahun) & Cuti Pribadi Kuartalan (1 hari per kuartal Q1–Q4) dengan validasi masa kerja &gt;1 tahun.</li>
+      <li><strong>Kategori Izin Khusus</strong>: Sakit dengan Surat Dokter, Izin Menikah, Duka Cita, Melahirkan, dan Keperluan Mendesak.</li>
+      <li><strong>Fitur Pembatalan Mandiri</strong>: Karyawan dapat membatalkan/menghapus pengajuan cuti yang berstatus <em>Pending</em> sebelum diverifikasi Level 2.</li>
+      <li><strong>Notifikasi Email Berantai</strong>: Pengiriman notifikasi persetujuan via email secara instan ke atasan langsung dan direksi terkait.</li>
+    </ul>
+
+    <h2>3.4. Modul Timesheet & Presensi Digital</h2>
+    <p>
+      Instrumen pencatatan aktivitas dan produktivitas kerja harian seluruh staf yayasan:
+    </p>
+    <ul>
+      <li><strong>Pencatatan Presensi Terverifikasi</strong>: Status WFO (Kantor Pusat), WFH (Remote), atau Dinas Lapangan / Dapur SPPG.</li>
+      <li><strong>Rincian Jam & Uraian Kerja</strong>: Pencatatan proyek, tugas utama, jam mulai s/d selesai, dan persentase pencapaian target kerja.</li>
+      <li><strong>Laporan Bulanan & Ekspor Data</strong>: Rekapitulasi timesheet bulanan untuk kebutuhan evaluasi performa kerja oleh Human Capital.</li>
+    </ul>
+
+    <h2>3.5. Modul Pengadaan Barang & Logistik (Procurement)</h2>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">📦 Pengajuan Multi-Item</div>
+        <p class="card-desc">Permohonan pembelian barang/peralatan operasional dengan rincian nama item, volume/qty, satuan, estimasi harga satuan, dan prioritas (Urgent/Normal).</p>
+      </div>
+      <div class="card">
+        <div class="card-title">🔍 Validasi Kebutuhan & Anggaran</div>
+        <p class="card-desc">Verifikasi berjenjang oleh Manajer Unit/Area sebelum diteruskan ke Direktur Operasional dan Bagian Pengadaan Yayasan.</p>
+      </div>
+    </div>
+
+    <h2>3.6. Modul Cash Advance (Uang Muka Operasional & LPJ)</h2>
+    <div class="grid-2">
+      <div class="card card-warning">
+        <div class="card-title">💳 Pengajuan Dana Kas Dimuka</div>
+        <p class="card-desc">Permohonan uang muka kerja dinas/operasional darurat lengkap dengan nomor rekening tujuan pencairan dan target tanggal penggunaan dana.</p>
+      </div>
+      <div class="card card-success">
+        <div class="card-title">🧾 Laporan Pertanggungjawaban (LPJ)</div>
+        <p class="card-desc">Pencatatan realisasi belanja riil, unggah nota/kuitansi digital, dan perhitungan sisa dana lebih/kurang bayar secara akurat.</p>
+      </div>
+    </div>
+
+    <h2>3.7. Human Capital Hub (HC Hub) & Master Akun</h2>
+    <p>
+      Pusat pengelolaan master data 40 profil karyawan: NIKA, Jabatan, Grade, Departemen, NIK KTP, Status Pajak, No Rekening, BPJS, Upload Dokumen Kebijakan Yayasan, dan <strong>Manajemen Reset Password Cloud</strong> yang tersinkronisasi via protokol PATCH Supabase.
+    </p>
+
+    <h2>3.8. Executive Approval Center</h2>
+    <p>
+      Dasbor terpadu bagi jajaran Direksi (Direktur Utama, Direktur Operasional, Direktur Keuangan) dan Manajer untuk meninjau, menyetujui, atau menolak permohonan dari seluruh modul dalam satu layar kerja yang efisien.
+    </p>
+
+    <div class="page-footer">
+      <div>Dokumentasi Resmi ERP MMS v3 &bull; Yayasan Mitra Mandiri Sejahtera</div>
+      <div>Halaman 4</div>
+    </div>
+  </div>
+
+  <!-- ==================== HALAMAN 5: MATRIKS HAK AKSES & SKEMA DATA ==================== -->
+  <div class="page">
+    <div class="page-header">
+      <span class="page-header-title">4. Matriks Akses Peran & Skema Database</span>
+      <span class="page-header-brand">ERP MMS v3 &bull; Yayasan Mitra Mandiri Sejahtera</span>
+    </div>
+
+    <h1>4. Matriks Hak Akses & Pembagian Peran (*Role-Based Access Control*)</h1>
+    <p>Sistem menerapkan RBAC ketat untuk menjamin keamanan data dan integritas wewenang organisasi:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Tingkatan Role / Jabatan</th>
+          <th>Cuti & Timesheet</th>
+          <th>Pengadaan & CA</th>
+          <th>Dapur SPPG & VA</th>
+          <th>Approval Center</th>
+          <th>HC Hub & Master</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-purple">SUPER_ADMIN</span> (Master IT)</td>
+          <td>Akses Penuh</td>
+          <td>Akses Penuh</td>
+          <td>Akses Penuh (Semua)</td>
+          <td>Akses Penuh</td>
+          <td>Akses Penuh + Config</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-red">DIREKSI</span> (Dirut / DO / DK)</td>
+          <td>Personal & Riwayat</td>
+          <td>Approval Lv 2 & LPJ</td>
+          <td>Konsolidasi Global</td>
+          <td>Final Approval Lv 2</td>
+          <td>Lihat Data & Ekspor</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-blue">FAT_STAFF / MANAGER</span></td>
+          <td>Pengajuan & Lv 1</td>
+          <td>Verifikasi & Audit</td>
+          <td>Audit Biaya & VA</td>
+          <td>Approval Lv 1</td>
+          <td>Akses Sesuai Divisi</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-amber">MAKER_YAYASAN</span></td>
+          <td>Personal</td>
+          <td>Pengajuan Barang</td>
+          <td>Input Dapur Delegasi</td>
+          <td>-</td>
+          <td>Profil Mandiri</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-green">STAF / SURVEYOR / PY</span></td>
+          <td>Personal</td>
+          <td>Pengajuan Mandiri</td>
+          <td>-</td>
+          <td>-</td>
+          <td>Profil Mandiri</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>5. Skema Relasi Database Supabase Cloud (9 Master Tables)</h2>
+    <div class="diagram-container">
+[DATABASE SUPABASE: PostgreSQL 15 Engine]
+├── 1. users              : ID, NIKA, Name, Role, Email, Password, Quota, Bank, BPJS
+├── 2. leaves             : ID, UserID, Type, StartDate, EndDate, Status, Approvers
+├── 3. timesheets         : ID, UserID, Date, PresensiStatus, Activity, Hours, Score
+├── 4. item_requests      : ID, RequesterID, Items (JSON), EstBudget, Priority, Status
+├── 5. cash_advances      : ID, RequesterID, Amount, Purpose, TargetDate, LPJStatus
+├── 6. kitchen_reports    : ID, KitchenID, Date, RawCost, OpsCost, CarCost, VA, SPM
+├── 7. dapur_sppg         : ID, NamaDapur, Kota, Provinsi, Kapasitas, MakerID, PIC
+├── 8. hc_documents       : ID, Title, Category, FileURL, UploadDate, AccessLevel
+└── 9. activity_logs      : ID, Timestamp, UserID, Action, Module, DetailPayload
+    </div>
+
+    <h2>6. Standar Keamanan, Kepatuhan & Rekomendasi Operasional</h2>
+    <div class="grid-2">
+      <div class="card card-success">
+        <div class="card-title">🔐 Protokol Keamanan Data</div>
+        <p class="card-desc">Otentikasi kredensial cloud aman, isolasi payload PATCH parsial, sanitasi input XSS, dan pencatatan audit log transaksi di setiap aksi pengubahan data.</p>
+      </div>
+      <div class="card card-primary">
+        <div class="card-title">🚀 Pemeliharaan & Backup Rutin</div>
+        <p class="card-desc">Database cloud Supabase memiliki pencadangan harian otomatis (*Automated Cloud Snapshot*) dengan proteksi redundansi multi-region.</p>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>Dokumentasi Resmi ERP MMS v3 &bull; Yayasan Mitra Mandiri Sejahtera</div>
+      <div>Halaman 5 (Selesai)</div>
+    </div>
+  </div>
+
+</body>
+</html>

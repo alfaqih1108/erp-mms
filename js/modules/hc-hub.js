@@ -2886,7 +2886,7 @@ window.HCHubModule = {
     App.showToast(`Laporan Timesheet Excel (${filter.formatScope}) berhasil didownload!`, 'success');
   },
 
-  downloadDocument: async function(docId) {
+  downloadDocument: function(docId) {
     const doc = (DB.getGuidelineDocuments() || []).find(d => d.id === docId);
     if (!doc) return;
 
@@ -2895,14 +2895,9 @@ window.HCHubModule = {
       filename += doc.fileType === 'PDF' ? '.pdf' : '.pptx';
     }
 
-    let fileData = doc.fileData;
-    if (!fileData && typeof DB.getDocumentBinary === 'function') {
-      fileData = await DB.getDocumentBinary(docId);
-    }
-
-    if (fileData) {
+    if (doc.fileData) {
       const a = document.createElement('a');
-      a.href = fileData;
+      a.href = doc.fileData;
       a.download = filename;
       document.body.appendChild(a);
       a.click();

@@ -21,10 +21,10 @@ CREATE TABLE IF NOT EXISTS users (
     level_grade VARCHAR(100),
     department VARCHAR(100),
     avatar_grad TEXT,
-    quota_annual_leave NUMERIC(4,1) DEFAULT 12,
-    remaining_annual_leave NUMERIC(4,1) DEFAULT 12,
-    quota_personal_leave NUMERIC(4,1) DEFAULT 3,
-    remaining_personal_leave NUMERIC(4,1) DEFAULT 3,
+    quota_annual_leave INT DEFAULT 12,
+    remaining_annual_leave INT DEFAULT 12,
+    quota_personal_leave INT DEFAULT 3,
+    remaining_personal_leave INT DEFAULT 3,
     current_quarter VARCHAR(50),
     join_date DATE,
     birth_place VARCHAR(100),
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS leaves (
     leave_type VARCHAR(100) NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    duration NUMERIC(4,1) DEFAULT 1,
+    duration INT DEFAULT 1,
     reason TEXT,
     emergency_contact VARCHAR(100),
     attachment_url TEXT,
@@ -355,17 +355,4 @@ VALUES
 ('PY-015', 'PY-2026-015', 'Titi Hardyati', 'PERWAKILAN_YAYASAN', 'Perwakilan Yayasan', 'WLKP-PY-15', 'Perwakilan Yayasan - Adil Berdaya Insani', 'Staff Mitra / Grade 1', 'Kemitraan Yayasan', 'linear-gradient(135deg, #0891B2 0%, #67E8F9 100%)', 12, 12, 3, 3, 'Q3 (Juli–September 2026)', '2026-07-13', 'Jakarta', '1994-05-24', 'Islam', 'Perempuan', '0812-9011-015', 'titi.hardyati@erpmms.co.id', 'titi.hardyati', 'password123', '3175016405940015', 'PKWT (Mitra Yayasan)', 'TK/0', 'Sarjana (S1)', 'Bank Mandiri', '157-00-6677889-6', 'Titi Hardyati', 'Perwakilan SPPG Utan Kayu Selatan.'),
 ('MAKER-003', 'MKR-2026-003', 'Fandru', 'MAKER_YAYASAN', 'Maker Yayasan', 'WLKP-MKR-03', 'Maker Pengelola Dapur Yayasan', 'Staff Pelaksana Dapur / Grade 1', 'Kemitraan Yayasan', 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)', 12, 12, 3, 3, 'Q3 (Juli–September 2026)', '2026-04-01', 'Pandeglang', '1995-03-12', 'Islam', 'Laki-laki', '0813-8899-7711', 'fandru@erpmms.co.id', 'fandru', 'password123', '3601051203950001', 'PKWT (Maker Dapur)', 'TK/0', 'SMA / SMK', 'BCA (Bank Central Asia)', '522-099-1234', 'Fandru', 'Maker Dapur SPPG Citaman.')
 ON CONFLICT (id) DO NOTHING;
-
--- ============================================================================
--- 6. REALTIME REPLICATION PUBLICATION (SUPABASE REALTIME FOR ALL 9 ENTITIES)
--- ============================================================================
-ALTER PUBLICATION supabase_realtime ADD TABLE users;
-ALTER PUBLICATION supabase_realtime ADD TABLE kitchens;
-ALTER PUBLICATION supabase_realtime ADD TABLE item_requests;
-ALTER PUBLICATION supabase_realtime ADD TABLE leaves;
-ALTER PUBLICATION supabase_realtime ADD TABLE kitchen_reports;
-ALTER PUBLICATION supabase_realtime ADD TABLE timesheets;
-ALTER PUBLICATION supabase_realtime ADD TABLE cash_advances;
-ALTER PUBLICATION supabase_realtime ADD TABLE guideline_documents;
-ALTER PUBLICATION supabase_realtime ADD TABLE field_issues;
 
