@@ -47,6 +47,17 @@ window.CutiModule = {
   render: function(container) {
     if (!container) return;
 
+    // Selalu pastikan data cuti cloud terbaru ditarik saat modul dibuka/di-refresh
+    if (!this._initialSynced && window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+      this._initialSynced = true;
+      window.DB.pullLatestFromSupabase().then(() => {
+        const c = document.getElementById('main-content-area');
+        if (c && window.App && window.App.currentTab === 'cuti') {
+          this.render(c);
+        }
+      }).catch(() => {});
+    }
+
     const user = DB.getCurrentUser();
     const allLeaves = DB.getLeaves() || [];
     const isSenior = hasWorkedOneYear(user.joinDate);
@@ -55,8 +66,13 @@ window.CutiModule = {
     // 1. Filter Riwayat Pengajuan (Personalized & Case-Insensitive matching)
     const myLeaves = allLeaves.filter(l => {
       if (!l) return false;
-      const empIdMatch = l.employeeId && user.id && String(l.employeeId).trim().toUpperCase() === String(user.id).trim().toUpperCase();
-      const empNameMatch = l.employeeName && user.name && String(l.employeeName).trim().toLowerCase() === String(user.name).trim().toLowerCase();
+      const empId = (l.employeeId || l.employee_id || '').toString().trim().toUpperCase();
+      const empName = (l.employeeName || l.employee_name || '').toString().trim().toLowerCase();
+      const curUserId = (user.id || '').toString().trim().toUpperCase();
+      const curUserName = (user.name || '').toString().trim().toLowerCase();
+
+      const empIdMatch = (empId && curUserId && (empId === curUserId || empId.includes(curUserId)));
+      const empNameMatch = (empName && curUserName && (empName === curUserName || empName.includes(curUserName) || curUserName.includes(empName)));
       return Boolean(empIdMatch || empNameMatch);
     });
     const isLeadershipRole = ['SUPER_ADMIN', 'DIREKTUR_OPERASIONAL', 'DIREKTUR_KEUANGAN', 'HUMAN_CAPITAL', 'MANAGER_AREA', 'MANAGER_KEUANGAN'].includes(user.role);

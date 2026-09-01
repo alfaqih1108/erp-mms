@@ -31,15 +31,31 @@ window.PengajuanBarangModule = {
       return;
     }
 
+    // Selalu pastikan data pengadaan cloud terbaru ditarik saat modul dibuka/di-refresh
+    if (!this._initialSynced && window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+      this._initialSynced = true;
+      window.DB.pullLatestFromSupabase().then(() => {
+        const c = document.getElementById('main-content-area');
+        if (c && window.App && window.App.currentTab === 'pengajuan-barang') {
+          this.render(c);
+        }
+      }).catch(() => {});
+    }
+
     const allPrs = DB.getItemRequests() || [];
     const catalog = DB.getCatalog() || [];
 
     // Filter ketat: Hanya tampilkan pengajuan milik akun pemohon yang sedang login
     const myPrs = allPrs.filter(p => {
       if (!p) return false;
-      const matchId = (p.employeeId && user.id && p.employeeId.toLowerCase() === user.id.toLowerCase());
-      const matchName = (p.employeeName && user.name && p.employeeName.toLowerCase().includes(user.name.toLowerCase()));
-      return matchId || matchName;
+      const empId = (p.employeeId || p.employee_id || '').toString().trim().toUpperCase();
+      const empName = (p.employeeName || p.employee_name || '').toString().trim().toLowerCase();
+      const curUserId = (user.id || '').toString().trim().toUpperCase();
+      const curUserName = (user.name || '').toString().trim().toLowerCase();
+
+      const matchId = (empId && curUserId && (empId === curUserId || empId.includes(curUserId)));
+      const matchName = (empName && curUserName && (empName === curUserName || empName.includes(curUserName) || curUserName.includes(empName)));
+      return Boolean(matchId || matchName);
     });
 
     const prs = myPrs;

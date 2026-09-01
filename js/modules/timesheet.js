@@ -17,6 +17,17 @@ window.TimesheetModule = {
   render: function(container) {
     if (!container) return;
 
+    // Selalu pastikan data timesheet cloud terbaru ditarik saat modul dibuka/di-refresh
+    if (!this._initialSynced && window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+      this._initialSynced = true;
+      window.DB.pullLatestFromSupabase().then(() => {
+        const c = document.getElementById('main-content-area');
+        if (c && window.App && window.App.currentTab === 'timesheet') {
+          this.render(c);
+        }
+      }).catch(() => {});
+    }
+
     if (!this.selectedDate) {
       this.selectedDate = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10));
     }
@@ -28,7 +39,7 @@ window.TimesheetModule = {
 
     const user = DB.getCurrentUser();
     const allTimesheets = DB.getTimesheets() || [];
-    const userTimesheets = allTimesheets.filter(t => t.employeeId === user.id);
+    const userTimesheets = allTimesheets.filter(t => (t.employeeId || t.employee_id) === user.id);
     
     // Check Integrasi Cuti: Apakah user sedang Cuti Approved pada tanggal yang dipilih?
     const approvedLeave = DB.getUserApprovedLeaveOnDate(user.id, this.selectedDate);

@@ -19,11 +19,23 @@ window.CashAdvanceModule = {
 
   render: function(container) {
     if (!container) return;
+
+    // Selalu pastikan data kasbon cloud terbaru ditarik saat modul dibuka/di-refresh
+    if (!this._initialSynced && window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+      this._initialSynced = true;
+      window.DB.pullLatestFromSupabase().then(() => {
+        const c = document.getElementById('main-content-area');
+        if (c && window.App && window.App.currentTab === 'cash-advance') {
+          this.render(c);
+        }
+      }).catch(() => {});
+    }
+
     const user = DB.getCurrentUser();
-    const allCAs = DB.getCashAdvances();
+    const allCAs = DB.getCashAdvances() || [];
     
     // User only PR & CA scoping (privasi mandiri karyawan)
-    const userCAs = allCAs.filter(c => c && c.employeeId === user.id);
+    const userCAs = allCAs.filter(c => c && ((c.employeeId || c.employee_id) === user.id || (c.employeeName || c.employee_name) === user.name));
 
     // Hitung KPI Aggregations
     const totalRequested = userCAs.reduce((acc, c) => acc + (Number(c.amountRequested) || 0), 0);
