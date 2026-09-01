@@ -52,8 +52,13 @@ window.CutiModule = {
     const isSenior = hasWorkedOneYear(user.joinDate);
     const tenureStr = calculateTenure(user.joinDate);
 
-    // 1. Filter Riwayat Pengajuan
-    const myLeaves = allLeaves.filter(l => l.employeeId === user.id || l.employeeName === user.name);
+    // 1. Filter Riwayat Pengajuan (Personalized & Case-Insensitive matching)
+    const myLeaves = allLeaves.filter(l => {
+      if (!l) return false;
+      const empIdMatch = l.employeeId && user.id && String(l.employeeId).trim().toUpperCase() === String(user.id).trim().toUpperCase();
+      const empNameMatch = l.employeeName && user.name && String(l.employeeName).trim().toLowerCase() === String(user.name).trim().toLowerCase();
+      return Boolean(empIdMatch || empNameMatch);
+    });
     const isLeadershipRole = ['SUPER_ADMIN', 'DIREKTUR_OPERASIONAL', 'DIREKTUR_KEUANGAN', 'HUMAN_CAPITAL', 'MANAGER_AREA', 'MANAGER_KEUANGAN'].includes(user.role);
     const displayLeaves = (this.activeViewMode === 'ALL' && isLeadershipRole) ? allLeaves : myLeaves;
 
@@ -878,7 +883,7 @@ window.CutiModule = {
     reader.readAsDataURL(file);
   },
 
-  handleSubmit: function(e) {
+  handleSubmit: async function(e) {
     e.preventDefault();
     const user = DB.getCurrentUser();
     const select = document.getElementById('leave-type-select');
@@ -929,10 +934,26 @@ window.CutiModule = {
       attachmentUrl: this.currentAttachment.url || null
     };
 
-    DB.addLeave(newLeave);
-    App.closeModal('modal-cuti');
-    App.showToast(`Permohonan cuti "${opt.text}" (${duration} Hari) berhasil diajukan!`, 'success');
-    this.render(document.getElementById('main-content-area'));
+    const submitBtn = document.querySelector('#form-cuti button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = '⏳ Menyimpan ke Cloud...';
+    }
+
+    try {
+      await DB.addLeave(newLeave);
+      App.closeModal('modal-cuti');
+      App.showToast(`Permohonan cuti "${opt.text}" (${duration} Hari) berhasil diajukan & tersimpan di Cloud!`, 'success');
+      this.render(document.getElementById('main-content-area'));
+    } catch (err) {
+      console.error('Gagal mengajukan cuti:', err);
+      App.showToast('Gagal mengajukan cuti. Silakan coba kembali.', 'danger');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Kirim Permohonan Cuti';
+      }
+    }
   },
 
   handleCancelLeave: async function(leaveId) {

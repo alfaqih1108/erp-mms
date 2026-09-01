@@ -2296,8 +2296,26 @@ class DatabaseManager {
     } catch (e) {}
 
     // Inisialisasi in-memory RAM dataset dari template schema awal
-    const memoryData = JSON.parse(JSON.stringify(INITIAL_DATABASE));
+    let memoryData = JSON.parse(JSON.stringify(INITIAL_DATABASE));
     
+    // Pulihkan cache cloud lokal terbaru agar render awal pada saat startup / refresh langsung terisi tanpa jeda
+    try {
+      const cached = localStorage.getItem('ERP_CLOUD_CACHE_V3');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object') {
+          if (Array.isArray(parsed.leaves)) memoryData.leaves = parsed.leaves;
+          if (Array.isArray(parsed.itemRequests)) memoryData.itemRequests = parsed.itemRequests;
+          if (Array.isArray(parsed.kitchenReports)) memoryData.kitchenReports = parsed.kitchenReports;
+          if (Array.isArray(parsed.timesheets)) memoryData.timesheets = parsed.timesheets;
+          if (Array.isArray(parsed.cashAdvances)) memoryData.cashAdvances = parsed.cashAdvances;
+          if (Array.isArray(parsed.fieldIssues)) memoryData.fieldIssues = parsed.fieldIssues;
+          if (Array.isArray(parsed.kitchens) && parsed.kitchens.length > 0) memoryData.kitchens = parsed.kitchens;
+          if (Array.isArray(parsed.guidelineDocuments) && parsed.guidelineDocuments.length > 0) memoryData.guidelineDocuments = parsed.guidelineDocuments;
+        }
+      }
+    } catch (e) {}
+
     // Pastikan seluruh koleksi data terdefinisi sebagai array yang aman
     if (!Array.isArray(memoryData.itemRequests)) memoryData.itemRequests = [];
     if (!Array.isArray(memoryData.kitchenReports)) memoryData.kitchenReports = [];
@@ -2321,9 +2339,24 @@ class DatabaseManager {
   }
 
   save(data) {
-    // 100% Pure Cloud: Tidak menyimpan salinan database ke localStorage.
-    // Seluruh persistensi data ditangani langsung oleh Supabase Cloud (PostgreSQL).
-    // Hanya menyiarkan event sinkronisasi instan ke tab browser lain via BroadcastChannel
+    // Simpan snapshot cloud cache lokal untuk cold-start instan
+    try {
+      if (this.data) {
+        const cachePayload = {
+          leaves: this.data.leaves || [],
+          itemRequests: this.data.itemRequests || [],
+          kitchenReports: this.data.kitchenReports || [],
+          timesheets: this.data.timesheets || [],
+          cashAdvances: this.data.cashAdvances || [],
+          fieldIssues: this.data.fieldIssues || [],
+          kitchens: this.data.kitchens || [],
+          guidelineDocuments: this.data.guidelineDocuments || []
+        };
+        localStorage.setItem('ERP_CLOUD_CACHE_V3', JSON.stringify(cachePayload));
+      }
+    } catch (e) {}
+
+    // Siarkan event sinkronisasi instan ke tab browser lain via BroadcastChannel
     if (window.App && window.App.broadcastChannel) {
       try {
         window.App.broadcastChannel.postMessage({ type: 'DATA_SYNC', timestamp: Date.now(), source: 'cloud_sync' });
@@ -3012,10 +3045,10 @@ class DatabaseManager {
     ) || null;
   }
 
-  addLeave(leaveData) {
+  async addLeave(leaveData) {
     const user = this.getCurrentUser();
     const allLeaves = this.getLeaves() || [];
-    let maxNum = 84;
+    let maxNum = 102;
     allLeaves.forEach(l => {
       if (l.id) {
         const m = l.id.match(/\d+$/);
@@ -3083,26 +3116,27 @@ class DatabaseManager {
     this.addLog(`${user.name} mengajukan ${leaveData.type} (${leaveData.duration} hari) [Status: Menunggu ${approver}] pada ${realTimestamp}`, 'leave');
     this.save();
 
-    // Background Cloud Sync & Notifikasi Email
-    setTimeout(() => {
-      this.syncToSupabase('leaves', {
-        id: newLeave.id,
-        employee_id: newLeave.employeeId,
-        employee_name: newLeave.employeeName,
-        role: newLeave.role,
-        department: newLeave.department,
-        leave_type: newLeave.leaveType || newLeave.type,
-        start_date: newLeave.startDate,
-        end_date: newLeave.endDate,
-        duration: newLeave.duration,
-        reason: newLeave.reason,
-        emergency_contact: newLeave.emergencyContact,
-        attachment_url: newLeave.attachmentUrl,
-        attachment_name: newLeave.attachmentName,
-        stage: newLeave.stage,
-        status: newLeave.status,
-        approval_history: newLeave.approvalHistory
-      });
+    // Direct Cloud Sync ke Supabase (Integer compatible duration agar tidak rejected oleh DB)
+    const durationForDb = (typeof newLeave.duration === 'number' && newLeave.duration < 1) ? 1 : Math.round(Number(newLeave.duration) || 1);
+    
+    await this.syncToSupabase('leaves', {
+      id: newLeave.id,
+      employee_id: newLeave.employeeId,
+      employee_name: newLeave.employeeName,
+      role: newLeave.role,
+      department: newLeave.department,
+      leave_type: newLeave.leaveType || newLeave.type,
+      start_date: newLeave.startDate,
+      end_date: newLeave.endDate,
+      duration: durationForDb,
+      reason: newLeave.reason,
+      emergency_contact: newLeave.emergencyContact,
+      attachment_url: newLeave.attachmentUrl,
+      attachment_name: newLeave.attachmentName,
+      stage: newLeave.stage,
+      status: newLeave.status,
+      approval_history: newLeave.approvalHistory
+    });
 
       // Cari approver dinamis dari database pengguna
       let targetApprover = null;
