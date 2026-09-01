@@ -2280,16 +2280,15 @@ class DatabaseManager {
     // =========================================================================
     // 100% PURE CLOUD ARCHITECTURE (SUPABASE AS SINGLE SOURCE OF TRUTH)
     // =========================================================================
-    // LocalStorage dibebaskan dari penyimpanan database aplikasi yang berat/rentan desync.
-    // Database dimuat & disinkronkan secara murni langsung dari Supabase Cloud.
+    // LocalStorage dibebaskan 100% dari penyimpanan transaksi bisnis.
+    // Seluruh data dibaca & ditulis secara murni langsung ke Supabase Cloud PostgreSQL.
     try {
-      // Bersihkan sisa kunci database lama dari localStorage agar penyimpanan browser bersih & ringan
-      ['ERP_YAYASAN_DB_STABLE', 'ERP_YAYASAN_DB_V2', 'ERP_MMS_V3_DB'].forEach(k => {
+      ['ERP_YAYASAN_DB_STABLE', 'ERP_YAYASAN_DB_V2', 'ERP_MMS_V3_DB', 'ERP_CLOUD_CACHE_V3', 'ERP_CLOUD_CACHE_V2'].forEach(k => {
         localStorage.removeItem(k);
       });
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
-        if (k && k.startsWith('ERP_YAYASAN_DATABASE_V')) {
+        if (k && (k.startsWith('ERP_YAYASAN_DATABASE_V') || k.startsWith('ERP_CLOUD_CACHE'))) {
           localStorage.removeItem(k);
         }
       }
@@ -2297,24 +2296,6 @@ class DatabaseManager {
 
     // Inisialisasi in-memory RAM dataset dari template schema awal
     let memoryData = JSON.parse(JSON.stringify(INITIAL_DATABASE));
-    
-    // Pulihkan cache cloud lokal terbaru agar render awal pada saat startup / refresh langsung terisi tanpa jeda
-    try {
-      const cached = localStorage.getItem('ERP_CLOUD_CACHE_V3');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed && typeof parsed === 'object') {
-          if (Array.isArray(parsed.leaves)) memoryData.leaves = parsed.leaves;
-          if (Array.isArray(parsed.itemRequests)) memoryData.itemRequests = parsed.itemRequests;
-          if (Array.isArray(parsed.kitchenReports)) memoryData.kitchenReports = parsed.kitchenReports;
-          if (Array.isArray(parsed.timesheets)) memoryData.timesheets = parsed.timesheets;
-          if (Array.isArray(parsed.cashAdvances)) memoryData.cashAdvances = parsed.cashAdvances;
-          if (Array.isArray(parsed.fieldIssues)) memoryData.fieldIssues = parsed.fieldIssues;
-          if (Array.isArray(parsed.kitchens) && parsed.kitchens.length > 0) memoryData.kitchens = parsed.kitchens;
-          if (Array.isArray(parsed.guidelineDocuments) && parsed.guidelineDocuments.length > 0) memoryData.guidelineDocuments = parsed.guidelineDocuments;
-        }
-      }
-    } catch (e) {}
 
     // Pastikan seluruh koleksi data terdefinisi sebagai array yang aman
     if (!Array.isArray(memoryData.itemRequests)) memoryData.itemRequests = [];
@@ -2339,23 +2320,6 @@ class DatabaseManager {
   }
 
   save(data) {
-    // Simpan snapshot cloud cache lokal untuk cold-start instan
-    try {
-      if (this.data) {
-        const cachePayload = {
-          leaves: this.data.leaves || [],
-          itemRequests: this.data.itemRequests || [],
-          kitchenReports: this.data.kitchenReports || [],
-          timesheets: this.data.timesheets || [],
-          cashAdvances: this.data.cashAdvances || [],
-          fieldIssues: this.data.fieldIssues || [],
-          kitchens: this.data.kitchens || [],
-          guidelineDocuments: this.data.guidelineDocuments || []
-        };
-        localStorage.setItem('ERP_CLOUD_CACHE_V3', JSON.stringify(cachePayload));
-      }
-    } catch (e) {}
-
     // Siarkan event sinkronisasi instan ke tab browser lain via BroadcastChannel
     if (window.App && window.App.broadcastChannel) {
       try {
