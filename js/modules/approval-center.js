@@ -69,7 +69,12 @@ window.ApprovalCenterModule = {
 
     // 1. LEAVES (CUTI & IZIN)
     leaves.forEach(l => {
-      const historyList = Array.isArray(l.approvalHistory) ? l.approvalHistory : [];
+      let historyList = l.approvalHistory || l.approval_history || [];
+      if (typeof historyList === 'string') {
+        try { historyList = JSON.parse(historyList); } catch (e) { historyList = []; }
+      }
+      if (!Array.isArray(historyList)) historyList = [];
+
       const userStep = historyList.find(h => isStepByCurrentUser(h));
 
       if (userStep) {
@@ -79,15 +84,15 @@ window.ApprovalCenterModule = {
           type: 'LEAVE',
           id: l.id,
           date: l.createdAt || l.startDate,
-          employeeName: l.employeeName,
+          employeeName: l.employeeName || l.employee_name,
           department: l.department || l.role,
-          title: `${l.employeeName} — ${l.leaveType || l.type} (${l.duration} Hari)`,
-          summary: `Periode: ${l.startDate} s/d ${l.endDate} · Alasan: "${l.reason || '-'}"`,
+          title: `${l.employeeName || l.employee_name} — ${l.leaveType || l.type || l.leave_type} (${l.duration} Hari)`,
+          summary: `Periode: ${l.startDate || l.start_date} s/d ${l.endDate || l.end_date} · Alasan: "${l.reason || '-'}"`,
           stage: l.stage,
           status: l.status,
           decision: action,
           decisionTimestamp: timestamp,
-          approverName: userStep.actorName || user.name,
+          approverName: userStep.actorName || userStep.actor_name || user.name,
           notes: userStep.notes || (l.status === 'APPROVED' ? 'Disetujui' : 'Diproses'),
           raw: l
         });
@@ -96,27 +101,32 @@ window.ApprovalCenterModule = {
 
     // 2. PURCHASE REQUESTS (PR)
     prs.forEach(p => {
-      const historyList = Array.isArray(p.approvalHistory) ? p.approvalHistory : [];
+      let historyList = p.approvalHistory || p.approval_history || [];
+      if (typeof historyList === 'string') {
+        try { historyList = JSON.parse(historyList); } catch (e) { historyList = []; }
+      }
+      if (!Array.isArray(historyList)) historyList = [];
+
       const userStep = historyList.find(h => isStepByCurrentUser(h));
       const userAdj = Array.isArray(p.adjustments) ? p.adjustments.find(a => a.adjustedBy && a.adjustedBy.toLowerCase().includes(uName)) : null;
 
       if (userStep || userAdj) {
-        const decisionStep = userStep || (Array.isArray(p.approvalHistory) ? p.approvalHistory[p.approvalHistory.length - 1] : null);
+        const decisionStep = userStep || (historyList.length > 0 ? historyList[historyList.length - 1] : null);
         const timestamp = decisionStep ? decisionStep.timestamp : (p.updatedAt || p.createdAt || '-');
         const action = decisionStep ? decisionStep.action : p.status;
         history.push({
           type: 'PR',
           id: p.id,
           date: p.createdAt,
-          employeeName: p.employeeName,
+          employeeName: p.employeeName || p.employee_name,
           department: p.department || p.role,
-          title: `${p.itemName} (${p.quantity} ${p.unit || 'Unit'}) — Rp ${(p.totalPrice || 0).toLocaleString('id-ID')}`,
-          summary: `Kategori: ${p.category} ${p.targetKitchen ? `· Dapur: ${p.targetKitchen}` : ''} · Alasan: "${p.reason || '-'}"`,
+          title: `${p.itemName || p.item_name} (${p.quantity} ${p.unit || 'Unit'}) — Rp ${(p.totalPrice || p.total_price || 0).toLocaleString('id-ID')}`,
+          summary: `Kategori: ${p.category} ${p.targetKitchen || p.target_kitchen ? `· Dapur: ${p.targetKitchen || p.target_kitchen}` : ''} · Alasan: "${p.reason || '-'}"`,
           stage: p.stage,
           status: p.status,
-          decision: p.hasAdjustment ? 'ADJUSTED_APPROVED' : action,
+          decision: p.hasAdjustment || p.has_adjustment ? 'ADJUSTED_APPROVED' : action,
           decisionTimestamp: timestamp,
-          approverName: decisionStep ? decisionStep.actorName : user.name,
+          approverName: decisionStep ? (decisionStep.actorName || decisionStep.actor_name) : user.name,
           notes: userAdj ? `Disesuaikan (${userAdj.newQty} unit @ Rp ${Number(userAdj.newUnitPrice).toLocaleString('id-ID')})` : (decisionStep ? decisionStep.notes : '-'),
           raw: p
         });
@@ -125,7 +135,12 @@ window.ApprovalCenterModule = {
 
     // 3. CASH ADVANCE (CA)
     cas.forEach(c => {
-      const historyList = Array.isArray(c.approvalHistory) ? c.approvalHistory : [];
+      let historyList = c.approvalHistory || c.approval_history || [];
+      if (typeof historyList === 'string') {
+        try { historyList = JSON.parse(historyList); } catch (e) { historyList = []; }
+      }
+      if (!Array.isArray(historyList)) historyList = [];
+
       const userStep = historyList.find(h => isStepByCurrentUser(h));
 
       if (userStep) {
@@ -135,7 +150,7 @@ window.ApprovalCenterModule = {
           type: 'CA',
           id: c.id,
           date: c.createdAt,
-          employeeName: c.employeeName,
+          employeeName: c.employeeName || c.employee_name,
           department: c.department || c.role,
           title: `Kasbon: Rp ${(c.amount || 0).toLocaleString('id-ID')} — ${c.title || c.purpose || 'Kebutuhan Operasional'}`,
           summary: `Target: ${c.targetLocation || c.targetExpense || 'Operasional'} · Rekening: ${c.bankName} ${c.bankAccountNo}`,
@@ -143,7 +158,7 @@ window.ApprovalCenterModule = {
           status: c.status,
           decision: action,
           decisionTimestamp: timestamp,
-          approverName: userStep.actorName || user.name,
+          approverName: userStep.actorName || userStep.actor_name || user.name,
           notes: userStep.notes || '-',
           raw: c
         });
