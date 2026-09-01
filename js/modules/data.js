@@ -5328,17 +5328,17 @@ class DatabaseManager {
       const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
 
       try {
-        // 1. Jalankan fetch seluruh 9 tabel secara paralel dengan timeout & keepalive
+        // 1. Jalankan fetch seluruh 9 tabel secara paralel
         const fetchPromises = [
-          fetch(`${url}/rest/v1/users?select=*`, { headers, keepalive: true }),
-          fetch(`${url}/rest/v1/kitchens?select=*`, { headers, keepalive: true }),
-          fetch(`${url}/rest/v1/item_requests?select=*&order=created_at.desc`, { headers, keepalive: true }),
-          fetch(`${url}/rest/v1/leaves?select=*&order=created_at.desc`, { headers, keepalive: true }),
-          fetch(`${url}/rest/v1/kitchen_reports?select=*&order=created_at.desc`, { headers, keepalive: true }),
-          fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers, keepalive: true }),
-          fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc`, { headers, keepalive: true }),
-          fetch(`${url}/rest/v1/guideline_documents?select=*&order=created_at.desc`, { headers, keepalive: true }),
-          fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers, keepalive: true })
+          fetch(`${url}/rest/v1/users?select=*`, { headers }),
+          fetch(`${url}/rest/v1/kitchens?select=*`, { headers }),
+          fetch(`${url}/rest/v1/item_requests?select=*&order=created_at.desc`, { headers }),
+          fetch(`${url}/rest/v1/leaves?select=*&order=created_at.desc`, { headers }),
+          fetch(`${url}/rest/v1/kitchen_reports?select=*&order=created_at.desc`, { headers }),
+          fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers }),
+          fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc`, { headers }),
+          fetch(`${url}/rest/v1/guideline_documents?select=*&order=created_at.desc`, { headers }),
+          fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers })
         ];
 
         const results = await Promise.allSettled(fetchPromises);
@@ -5346,9 +5346,16 @@ class DatabaseManager {
         // 2. Parse JSON secara paralel untuk latency super rendah
         const [
           dbUsers, dbKitchens, dbPrs, dbLeaves, dbKitchenReports, dbTimesheets, dbCas, dbDocs, dbIssues
-        ] = await Promise.all(results.map(async (r) => {
-          if (r.status === 'fulfilled' && r.value.ok) {
-            try { return await r.value.json(); } catch (e) { return null; }
+        ] = await Promise.all(results.map(async (r, idx) => {
+          if (r.status === 'fulfilled' && r.value && r.value.ok) {
+            try { 
+              return await r.value.json(); 
+            } catch (e) { 
+              console.warn(`[Supabase Parse Warning] Gagal parse JSON tabel index ${idx}:`, e);
+              return null; 
+            }
+          } else if (r.status === 'rejected') {
+            console.warn(`[Supabase Fetch Error] Gagal query tabel index ${idx}:`, r.reason);
           }
           return null;
         }));
