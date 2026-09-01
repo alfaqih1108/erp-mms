@@ -608,13 +608,14 @@ window.App = {
       // 3. Masuk ke dashboard seketika tanpa jeda
       this.handleLoginAs(matchedUser.id);
 
-      // 4. Sinkronkan seluruh data transaksi di background secara senyap tanpa glitch/re-render ulang
+      // 4. Sinkronkan seluruh data transaksi di background dan refresh UI otomatis
       if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
         window.DB.pullLatestFromSupabase().then(() => {
           this.updateUserHeader();
           this.applyRoleRestrictions();
           this.updateSidebarBadges();
           this.updateCloudBadge();
+          this.refreshCurrentTab();
         }).catch(() => {});
       }
     } else {

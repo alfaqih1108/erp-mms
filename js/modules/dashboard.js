@@ -98,13 +98,20 @@ window.DashboardModule = {
 
             <!-- Quick Action Buttons -->
             <div class="hero-actions-group">
+              ${isApproverRole ? `
+                <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; position: relative; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);" onclick="App.switchTab('approval')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  🛡️ Buka Approval Center
+                  ${pendingApprovals > 0 ? `<span style="background: #EF4444; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 999px; margin-left: 6px; animation: pulse 2s infinite;">${pendingApprovals} Pending</span>` : ''}
+                </button>
+              ` : ''}
               ${user.role === 'MAKER_YAYASAN' ? `
                 <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); border-color: #F87171;" onclick="App.switchTab('dapur'); setTimeout(() => DapurYayasanModule.openReportModal(), 150);">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   + Input Laporan Dapur & Saldo VA
                 </button>
               ` : `
-                <button class="btn-nalar-primary" onclick="App.switchTab('cuti'); setTimeout(() => CutiModule.openLeaveModal(), 100);">
+                <button class="${isApproverRole ? 'btn-nalar-secondary' : 'btn-nalar-primary'}" onclick="App.switchTab('cuti'); setTimeout(() => CutiModule.openLeaveModal(), 100);">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   Ajukan Cuti Baru
                 </button>
@@ -120,6 +127,25 @@ window.DashboardModule = {
             </div>
           </div>
         </div>
+
+        ${isApproverRole && pendingApprovals > 0 ? `
+          <!-- Pemberitahuan Khusus Persetujuan Menunggu Tindakan (Sangat Membantu di HP & Desktop) -->
+          <div class="nalar-card hud-corner-box aura-box-emerald" style="padding: 16px 22px; margin-bottom: 24px; background: rgba(16, 185, 129, 0.09); border: 1px solid rgba(52, 211, 153, 0.35); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; box-shadow: 0 4px 18px rgba(16, 185, 129, 0.12);">
+            <div style="display: flex; align-items: center; gap: 14px;">
+              <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(16, 185, 129, 0.22); border: 1px solid rgba(52, 211, 153, 0.4); display: flex; align-items: center; justify-content: center; font-size: 20px;">🛡️</div>
+              <div>
+                <div style="font-weight: 700; font-size: 14.5px; color: #34D399; display: flex; align-items: center; gap: 8px;">
+                  Pusat Persetujuan: ${pendingApprovals} Dokumen Menunggu Verifikasi Anda
+                  <span style="background: #EF4444; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px;">TINDAKAN DIPERLUKAN</span>
+                </div>
+                <div style="font-size: 12.5px; color: var(--text-muted); margin-top: 2px;">Terdapat pengajuan Cuti / PR / Laporan Dapur yang memerlukan persetujuan resmi dari Anda.</div>
+              </div>
+            </div>
+            <button class="btn-nalar-primary" style="padding: 9px 18px; font-size: 12.5px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; font-weight: 700;" onclick="App.switchTab('approval')">
+              Buka Approval Center ➔
+            </button>
+          </div>
+        ` : ''}
 
         <!-- ==========================================================================
              USER CORE ENGINE STATUS BANNER
