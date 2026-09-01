@@ -5565,9 +5565,7 @@ class DatabaseManager {
             createdAt: p.created_at
           }));
 
-          const currentLocal = Array.isArray(this.data.itemRequests) ? this.data.itemRequests : [];
-          const localOnly = currentLocal.filter(loc => !remotePrs.some(rem => rem.id === loc.id));
-          this.data.itemRequests = [...localOnly, ...remotePrs];
+          this.data.itemRequests = remotePrs;
           hasUpdates = true;
         }
 
@@ -5599,9 +5597,7 @@ class DatabaseManager {
             createdAt: l.created_at
           }));
 
-          const currentLocal = Array.isArray(this.data.leaves) ? this.data.leaves : [];
-          const localOnly = currentLocal.filter(loc => !remoteLeaves.some(rem => rem.id === loc.id));
-          this.data.leaves = [...localOnly, ...remoteLeaves];
+          this.data.leaves = remoteLeaves;
           hasUpdates = true;
         }
 
@@ -5626,9 +5622,7 @@ class DatabaseManager {
             createdAt: kr.created_at
           }));
 
-          const currentLocal = Array.isArray(this.data.kitchenReports) ? this.data.kitchenReports : [];
-          const localOnly = currentLocal.filter(loc => !remoteReports.some(rem => rem.id === loc.id));
-          this.data.kitchenReports = [...localOnly, ...remoteReports];
+          this.data.kitchenReports = remoteReports;
           hasUpdates = true;
         }
 
@@ -5651,9 +5645,7 @@ class DatabaseManager {
             createdAt: t.created_at
           }));
 
-          const currentLocal = Array.isArray(this.data.timesheets) ? this.data.timesheets : [];
-          const localOnly = currentLocal.filter(loc => !remoteTs.some(rem => rem.id === loc.id));
-          this.data.timesheets = [...localOnly, ...remoteTs];
+          this.data.timesheets = remoteTs;
           hasUpdates = true;
         }
 
@@ -5683,9 +5675,7 @@ class DatabaseManager {
             settlement: typeof ca.settlement === 'object' && ca.settlement !== null ? ca.settlement : (ca.settlement ? JSON.parse(ca.settlement) : null)
           }));
 
-          const currentLocal = Array.isArray(this.data.cashAdvances) ? this.data.cashAdvances : [];
-          const localOnly = currentLocal.filter(loc => !remoteCas.some(rem => rem.id === loc.id));
-          this.data.cashAdvances = [...localOnly, ...remoteCas];
+          this.data.cashAdvances = remoteCas;
           hasUpdates = true;
         }
 
@@ -5732,9 +5722,7 @@ class DatabaseManager {
             };
           });
 
-          const currentLocal = Array.isArray(this.data.fieldIssues) ? this.data.fieldIssues : [];
-          const localOnly = currentLocal.filter(loc => !remoteIssues.some(rem => rem.id === loc.id));
-          this.data.fieldIssues = [...localOnly, ...remoteIssues];
+          this.data.fieldIssues = remoteIssues;
           hasUpdates = true;
         }
 

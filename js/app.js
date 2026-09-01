@@ -12,7 +12,18 @@ window.App = {
   realtimeSyncDebounceTimer: null,
 
   init: function() {
-    // 1. SINKRONKAN IDENTITAS SESI PENGGUNA SEBELUM MERENDER UI APA PUN
+    // 1. Bersihkan seluruh legacy storage sampah agar 100% bergantung pada Cloud
+    try {
+      localStorage.removeItem('ERP_YAYASAN_DB_STABLE');
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('ERP_YAYASAN_DATABASE_') || k.startsWith('ERP_MMS_V'))) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch(e) {}
+
+    // 2. SINKRONKAN IDENTITAS SESI PENGGUNA SEBELUM MERENDER UI APA PUN
     const isSessionActive = (localStorage.getItem('ERP_SESSION_ACTIVE') === 'true');
     const savedUserId = localStorage.getItem('ERP_LOGGED_USER_ID');
     const lastActiveTab = localStorage.getItem('ERP_LAST_ACTIVE_TAB') || 'dashboard';

@@ -29,7 +29,16 @@ window.ApprovalCenterModule = {
 
   setTab: function(tab) {
     this.activeTab = tab;
-    this.render(document.getElementById('main-content-area'));
+    const container = document.getElementById('main-content-area');
+    this.render(container);
+    // Selalu sinkronkan data cloud terbaru saat berpindah tab
+    if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+      window.DB.pullLatestFromSupabase().then(() => {
+        if (this.activeTab === tab && container) {
+          this.render(container);
+        }
+      }).catch(() => {});
+    }
   },
 
   setFilter: function(filter) {
@@ -57,14 +66,28 @@ window.ApprovalCenterModule = {
       // Jangan masukkan aksi awal SUBMITTED oleh pemohon
       if (h.action === 'SUBMITTED' || h.stage === 'SUBMISSION') return false;
 
-      const actorName = (h.actorName || '').toLowerCase();
-      const actorId = (h.actorId || '').toLowerCase();
+      const actorName = (h.actorName || h.actor_name || '').toLowerCase();
+      const actorId = (h.actorId || h.actor_id || '').toLowerCase();
+      const actorRole = (h.actorRole || h.actor_role || '').toLowerCase();
 
-      return (
-        (uName && actorName.includes(uName)) ||
-        (uId && (actorId === uId || actorName.includes(uId))) ||
-        (uNika && actorName.includes(uNika))
-      );
+      // 1. Pencocokan langsung berbasis Nama, ID, atau NIKA
+      if (uName && actorName.includes(uName)) return true;
+      if (uId && (actorId === uId || actorName.includes(uId))) return true;
+      if (uNika && actorName.includes(uNika)) return true;
+
+      // 2. Pencocokan cerdas alias pimpinan
+      if (actorName.includes('alfaqih') && (uName.includes('alfaqih') || uId === 'do-002')) return true;
+      if (actorName.includes('kody') && (uName.includes('kody') || uId === 'dk-001')) return true;
+      if (actorName.includes('tazkia') && (uName.includes('tazkia') || uId === 'hc-001')) return true;
+      if (actorName.includes('dian') && (uName.includes('dian') || uId === 'ma-001')) return true;
+
+      // 3. Pencocokan berbasis Jabatan / Role Wewenang
+      if (user.role === 'DIREKTUR_OPERASIONAL' && (actorRole.includes('operasional') || actorName.includes('operasional'))) return true;
+      if (user.role === 'DIREKTUR_KEUANGAN' && (actorRole.includes('keuangan') || actorName.includes('keuangan'))) return true;
+      if (user.role === 'HUMAN_CAPITAL' && (actorRole.includes('human capital') || actorName.includes('human capital') || actorRole.includes('hc'))) return true;
+      if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') return true;
+
+      return false;
     };
 
     // 1. LEAVES (CUTI & IZIN)
@@ -171,6 +194,15 @@ window.ApprovalCenterModule = {
 
   render: function(container) {
     if (!container) return;
+
+    // Jika render dipanggil saat data lokal masih kosong, segera tarik dari Supabase & render ulang
+    if (!this._initialSyncDone && window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+      this._initialSyncDone = true;
+      window.DB.pullLatestFromSupabase().then(() => {
+        const c = document.getElementById('main-content-area');
+        if (c) this.render(c);
+      }).catch(() => {});
+    }
 
     const user = DB.getCurrentUser();
     const leaves = DB.getLeaves() || [];
