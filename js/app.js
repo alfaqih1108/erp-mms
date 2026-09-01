@@ -745,7 +745,7 @@ window.App = {
       console.warn('BroadcastChannel notice:', bcErr);
     }
 
-    // 4. Fallback Periodic Heartbeat Sync (Tiap 10 Detik jika tab aktif)
+    // 4. Fallback Periodic Heartbeat Sync (Tiap 5 Menit - hemat egress bandwidth, didukung WebSocket Realtime)
     setInterval(() => {
       if (document.visibilityState === 'visible' && localStorage.getItem('ERP_SESSION_ACTIVE') === 'true') {
         if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
@@ -754,10 +754,15 @@ window.App = {
           }).catch(() => {});
         }
       }
-    }, 10000);
+    }, 300000); // 5 Menit (300.000 ms)
 
-    // 5. Sync Instan saat User Kembali ke Tab ERP (Window Focus & Visibility Change)
-    window.addEventListener('focus', () => {
+    // 5. Throttled Sync saat User Kembali ke Tab ERP (Cooldown minimal 30 detik agar hemat egress)
+    let lastFocusPull = 0;
+    const triggerFocusPull = () => {
+      const now = Date.now();
+      if (now - lastFocusPull < 30000) return; // Cooldown 30 detik
+      lastFocusPull = now;
+
       if (localStorage.getItem('ERP_SESSION_ACTIVE') === 'true') {
         if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
           window.DB.pullLatestFromSupabase().then(() => {
@@ -766,16 +771,12 @@ window.App = {
           }).catch(() => {});
         }
       }
-    });
+    };
 
+    window.addEventListener('focus', triggerFocusPull);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && localStorage.getItem('ERP_SESSION_ACTIVE') === 'true') {
-        if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
-          window.DB.pullLatestFromSupabase().then(() => {
-            this.updateSidebarBadges();
-            this.refreshCurrentTab();
-          }).catch(() => {});
-        }
+      if (document.visibilityState === 'visible') {
+        triggerFocusPull();
       }
     });
   },

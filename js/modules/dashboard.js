@@ -1156,7 +1156,7 @@ window.DashboardModule = {
     alert(`📄 [PANDUAN & SOSIALISASI YAYASAN]\n\nJudul File: ${title}\nFormat: ${fileType}\n\nRingkasan / Abstrak:\n${description}\n\n*Dokumen sah & terverifikasi oleh Divisi Human Capital.`);
   },
 
-  downloadDocument: function(docId) {
+  downloadDocument: async function(docId) {
     const doc = (DB.getGuidelineDocuments() || []).find(d => d.id === docId);
     if (!doc) return;
 
@@ -1165,9 +1165,14 @@ window.DashboardModule = {
       filename += doc.fileType === 'PDF' ? '.pdf' : '.pptx';
     }
 
-    if (doc.fileData) {
+    let fileData = doc.fileData;
+    if (!fileData && typeof DB.getDocumentBinary === 'function') {
+      fileData = await DB.getDocumentBinary(docId);
+    }
+
+    if (fileData) {
       const a = document.createElement('a');
-      a.href = doc.fileData;
+      a.href = fileData;
       a.download = filename;
       document.body.appendChild(a);
       a.click();

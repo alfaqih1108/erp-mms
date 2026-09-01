@@ -2425,6 +2425,32 @@ class DatabaseManager {
     return newDoc;
   }
 
+  async getDocumentBinary(docId) {
+    if (!docId) return null;
+    const doc = (this.getGuidelineDocuments() || []).find(d => d.id === docId);
+    if (doc && doc.fileData) return doc.fileData;
+
+    if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+      try {
+        const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+        const key = window.SupabaseConfig.getAnonKey();
+        const res = await fetch(`${url}/rest/v1/guideline_documents?id=eq.${docId}&select=file_data`, {
+          headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+        });
+        if (res.ok) {
+          const rows = await res.json();
+          if (rows && rows[0] && rows[0].file_data) {
+            if (doc) doc.fileData = rows[0].file_data;
+            return rows[0].file_data;
+          }
+        }
+      } catch (e) {
+        console.warn('Gagal mengambil binary dokumen:', e);
+      }
+    }
+    return null;
+  }
+
   async deleteGuidelineDocument(docId) {
     if (!Array.isArray(this.data.guidelineDocuments)) return false;
     const idx = this.data.guidelineDocuments.findIndex(d => d.id === docId);
@@ -5337,7 +5363,7 @@ class DatabaseManager {
           fetch(`${url}/rest/v1/kitchen_reports?select=*&order=created_at.desc`, { headers }),
           fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers }),
           fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc`, { headers }),
-          fetch(`${url}/rest/v1/guideline_documents?select=*&order=created_at.desc`, { headers }),
+          fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc`, { headers }),
           fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers })
         ];
 
