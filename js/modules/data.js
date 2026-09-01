@@ -3493,7 +3493,7 @@ class DatabaseManager {
     return (this.data && Array.isArray(this.data.itemRequests)) ? this.data.itemRequests : INITIAL_DATABASE.itemRequests;
   }
 
-  addItemRequest(prData) {
+  async addItemRequest(prData) {
     const user = this.getCurrentUser();
     
     // Maker Yayasan: di-nonaktifkan fitur Pengadaan PR
@@ -3503,7 +3503,7 @@ class DatabaseManager {
     }
 
     const allPrs = this.getItemRequests() || [];
-    let maxNum = 44;
+    let maxNum = 52;
     allPrs.forEach(p => {
       if (p.id) {
         const m = p.id.match(/\d+$/);
@@ -3566,68 +3566,65 @@ class DatabaseManager {
     this.addLog(`${user.name} mengajukan Purchase Request ${newPR.id} (${newPR.itemName} · Rp ${Number(newPR.totalPrice).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
     this.save();
 
-    // Background Cloud Sync & Notifikasi Email
-    setTimeout(() => {
-      this.syncToSupabase('item_requests', {
-        id: newPR.id,
-        employee_id: newPR.employeeId,
-        employee_name: newPR.employeeName,
-        role: newPR.role,
-        department: newPR.department,
-        item_name: newPR.itemName,
-        category: newPR.category,
-        quantity: newPR.quantity,
-        unit_price: newPR.unitPrice,
-        total_price: newPR.totalPrice,
-        urgency: newPR.urgency,
-        reason: newPR.reason,
-        target_kitchen: newPR.targetKitchen,
-        attachment_url: newPR.attachmentUrl,
-        attachment_name: newPR.attachmentName,
-        stage: newPR.stage,
-        status: newPR.status,
-        approval_history: newPR.approvalHistory
-      });
+    // Sinkronkan langsung secara instan ke database Supabase Cloud
+    await this.syncToSupabase('item_requests', {
+      id: newPR.id,
+      employee_id: newPR.employeeId,
+      employee_name: newPR.employeeName,
+      role: newPR.role,
+      department: newPR.department,
+      item_name: newPR.itemName,
+      category: newPR.category,
+      quantity: Number(newPR.quantity) || 1,
+      unit_price: Number(newPR.unitPrice) || 0,
+      total_price: Number(newPR.totalPrice) || 0,
+      urgency: newPR.urgency,
+      reason: newPR.reason,
+      target_kitchen: newPR.targetKitchen,
+      attachment_url: newPR.attachmentUrl,
+      attachment_name: newPR.attachmentName,
+      stage: newPR.stage,
+      status: newPR.status,
+      approval_history: newPR.approvalHistory
+    });
 
-      // Kirim Notifikasi Email ke approver yang tepat sesuai matriks
-      let approverUser = null;
-      if (approvalFlow === 'PY_3TIER') {
-        const kitchen = (this.data && this.data.kitchens) ? this.data.kitchens.find(k => (k.nama_dapur === newPR.targetKitchen || k.namaDapur === newPR.targetKitchen)) : null;
-        if (kitchen && kitchen.manager_area) {
-          approverUser = this.getUsers().find(u => kitchen.manager_area.includes(u.name));
-        }
-        if (!approverUser) {
-          approverUser = this.getUsers().find(u => u.role === 'MANAGER_AREA');
-        }
-      } else if (approvalFlow === 'MGR_2TIER') {
-        approverUser = this.getUsers().find(u => u.role === 'STAFF_AHLI_KEUANGAN');
-      } else {
-        approverUser = this.getUsers().find(u => (u.id === 'DO-002' || u.name.includes('Alfaqih')) && u.role === 'DIREKTUR_OPERASIONAL') ||
-                       this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL') ||
-                       this.getUsers().find(u => u.role === 'DIREKTUR_KEUANGAN');
+    let approverUser = null;
+    if (approvalFlow === 'PY_3TIER') {
+      const kitchen = (this.data && this.data.kitchens) ? this.data.kitchens.find(k => (k.nama_dapur === newPR.targetKitchen || k.namaDapur === newPR.targetKitchen)) : null;
+      if (kitchen && kitchen.manager_area) {
+        approverUser = this.getUsers().find(u => kitchen.manager_area.includes(u.name));
       }
+      if (!approverUser) {
+        approverUser = this.getUsers().find(u => u.role === 'MANAGER_AREA');
+      }
+    } else if (approvalFlow === 'MGR_2TIER') {
+      approverUser = this.getUsers().find(u => u.role === 'STAFF_AHLI_KEUANGAN');
+    } else {
+      approverUser = this.getUsers().find(u => (u.id === 'DO-002' || u.name.includes('Alfaqih')) && u.role === 'DIREKTUR_OPERASIONAL') ||
+                     this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL') ||
+                     this.getUsers().find(u => u.role === 'DIREKTUR_KEUANGAN');
+    }
 
-      const approverEmail = approverUser ? approverUser.email : 'alfaqih1108@gmail.com';
-      const approverName = approverUser ? approverUser.name : 'Direktur Operasional / Keuangan';
+    const approverEmail = approverUser ? approverUser.email : 'alfaqih1108@gmail.com';
+    const approverName = approverUser ? approverUser.name : 'Direktur Operasional / Keuangan';
 
-      this.notifyEmail({
-        to: approverEmail,
-        recipientName: approverName,
-        subject: `Permintaan Pengadaan Barang Baru (${newPR.id})`,
-        notificationType: 'PR_SUBMITTED',
-        title: 'Pengajuan Purchase Requisition (PR) Baru',
-        summaryText: `${user.name} (${user.roleLabel}) telah mengajukan pengadaan barang untuk ${newPR.targetKitchen || 'Operasional'}. Mohon untuk meninjau dan memvalidasi permintaan ini.`,
-        details: {
-          'No. Pengajuan': newPR.id,
-          'Pemohon': `${user.name} (${user.roleLabel})`,
-          'Nama Barang': newPR.itemName,
-          'Jumlah': `${newPR.quantity} Unit`,
-          'Estimasi Biaya': `Rp ${Number(newPR.totalPrice).toLocaleString('id-ID')}`,
-          'Target Dapur': newPR.targetKitchen || '-',
-          'Tingkat Urgensi': newPR.urgency
-        }
-      });
-    }, 0);
+    this.notifyEmail({
+      to: approverEmail,
+      recipientName: approverName,
+      subject: `Permintaan Pengadaan Barang Baru (${newPR.id})`,
+      notificationType: 'PR_SUBMITTED',
+      title: 'Pengajuan Purchase Requisition (PR) Baru',
+      summaryText: `${user.name} (${user.roleLabel}) telah mengajukan pengadaan barang untuk ${newPR.targetKitchen || 'Operasional'}. Mohon untuk meninjau dan memvalidasi permintaan ini.`,
+      details: {
+        'No. Pengajuan': newPR.id,
+        'Pemohon': `${user.name} (${user.roleLabel})`,
+        'Nama Barang': newPR.itemName,
+        'Jumlah': `${newPR.quantity} Unit`,
+        'Estimasi Biaya': `Rp ${Number(newPR.totalPrice).toLocaleString('id-ID')}`,
+        'Target Dapur': newPR.targetKitchen || '-',
+        'Tingkat Urgensi': newPR.urgency
+      }
+    });
 
     return newPR;
   }

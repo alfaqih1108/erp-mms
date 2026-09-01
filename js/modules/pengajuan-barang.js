@@ -434,7 +434,7 @@ window.PengajuanBarangModule = {
     App.openModal('modal-image-preview');
   },
 
-  handleSubmit: function(e) {
+  handleSubmit: async function(e) {
     e.preventDefault();
     const user = DB.getCurrentUser();
     const itemName = document.getElementById('pr-name').value;
@@ -459,22 +459,37 @@ window.PengajuanBarangModule = {
 
     const totalPrice = quantity * unitPrice;
 
-    DB.addItemRequest({
-      itemName,
-      category,
-      quantity,
-      unitPrice,
-      totalPrice,
-      urgency,
-      reason,
-      targetKitchen,
-      attachmentUrl: this.currentAttachment.url,
-      attachmentName: this.currentAttachment.name
-    });
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>⏳ Menyimpan ke Cloud...</span>';
+    }
 
-    App.closeModal('modal-pr');
-    this.removeAttachment();
-    App.showToast(`Pengajuan ${itemName} (${quantity} unit untuk ${targetKitchen}) berhasil disubmit!`, 'success');
-    App.refreshCurrentTab();
+    try {
+      await DB.addItemRequest({
+        itemName,
+        category,
+        quantity,
+        unitPrice,
+        totalPrice,
+        urgency,
+        reason,
+        targetKitchen,
+        attachmentUrl: this.currentAttachment.url,
+        attachmentName: this.currentAttachment.name
+      });
+
+      App.closeModal('modal-pr');
+      this.removeAttachment();
+      App.showToast(`Pengajuan ${itemName} (${quantity} unit untuk ${targetKitchen}) berhasil disubmit ke Cloud!`, 'success');
+      App.refreshCurrentTab();
+    } catch (err) {
+      App.showToast('Gagal mengirim pengajuan ke cloud. Silakan coba lagi.', 'danger');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span>Kirim Pengajuan PR</span>';
+      }
+    }
   }
 };
