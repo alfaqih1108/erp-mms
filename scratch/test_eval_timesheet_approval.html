@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+<pre id="output"></pre>
+<script>
+var out = document.getElementById('output');
+
+fetch('../js/modules/timesheet.js')
+  .then(res => res.text())
+  .then(code => {
+    try {
+      eval(code);
+      out.textContent += "timesheet.js EVAL SUCCESS! TimesheetModule is " + typeof window.TimesheetModule + "\n";
+    } catch(e) {
+      out.textContent += "timesheet.js EVAL ERROR: " + e.message + "\nStack: " + e.stack + "\n";
+    }
+  });
+
+fetch('../js/modules/approval-center.js')
+  .then(res => res.text())
+  .then(code => {
+    try {
+      eval(code);
+      out.textContent += "approval-center.js EVAL SUCCESS! ApprovalCenterModule is " + typeof window.ApprovalCenterModule + "\n";
+    } catch(e) {
+      out.textContent += "approval-center.js EVAL ERROR: " + e.message + "\nStack: " + e.stack + "\n";
+    }
+  });
+</script>
+</body>
+</html>

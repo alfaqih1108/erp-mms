@@ -37,34 +37,41 @@ window.ApprovalCenterModule = {
     this.render(document.getElementById('main-content-area'));
   },
 
-  // Mengumpulkan seluruh riwayat pengajuan yang telah diapprove / diproses oleh user aktif
+  // Mengumpulkan seluruh riwayat pengajuan yang telah diapprove / diproses secara spesifik oleh user aktif
   getMyApprovalHistory: function(user) {
-    const isDirectorOrAdmin = (
-      user.role === 'SUPER_ADMIN' || 
-      user.role === 'DIREKTUR_UTAMA' || 
-      user.role === 'DIREKTUR_OPERASIONAL' || 
-      user.role === 'DIREKTUR_KEUANGAN' ||
-      user.role === 'FAT_OFFICER' ||
-      user.role === 'STAFF_AHLI_KEUANGAN'
-    );
+    if (!user) return [];
 
     const leaves = DB.getLeaves() || [];
-    const timesheets = DB.getTimesheets() || [];
     const prs = DB.getItemRequests() || [];
     const cas = DB.getCashAdvances() || [];
 
     const history = [];
 
+    // Helper pengecekan: hanya step yang dieksekusi / diapprove oleh akun user saat ini
+    const isUserApprovalActor = (h) => {
+      if (!h) return false;
+      // Kecualikan pembuatan/pengajuan awal dari pemohon
+      if (['SUBMITTED', 'PENDING', 'DRAFT', 'RECORDED'].includes(h.action)) return false;
+
+      const actorName = (h.actorName || '').toLowerCase().trim();
+      const currentName = (user.name || '').toLowerCase().trim();
+      const actorId = (h.actorId || '').toLowerCase().trim();
+      const currentId = (user.id || '').toLowerCase().trim();
+
+      if (currentId && actorId && currentId === actorId) return true;
+      if (actorName && currentName && (actorName.includes(currentName) || currentName.includes(actorName))) return true;
+
+      return false;
+    };
+
     // 1. LEAVES (CUTI & IZIN)
     leaves.forEach(l => {
-      const userStep = Array.isArray(l.approvalHistory) ? l.approvalHistory.find(h => 
-        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id) || h.actorRole === user.roleLabel) && h.action !== 'SUBMITTED'
-      ) : null;
+      if (!Array.isArray(l.approvalHistory)) return;
+      const userStep = l.approvalHistory.slice().reverse().find(isUserApprovalActor);
 
-      if (userStep || (isDirectorOrAdmin && l.status !== 'PENDING') || (l.approver && l.approver.includes(user.name))) {
-        const decisionStep = userStep || (Array.isArray(l.approvalHistory) ? l.approvalHistory[l.approvalHistory.length - 1] : null);
-        const timestamp = decisionStep ? decisionStep.timestamp : (l.updatedAt || l.createdAt || '-');
-        const action = decisionStep ? decisionStep.action : l.status;
+      if (userStep) {
+        const timestamp = userStep.timestamp || l.updatedAt || l.createdAt || '-';
+        const action = userStep.action || l.status;
         history.push({
           type: 'LEAVE',
           id: l.id,
@@ -77,50 +84,22 @@ window.ApprovalCenterModule = {
           status: l.status,
           decision: action,
           decisionTimestamp: timestamp,
-          approverName: decisionStep ? decisionStep.actorName : (l.approver || user.name),
-          notes: decisionStep ? decisionStep.notes : (l.status === 'APPROVED' ? 'Disetujui' : 'Diproses'),
+          approverName: userStep.actorName || user.name,
+          notes: userStep.notes || (l.status === 'APPROVED' ? 'Disetujui' : 'Diproses'),
           raw: l
         });
       }
     });
 
-    // 2. TIMESHEETS
-    timesheets.forEach(t => {
-      const userStep = Array.isArray(t.approvalHistory) ? t.approvalHistory.find(h => 
-        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id)) && h.action !== 'SUBMITTED'
-      ) : null;
-
-      if (userStep || (user.role === 'HUMAN_CAPITAL' && t.status !== 'PENDING') || (isDirectorOrAdmin && t.status !== 'PENDING') || (t.approver && t.approver.includes(user.name))) {
-        const decisionStep = userStep || (Array.isArray(t.approvalHistory) ? t.approvalHistory[t.approvalHistory.length - 1] : null);
-        const timestamp = decisionStep ? decisionStep.timestamp : (t.date + ' ' + (t.endTime || '17:00'));
-        history.push({
-          type: 'TIMESHEET',
-          id: t.id,
-          date: t.date,
-          employeeName: t.employeeName,
-          department: t.department || t.role,
-          title: `${t.employeeName} — ${t.activityPreset || 'Aktivitas Kerja'} (${t.hours} Jam)`,
-          summary: `Tanggal: ${t.date} (${t.startTime || '08:00'} - ${t.endTime || '17:00'}) · Uraian: "${t.activity || '-'}"`,
-          stage: 'HC_VALIDATION',
-          status: t.status,
-          decision: t.status,
-          decisionTimestamp: timestamp,
-          approverName: decisionStep ? decisionStep.actorName : (t.approver || user.name),
-          notes: decisionStep ? decisionStep.notes : (t.status === 'APPROVED' ? 'Presensi tervalidasi' : 'Ditolak'),
-          raw: t
-        });
-      }
-    });
-
-    // 3. PURCHASE REQUESTS (PR)
+    // 2. PURCHASE REQUESTS (PR)
     prs.forEach(p => {
-      const userStep = Array.isArray(p.approvalHistory) ? p.approvalHistory.find(h => 
-        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id) || h.actorRole === user.roleLabel) && h.action !== 'SUBMITTED'
+      const userStep = Array.isArray(p.approvalHistory) ? p.approvalHistory.slice().reverse().find(isUserApprovalActor) : null;
+
+      const userAdj = Array.isArray(p.adjustments) ? p.adjustments.find(a => 
+        a.adjustedBy && (a.adjustedBy.toLowerCase().includes(user.name.toLowerCase()) || user.name.toLowerCase().includes(a.adjustedBy.toLowerCase()))
       ) : null;
 
-      const userAdj = Array.isArray(p.adjustments) ? p.adjustments.find(a => a.adjustedBy && a.adjustedBy.includes(user.name)) : null;
-
-      if (userStep || userAdj || (isDirectorOrAdmin && p.status !== 'PENDING') || (p.status === 'COMPLETED' || p.status === 'APPROVED')) {
+      if (userStep || userAdj) {
         const decisionStep = userStep || (Array.isArray(p.approvalHistory) ? p.approvalHistory[p.approvalHistory.length - 1] : null);
         const timestamp = decisionStep ? decisionStep.timestamp : (p.updatedAt || p.createdAt || '-');
         const action = decisionStep ? decisionStep.action : p.status;
@@ -136,37 +115,34 @@ window.ApprovalCenterModule = {
           status: p.status,
           decision: p.hasAdjustment ? 'ADJUSTED_APPROVED' : action,
           decisionTimestamp: timestamp,
-          approverName: decisionStep ? decisionStep.actorName : (p.approver || user.name),
+          approverName: decisionStep ? decisionStep.actorName : user.name,
           notes: userAdj ? `Disesuaikan (${userAdj.newQty} unit @ Rp ${Number(userAdj.newUnitPrice).toLocaleString('id-ID')})` : (decisionStep ? decisionStep.notes : '-'),
           raw: p
         });
       }
     });
 
-    // 4. CASH ADVANCE (CA)
+    // 3. CASH ADVANCE (CA & LPJ)
     cas.forEach(c => {
-      const userStep = Array.isArray(c.approvalHistory) ? c.approvalHistory.find(h => 
-        h.actorName && (h.actorName.includes(user.name) || h.actorName.includes(user.id) || h.actorRole === user.roleLabel) && h.action !== 'SUBMITTED'
-      ) : null;
+      const userStep = Array.isArray(c.approvalHistory) ? c.approvalHistory.slice().reverse().find(isUserApprovalActor) : null;
 
-      if (userStep || (isDirectorOrAdmin && c.status !== 'PENDING') || (c.status === 'COMPLETED' || c.status === 'APPROVED' || c.status === 'SETTLED')) {
-        const decisionStep = userStep || (Array.isArray(c.approvalHistory) ? c.approvalHistory[c.approvalHistory.length - 1] : null);
-        const timestamp = decisionStep ? decisionStep.timestamp : (c.disbursedAt || c.createdAt || '-');
-        const action = decisionStep ? decisionStep.action : c.status;
+      if (userStep) {
+        const timestamp = userStep.timestamp || c.disbursedAt || c.createdAt || '-';
+        const action = userStep.action || c.status;
         history.push({
           type: 'CA',
           id: c.id,
           date: c.createdAt,
           employeeName: c.employeeName,
           department: c.department || c.role,
-          title: `Kasbon: Rp ${(c.amount || 0).toLocaleString('id-ID')} — ${c.title || c.purpose || 'Kebutuhan Operasional'}`,
+          title: `Kasbon: Rp ${(c.amount || c.amountApproved || c.amountRequested || 0).toLocaleString('id-ID')} — ${c.title || c.purpose || 'Kebutuhan Operasional'}`,
           summary: `Target: ${c.targetLocation || c.targetExpense || 'Operasional'} · Rekening: ${c.bankName} ${c.bankAccountNo}`,
           stage: c.stage,
           status: c.status,
           decision: action,
           decisionTimestamp: timestamp,
-          approverName: decisionStep ? decisionStep.actorName : (c.approver || user.name),
-          notes: decisionStep ? decisionStep.notes : '-',
+          approverName: userStep.actorName || user.name,
+          notes: userStep.notes || '-',
           raw: c
         });
       }
@@ -181,20 +157,17 @@ window.ApprovalCenterModule = {
 
     const user = DB.getCurrentUser();
     const leaves = DB.getLeaves() || [];
-    const timesheets = DB.getTimesheets() || [];
     const prs = DB.getItemRequests() || [];
     const cas = DB.getCashAdvances() || [];
 
     // Filter Items Relevan sesuai Hak Akses Role (Antrean Pending)
     let relevantLeaves = [];
-    let relevantTimesheets = [];
     let relevantPrs = [];
     let relevantCAs = [];
 
-    // 1. Human Capital: Cuti tahap HC + Timesheet tim
+    // 1. Human Capital: Cuti tahap HC
     if (user.role === 'HUMAN_CAPITAL') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'HC_REVIEW' || l.stage === 'HC_FINAL'));
-      relevantTimesheets = timesheets.filter(t => t.status === 'PENDING');
     }
     // 2. Direktur Keuangan: Cuti Keuangan Tahap 1 + PR Tahap Direktur + Cash Advance Tahap Direktur
     else if (user.role === 'DIREKTUR_KEUANGAN') {
@@ -202,39 +175,41 @@ window.ApprovalCenterModule = {
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL');
       relevantCAs = cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW');
     }
-    // 3. Direktur Operasional: Cuti Manager/HC + PR Tahap Direktur + Cash Advance Tahap Direktur
+    // 3. Direktur Operasional: Cuti Manager/Keu + PR Tahap Direktur + Cash Advance Tahap Direktur
     else if (user.role === 'DIREKTUR_OPERASIONAL') {
-      relevantLeaves = leaves.filter(l => l.status === 'PENDING' && l.stage === 'DIR_OPS_OR_KEU_REVIEW');
+      relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_OPS_OR_KEU_REVIEW' || l.stage === 'DIR_KEU_REVIEW'));
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL');
       relevantCAs = cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW');
     }
-    // 4. Manager Area: PR dari Surveyor, Perwakilan Yayasan, & Staff Operasional
+    // 4. Manager Area: PR & Cuti dari Surveyor, Perwakilan Yayasan, Staff Operasional, & Maker Dapur
     else if (user.role === 'MANAGER_AREA') {
-      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'SURVEYOR' || p.role === 'PERWAKILAN_YAYASAN' || p.role === 'STAFF_OPERASIONAL'));
+      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'SURVEYOR' || p.role === 'PERWAKILAN_YAYASAN' || p.role === 'STAFF_OPERASIONAL' || p.role === 'MAKER_YAYASAN'));
+      relevantLeaves = leaves.filter(l => l.status === 'PENDING' && l.stage === 'MANAGER_AREA_REVIEW' && (l.role === 'SURVEYOR' || l.role === 'PERWAKILAN_YAYASAN' || l.role === 'STAFF_OPERASIONAL' || l.role === 'MAKER_YAYASAN'));
     }
-    // 5. Manager Keuangan: PR dari FAT & Staff Ahli
+    // 5. Manager Keuangan: PR dari area lain jika ada delegasi
     else if (user.role === 'MANAGER_KEUANGAN') {
-      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'FAT_OFFICER' || p.role === 'STAFF_AHLI_KEUANGAN'));
+      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && p.role !== 'FAT_OFFICER' && p.role !== 'STAFF_AHLI_KEUANGAN');
     }
-    // 6. Staff Ahli Keuangan & FAT Officer: Verifikasi Anggaran PR Tahap 2/3 + Pencairan Kasbon & Verifikasi LPJ Kasbon
-    else if (user.role === 'STAFF_AHLI_KEUANGAN' || user.role === 'FAT_OFFICER') {
-      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION');
+    // 6. FAT Officer: Pencairan Kasbon & Monitoring / Verifikasi LPJ Kasbon
+    else if (user.role === 'FAT_OFFICER') {
       relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
     }
-    // 7. Direktur Utama & Super Admin: Oversight Semua
+    // 7. Staff Ahli Keuangan: Verifikasi Anggaran PR (Level 2 PR)
+    else if (user.role === 'STAFF_AHLI_KEUANGAN') {
+      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION');
+    }
+    // 8. Direktur Utama & Super Admin: Oversight Semua
     else if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING');
-      relevantTimesheets = timesheets.filter(t => t.status === 'PENDING');
       relevantPrs = prs.filter(p => p.status === 'PENDING');
       relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
     }
 
-    const totalPending = relevantLeaves.length + relevantTimesheets.length + relevantPrs.length + relevantCAs.length;
+    const totalPending = relevantLeaves.length + relevantPrs.length + relevantCAs.length;
 
     // Dapatkan data riwayat approval saya
     const allHistory = this.getMyApprovalHistory(user);
     const historyLeaves = allHistory.filter(h => h.type === 'LEAVE');
-    const historyTimesheets = allHistory.filter(h => h.type === 'TIMESHEET');
     const historyPrs = allHistory.filter(h => h.type === 'PR');
     const historyCAs = allHistory.filter(h => h.type === 'CA');
     const totalHistory = allHistory.length;
@@ -310,12 +285,6 @@ window.ApprovalCenterModule = {
             <span class="filter-badge">${this.activeTab === 'PENDING' ? relevantLeaves.length : historyLeaves.length}</span>
           </button>
 
-          <button class="approval-filter-pill pill-timesheet ${this.activeFilter === 'TIMESHEET' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('TIMESHEET')">
-            <span class="filter-dot dot-blue"></span>
-            <span>Timesheet</span>
-            <span class="filter-badge">${this.activeTab === 'PENDING' ? relevantTimesheets.length : historyTimesheets.length}</span>
-          </button>
-
           <button class="approval-filter-pill pill-pr ${this.activeFilter === 'PR' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('PR')">
             <span class="filter-dot dot-amber"></span>
             <span>Pengadaan Barang (PR)</span>
@@ -336,7 +305,7 @@ window.ApprovalCenterModule = {
               <div class="nalar-card" style="text-align: center; padding: 48px;">
                 <div style="font-size: 32px; margin-bottom: 8px;">🎉</div>
                 <h3 style="font-size: 18px; color: #fff; margin-bottom: 4px;">Tidak Ada Antrean Approval</h3>
-                <p style="font-size: 12.5px; color: var(--text-muted);">Seluruh pengajuan cuti, timesheet, PR, atau kasbon yang membutuhkan wewenang Anda telah selesai diproses.</p>
+                <p style="font-size: 12.5px; color: var(--text-muted);">Seluruh pengajuan cuti, PR, atau kasbon yang membutuhkan wewenang Anda telah selesai diproses.</p>
               </div>
             ` : ''}
 
@@ -352,7 +321,7 @@ window.ApprovalCenterModule = {
                       <span class="text-mono-badge" style="color: #A78BFA;">CUTI / IZIN · ${l.id}</span>
                       <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${l.createdAt}</span>
                       <span style="font-size: 10px; color: #C4B5FD; background: rgba(139,92,246,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                        Tahap: ${l.stage === 'DIR_KEU_REVIEW' ? 'Review Direktur Keuangan' : l.stage === 'DIR_OPS_OR_KEU_REVIEW' ? 'Review Direktur' : 'Verifikasi Final Human Capital'}
+                        Tahap: ${l.stage === 'MANAGER_AREA_REVIEW' ? '1. Review Manager Area' : (l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW') ? '1. Review Direktur' : '2. Verifikasi Final Human Capital'}
                       </span>
                       <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10px; color: #A78BFA; border-color: rgba(139,92,246,0.4);" onclick="App.showApprovalTracker('leave', '${l.id}')">
                         🔍 Cek Level Approval
@@ -371,41 +340,7 @@ window.ApprovalCenterModule = {
                     Tolak
                   </button>
                   <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B;" onclick="ApprovalCenterModule.approveLeave('${l.id}', '${l.stage}')">
-                    ${l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW' ? 'Setujui & Teruskan ke HC' : 'Setujui Cuti Final'}
-                  </button>
-                </div>
-              </div>
-            `).join('') : ''}
-
-            <!-- Pending Timesheets -->
-            ${(this.activeFilter === 'ALL' || this.activeFilter === 'TIMESHEET') ? relevantTimesheets.map(t => `
-              <div class="nalar-card aura-box-blue" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #3B82F6; margin-bottom: 0;">
-                <div style="display: flex; align-items: flex-start; gap: 16px;">
-                  <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); display: flex; align-items: center; justify-content: center; color: #60A5FA; flex-shrink: 0;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  </div>
-                  <div>
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                      <span class="text-mono-badge" style="color: #60A5FA;">TIMESHEET · ${t.id}</span>
-                      <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${t.date}</span>
-                      <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10px; color: #60A5FA; border-color: rgba(59,130,246,0.4);" onclick="App.showApprovalTracker('timesheet', '${t.id}')">
-                        🔍 Cek Level Approval
-                      </button>
-                    </div>
-                    <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 500;">${t.employeeName} — ${t.activityPreset || 'Aktivitas Kerja'} (${t.hours} Jam)</h4>
-                    <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px;">Aktivitas: ${t.activity}</p>
-                    <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-                      Rentang: ${t.startTime || '08:00'} - ${t.endTime || '12:00'} · Divisi: ${t.department}
-                    </div>
-                  </div>
-                </div>
-
-                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                  <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectTimesheet('${t.id}')">
-                    Tolak
-                  </button>
-                  <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B;" onclick="ApprovalCenterModule.approveTimesheet('${t.id}')">
-                    Validasi Jam Kerja
+                    ${l.stage === 'MANAGER_AREA_REVIEW' || l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW' ? 'Setujui & Teruskan ke HC' : 'Setujui Cuti Final'}
                   </button>
                 </div>
               </div>
@@ -435,8 +370,8 @@ window.ApprovalCenterModule = {
                       ${p.hasAdjustment ? `<span style="font-size: 10.5px; color: #34D399; background: rgba(52,211,153,0.15); padding: 1px 6px; border-radius: 3px; margin-left: 6px;">📝 Telah Disesuaikan</span>` : ''}
                     </h4>
                     ${p.targetKitchen ? `
-                      <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #FCD34D; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); padding: 2px 8px; border-radius: 4px; margin: 2px 0 4px 0; font-weight: 500;">
-                        🍳 Untuk Kepentingan Dapur: ${p.targetKitchen}
+                      <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? '#93C5FD' : '#FCD34D'}; background: ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? 'rgba(59,130,246,0.15)' : 'rgba(245,158,11,0.15)'}; border: 1px solid ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? 'rgba(59,130,246,0.35)' : 'rgba(245,158,11,0.3)'}; padding: 2px 8px; border-radius: 4px; margin: 2px 0 4px 0; font-weight: 500;">
+                        ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? '🏢 Untuk Keperluan: Kantor Yayasan' : `🍳 Untuk Kepentingan Dapur: ${p.targetKitchen}`}
                       </div>
                     ` : ''}
                     <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 8px;">Alasan: ${p.reason}</p>
@@ -605,21 +540,28 @@ window.ApprovalCenterModule = {
                           </span>
                         </div>
 
-                        <h4 style="font-size: 16px; color: #fff; font-weight: 600; margin: 4px 0 4px 0;">
-                          ${item.title}
-                        </h4>
+                        <div style="display: flex; align-items: center; gap: 8px; margin: 4px 0 6px 0;">
+                          <div style="width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            ${(item.employeeName || 'U').split(' ').map(n=>n[0]).join('').slice(0, 2)}
+                          </div>
+                          <h4 style="font-size: 15.5px; color: #fff; font-weight: 600; margin: 0;">
+                            ${item.title}
+                          </h4>
+                        </div>
 
                         <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px;">
                           ${item.summary}
                         </div>
 
-                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-                          <span>Pemohon: <strong style="color: #CBD5E1;">${item.employeeName}</strong> (${item.department})</span>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+                          <span style="background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px; color: #E2E8F0;">
+                            👤 Pemohon: <strong style="color: #60A5FA;">${item.employeeName}</strong> (${item.department || '-'})
+                          </span>
                           <span>·</span>
                           <span>Diproses oleh: <strong style="color: #FCD34D;">${item.approverName || user.name}</strong></span>
                           ${item.notes && item.notes !== '-' ? `
                             <span>·</span>
-                            <span>Catatan: <em>"${item.notes}"</em></span>
+                            <span>Catatan: <em style="color: #94A3B8;">"${item.notes}"</em></span>
                           ` : ''}
                         </div>
                       </div>
@@ -642,19 +584,22 @@ window.ApprovalCenterModule = {
     `;
   },
 
-  approveLeave: function(id, currentStage) {
-    if (currentStage === 'DIR_KEU_REVIEW' || currentStage === 'DIR_OPS_OR_KEU_REVIEW') {
-      DB.advanceLeaveStage(id, 'HC_FINAL', 'PENDING');
+  approveLeave: async function(id, currentStage) {
+    if (currentStage === 'MANAGER_AREA_REVIEW') {
+      await DB.advanceLeaveStage(id, 'HC_REVIEW', 'PENDING');
+      App.showToast(`Persetujuan Manager Area untuk ${id} berhasil! Pengajuan diteruskan ke Human Capital untuk verifikasi & pemotongan kuota.`, 'success');
+    } else if (currentStage === 'DIR_KEU_REVIEW' || currentStage === 'DIR_OPS_OR_KEU_REVIEW') {
+      await DB.advanceLeaveStage(id, 'HC_FINAL', 'PENDING');
       App.showToast(`Persetujuan tingkat Direktur untuk ${id} berhasil! Pengajuan diteruskan ke Human Capital untuk pemotongan kuota.`, 'success');
     } else {
-      DB.advanceLeaveStage(id, 'APPROVED', 'APPROVED');
+      await DB.advanceLeaveStage(id, 'APPROVED', 'APPROVED');
       App.showToast(`Cuti ${id} disetujui penuh oleh Human Capital! Saldo kuota karyawan otomatis dipotong.`, 'success');
     }
     App.refreshCurrentTab();
   },
 
-  rejectLeave: function(id) {
-    DB.advanceLeaveStage(id, 'REJECTED', 'REJECTED');
+  rejectLeave: async function(id) {
+    await DB.advanceLeaveStage(id, 'REJECTED', 'REJECTED');
     App.showToast(`Cuti ${id} ditolak.`, 'warn');
     App.refreshCurrentTab();
   },
@@ -674,22 +619,22 @@ window.ApprovalCenterModule = {
     App.refreshCurrentTab();
   },
 
-  advancePR: function(id, currentStage) {
+  advancePR: async function(id, currentStage) {
     if (currentStage === 'MANAGER_APPROVAL') {
-      DB.advanceItemRequestStage(id, 'FINANCE_VERIFICATION', 'PENDING');
+      await DB.advanceItemRequestStage(id, 'FINANCE_VERIFICATION', 'PENDING');
       App.showToast(`PR ${id} disetujui Manager & diteruskan ke Verifikasi Anggaran Keuangan (Staff Ahli/FAT)!`, 'success');
     } else if (currentStage === 'FINANCE_VERIFICATION') {
-      DB.advanceItemRequestStage(id, 'DIRECTOR_APPROVAL', 'PENDING');
+      await DB.advanceItemRequestStage(id, 'DIRECTOR_APPROVAL', 'PENDING');
       App.showToast(`Anggaran PR ${id} telah diverifikasi & diteruskan ke Direktur untuk persetujuan akhir!`, 'success');
     } else if (currentStage === 'DIRECTOR_APPROVAL') {
-      DB.advanceItemRequestStage(id, 'COMPLETED', 'APPROVED');
+      await DB.advanceItemRequestStage(id, 'COMPLETED', 'APPROVED');
       App.showToast(`Persetujuan Direktur disahkan & Purchase Order resmi (PO) untuk PR ${id} diterbitkan!`, 'success');
     }
     App.refreshCurrentTab();
   },
 
-  rejectPR: function(id) {
-    DB.advanceItemRequestStage(id, 'REJECTED', 'REJECTED');
+  rejectPR: async function(id) {
+    await DB.advanceItemRequestStage(id, 'REJECTED', 'REJECTED');
     App.showToast(`Pengajuan Barang ${id} ditolak.`, 'warn');
     App.refreshCurrentTab();
   },
@@ -854,7 +799,7 @@ window.ApprovalCenterModule = {
     }
   },
 
-  submitAdjustedPR: function(e) {
+  submitAdjustedPR: async function(e) {
     if (e) e.preventDefault();
     const id = this.currentAdjustingPRId;
     if (!id) return;
@@ -885,7 +830,7 @@ window.ApprovalCenterModule = {
       finalStatus = 'APPROVED';
     }
 
-    DB.advanceItemRequestStage(id, nextStage, finalStatus, {
+    await DB.advanceItemRequestStage(id, nextStage, finalStatus, {
       newQty,
       newUnitPrice,
       notes
@@ -904,16 +849,16 @@ window.ApprovalCenterModule = {
   currentDisbursingCAId: null,
   currentVerifyingCAId: null,
 
-  approveCADirector: function(id) {
-    DB.approveCashAdvanceDirector(id, { action: 'APPROVED', notes: 'Disetujui penuh oleh Direksi' });
+  approveCADirector: async function(id) {
+    await DB.approveCashAdvanceDirector(id, { action: 'APPROVED', notes: 'Disetujui penuh oleh Direksi' });
     App.showToast(`Cash Advance ${id} disetujui Direksi dan diteruskan ke Tim FAT untuk pencairan dana transfer!`, 'success');
     App.refreshCurrentTab();
   },
 
-  rejectCA: function(id) {
+  rejectCA: async function(id) {
     const reason = prompt('Masukkan alasan penolakan Cash Advance:', 'Kebutuhan belum memenuhi kriteria pengajuan kasbon');
     if (reason !== null) {
-      DB.approveCashAdvanceDirector(id, { action: 'REJECTED', notes: reason.trim() });
+      await DB.approveCashAdvanceDirector(id, { action: 'REJECTED', notes: reason.trim() });
       App.showToast(`Cash Advance ${id} ditolak.`, 'warn');
       App.refreshCurrentTab();
     }
@@ -987,7 +932,7 @@ window.ApprovalCenterModule = {
     App.openModal('modal-ca-adjust');
   },
 
-  submitAdjustedCA: function(e) {
+  submitAdjustedCA: async function(e) {
     if (e) e.preventDefault();
     const id = this.currentAdjustingCAId;
     if (!id) return;
@@ -1000,7 +945,7 @@ window.ApprovalCenterModule = {
       return;
     }
 
-    DB.approveCashAdvanceDirector(id, {
+    await DB.approveCashAdvanceDirector(id, {
       action: 'APPROVED',
       adjustedAmount,
       notes: notes.trim()
@@ -1091,7 +1036,7 @@ window.ApprovalCenterModule = {
     App.openModal('modal-ca-disburse');
   },
 
-  submitDisburseCA: function(e) {
+  submitDisburseCA: async function(e) {
     if (e) e.preventDefault();
     const id = this.currentDisbursingCAId;
     if (!id) return;
@@ -1099,7 +1044,7 @@ window.ApprovalCenterModule = {
     const bankRefNo = document.getElementById('disburse-ca-ref')?.value || '';
     const notes = document.getElementById('disburse-ca-notes')?.value || '';
 
-    DB.disburseCashAdvanceFAT(id, {
+    await DB.disburseCashAdvanceFAT(id, {
       bankRefNo,
       notes
     });
@@ -1195,13 +1140,45 @@ window.ApprovalCenterModule = {
               </tbody>
             </table>
 
-            <!-- Bukti Kwitansi -->
-            ${(s.proofFiles && s.proofFiles.length > 0 && s.proofFiles[0].dataUrl) ? `
-              <h4 style="font-size: 12.5px; color: #fff; margin-bottom: 6px;">Lampiran Foto Struk / Nota:</h4>
-              <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 8px; text-align: center; margin-bottom: 14px;">
-                <img src="${s.proofFiles[0].dataUrl}" alt="Foto Bukti Kwitansi" style="max-width: 100%; max-height: 220px; object-fit: contain; border-radius: 4px;">
+            <!-- Bukti Kwitansi / Dokumen PDF -->
+            ${(s.proofFiles && s.proofFiles.length > 0 && s.proofFiles[0].dataUrl) ? (function() {
+              const pf = s.proofFiles[0];
+              const isPdf = pf.fileType === 'application/pdf' || (pf.name && pf.name.toLowerCase().endsWith('.pdf'));
+              return `
+                <div style="margin-bottom: 16px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h4 style="font-size: 12.5px; color: #fff; margin: 0;">Lampiran Nota / Kwitansi / Dokumen Belanja:</h4>
+                    <a href="${pf.dataUrl}" download="${pf.name || 'Nota-Kwitansi-Kasbon'}" target="_blank" class="btn-nalar-primary" style="padding: 4px 12px; font-size: 11px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      <span>Download Berkas (${isPdf ? 'PDF' : 'Gambar'})</span>
+                    </a>
+                  </div>
+                  
+                  ${isPdf ? `
+                    <div style="background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.35); border-radius: var(--radius-sm); padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                      <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 30px;">📄</span>
+                        <div>
+                          <div style="font-size: 13px; font-weight: 600; color: #fff;">${pf.name}</div>
+                          <div style="font-size: 11px; color: #FCA5A5;">Dokumen Rekap Nota PDF dari Pemohon</div>
+                        </div>
+                      </div>
+                      <a href="${pf.dataUrl}" download="${pf.name}" target="_blank" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11px; color: #FCA5A5; border-color: rgba(239,68,68,0.4); text-decoration: none;">
+                        Buka / Unduh PDF ➔
+                      </a>
+                    </div>
+                  ` : `
+                    <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 8px; text-align: center;">
+                      <img src="${pf.dataUrl}" alt="Foto Bukti Kwitansi" style="max-width: 100%; max-height: 220px; object-fit: contain; border-radius: 4px; display: inline-block;">
+                    </div>
+                  `}
+                </div>
+              `;
+            })() : `
+              <div style="padding: 10px; background: rgba(245, 158, 11, 0.08); border: 1px dashed rgba(245, 158, 11, 0.3); border-radius: var(--radius-sm); font-size: 11.5px; color: #FCD34D; margin-bottom: 14px;">
+                ⚠️ Pemohon belum melampirkan berkas nota digital.
               </div>
-            ` : ''}
+            `}
 
             <div class="form-group" style="margin-bottom: 0;">
               <label class="form-label">Catatan Pengesahan Verifikasi FAT</label>
@@ -1223,13 +1200,13 @@ window.ApprovalCenterModule = {
     App.openModal('modal-ca-verify-settlement');
   },
 
-  submitVerifyCASettlement: function(e) {
+  submitVerifyCASettlement: async function(e) {
     if (e) e.preventDefault();
     const id = this.currentVerifyingCAId;
     if (!id) return;
 
     const notes = document.getElementById('verify-ca-notes')?.value || '';
-    DB.verifyCashAdvanceSettlementFAT(id, { notes });
+    await DB.verifyCashAdvanceSettlementFAT(id, { notes });
 
     App.closeModal('modal-ca-verify-settlement');
     App.showToast(`Laporan LPJ Cash Advance ${id} telah diverifikasi sah! Transaksi resmi ditutup (SETTLED).`, 'success');

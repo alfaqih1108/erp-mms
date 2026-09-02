@@ -148,7 +148,7 @@ window.CashAdvanceModule = {
         <div class="approval-filter-bar" style="margin-bottom: 24px;">
           <button class="approval-filter-pill pill-all ${this.currentFilter === 'ALL' ? 'active' : ''}" onclick="CashAdvanceModule.setFilter('ALL')">
             <span class="filter-dot dot-orange"></span>
-            <span>Semua Pengajuan</span>
+            <span>Semua Kasbon Saya</span>
             <span class="filter-badge">${userCAs.length}</span>
           </button>
 
@@ -530,22 +530,20 @@ window.CashAdvanceModule = {
                 </div>
               </div>
 
-              <!-- Upload Nota / Kwitansi Fisik -->
+              <!-- Upload Nota / Kwitansi Fisik / Dokumen PDF -->
               <div class="form-group" style="margin-bottom: 22px;">
                 <label class="form-label" style="font-size: 12px; margin-bottom: 8px; color: #fff;">
-                  Lampiran Foto Nota / Struk / Kwitansi Belanja <span style="color: #F87171;">*</span>
+                  Lampiran Foto Nota / Struk / Kwitansi Belanja (PDF / Gambar maks 3 MB) <span style="color: #F87171;">*</span>
                 </label>
                 <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
                   <label class="btn-nalar-secondary" style="cursor: pointer; padding: 10px 18px; font-size: 13px; display: inline-flex; align-items: center; gap: 8px;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    <span>Pilih Foto Nota (JPG/PNG)</span>
-                    <input type="file" id="settle-proof-input" accept="image/*" style="display: none;" onchange="CashAdvanceModule.handleProofFileSelect(event)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    <span>Pilih Berkas Nota (JPG / PNG / PDF maks 3 MB)</span>
+                    <input type="file" id="settle-proof-input" accept="image/*,application/pdf,.pdf" style="display: none;" onchange="CashAdvanceModule.handleProofFileSelect(event)">
                   </label>
-                  <span id="settle-proof-name" style="font-size: 12px; color: var(--text-muted); font-family: var(--font-mono);">Belum ada foto nota dipilih</span>
+                  <span id="settle-proof-name" style="font-size: 12px; color: var(--text-muted); font-family: var(--font-mono);">Belum ada berkas nota dipilih</span>
                 </div>
-                <div id="settle-proof-preview-box" style="margin-top: 10px; display: none;">
-                  <img id="settle-proof-img" src="" alt="Preview Nota" style="max-height: 160px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-                </div>
+                <div id="settle-proof-preview-box" style="margin-top: 12px; display: none;"></div>
               </div>
 
               <!-- Kotak Kalkulasi Selisih Otomatis -->
@@ -651,7 +649,7 @@ window.CashAdvanceModule = {
     previewEl.textContent = `Estimasi: Rp ${num.toLocaleString('id-ID')}`;
   },
 
-  handleCreateSubmit: function(e) {
+  handleCreateSubmit: async function(e) {
     if (e && e.preventDefault) e.preventDefault();
     
     const title = (document.getElementById('ca-title')?.value || '').trim();
@@ -670,22 +668,41 @@ window.CashAdvanceModule = {
       return;
     }
 
-    const newCA = DB.addCashAdvance({
-      title,
-      category,
-      targetLocation,
-      amountRequested,
-      usagePlanDate,
-      settlementPlanDate,
-      bankName,
-      bankAccountNo,
-      bankAccountName,
-      reason
-    });
+    const submitBtn = e?.target?.querySelector ? e.target.querySelector('button[type="submit"]') : null;
+    const origBtnText = submitBtn ? submitBtn.innerHTML : 'Ajukan Kasbon';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '⏳ Menyimpan ke Database Cloud...';
+    }
 
-    App.closeModal('modal-cash-advance');
-    App.showToast(`Pengajuan Cash Advance ${newCA.id} sebesar Rp ${amountRequested.toLocaleString('id-ID')} berhasil dibuat! Menunggu otorisasi Direksi.`, 'success');
-    this.render(document.getElementById('main-content-area'));
+    try {
+      const newCA = await DB.addCashAdvance({
+        title,
+        category,
+        targetLocation,
+        amountRequested,
+        usagePlanDate,
+        settlementPlanDate,
+        bankName,
+        bankAccountNo,
+        bankAccountName,
+        reason
+      });
+
+      App.closeModal('modal-cash-advance');
+      App.showToast(`Pengajuan Cash Advance ${newCA.id} sebesar Rp ${amountRequested.toLocaleString('id-ID')} berhasil dibuat! Menunggu otorisasi Direksi.`, 'success');
+      this.render(document.getElementById('main-content-area'));
+    } catch (err) {
+      console.error('Gagal mengajukan CA:', err);
+      App.showToast('Pengajuan Cash Advance tersimpan di cache lokal.', 'info');
+      App.closeModal('modal-cash-advance');
+      this.render(document.getElementById('main-content-area'));
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origBtnText;
+      }
+    }
   },
 
   // Settlement LPJ
@@ -855,24 +872,73 @@ window.CashAdvanceModule = {
     }
   },
 
-  handleProofFileSelect: function(e) {
+  handleProofFileSelect: async function(e) {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Batas maksimal ukuran berkas: 3 MB
+    const MAX_BYTES = 3 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      App.showToast(`Ukuran berkas "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB) melebihi batas maksimal 3 MB!`, 'warn');
+      e.target.value = '';
+      return;
+    }
 
     const nameEl = document.getElementById('settle-proof-name');
     if (nameEl) nameEl.textContent = `✓ ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      this.settlementProofUrl = ev.target.result;
-      const previewBox = document.getElementById('settle-proof-preview-box');
-      const img = document.getElementById('settle-proof-img');
-      if (previewBox && img) {
-        img.src = ev.target.result;
-        previewBox.style.display = 'block';
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+    try {
+      if (isPdf) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          this.settlementProofUrl = ev.target.result;
+          this.settlementProofName = file.name;
+          this.settlementProofType = 'application/pdf';
+
+          const previewBox = document.getElementById('settle-proof-preview-box');
+          if (previewBox) {
+            previewBox.style.display = 'block';
+            previewBox.innerHTML = `
+              <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="font-size: 24px;">📄</span>
+                  <div>
+                    <div style="font-size: 13px; font-weight: 600; color: #fff;">${file.name}</div>
+                    <div style="font-size: 11px; color: #FCA5A5; font-family: var(--font-mono);">Dokumen PDF (${(file.size / 1024).toFixed(1)} KB) · Siap dikirim</div>
+                  </div>
+                </div>
+                <span class="text-mono-badge" style="color: #F87171; background: rgba(239, 68, 68, 0.2);">PDF Siap</span>
+              </div>
+            `;
+          }
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const compressed = (typeof compressImageFile === 'function')
+          ? await compressImageFile(file, 1200, 0.75)
+          : { url: null, name: file.name };
+
+        this.settlementProofUrl = compressed.url;
+        this.settlementProofName = file.name;
+        this.settlementProofType = file.type || 'image/jpeg';
+
+        const previewBox = document.getElementById('settle-proof-preview-box');
+        if (previewBox && compressed.url) {
+          previewBox.style.display = 'block';
+          previewBox.innerHTML = `
+            <div style="position: relative; display: inline-block;">
+              <img src="${compressed.url}" alt="Preview Nota" style="max-height: 180px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); display: block;">
+              <div style="font-size: 11px; color: #34D399; margin-top: 4px; font-family: var(--font-mono);">✓ Gambar Nota (${(file.size / 1024).toFixed(1)} KB) Siap</div>
+            </div>
+          `;
+        }
       }
-    };
-    reader.readAsDataURL(file);
+      App.showToast(`Berkas nota "${file.name}" siap dilampirkan!`, 'info');
+    } catch (err) {
+      console.warn('Proof file processing notice:', err);
+    }
   },
 
   handleSettlementSubmit: function(e) {
@@ -892,7 +958,11 @@ window.CashAdvanceModule = {
 
     DB.submitCashAdvanceSettlement(caId, {
       items: validItems,
-      proofFiles: this.settlementProofUrl ? [{ name: 'Bukti-Nota-Kwitansi.jpg', dataUrl: this.settlementProofUrl }] : [],
+      proofFiles: this.settlementProofUrl ? [{
+        name: this.settlementProofName || 'Bukti-Nota-Kwitansi',
+        dataUrl: this.settlementProofUrl,
+        fileType: this.settlementProofType || 'image/jpeg'
+      }] : [],
       notes
     });
 
@@ -912,6 +982,9 @@ window.CashAdvanceModule = {
     const disbursed = Number(ca.amountDisbursed || ca.amountApproved || ca.amountRequested) || 0;
     const body = document.getElementById('ca-settlement-detail-body');
     if (!body) return;
+
+    const firstProof = (s.proofFiles && s.proofFiles.length > 0) ? s.proofFiles[0] : null;
+    const isProofPdf = firstProof && (firstProof.fileType === 'application/pdf' || (firstProof.name && firstProof.name.toLowerCase().endsWith('.pdf')));
 
     body.innerHTML = `
       <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 16px;">
@@ -976,11 +1049,35 @@ window.CashAdvanceModule = {
         </tbody>
       </table>
 
-      <!-- Bukti Nota Struk -->
-      ${(s.proofFiles && s.proofFiles.length > 0 && s.proofFiles[0].dataUrl) ? `
-        <h4 style="font-size: 13px; color: #fff; margin-bottom: 8px;">Lampiran Foto Struk / Nota Kwitansi:</h4>
-        <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px; text-align: center; margin-bottom: 14px;">
-          <img src="${s.proofFiles[0].dataUrl}" alt="Foto Bukti Kwitansi" style="max-width: 100%; max-height: 280px; object-fit: contain; border-radius: 4px;">
+      <!-- Bukti Nota Struk / Dokumen PDF -->
+      ${firstProof && firstProof.dataUrl ? `
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <h4 style="font-size: 13px; color: #fff; margin: 0;">Lampiran Berkas Nota / Kwitansi:</h4>
+            <a href="${firstProof.dataUrl}" download="${firstProof.name || 'Nota-Kwitansi-Kasbon'}" target="_blank" class="btn-nalar-primary" style="padding: 5px 14px; font-size: 11.5px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Download Berkas (${isProofPdf ? 'PDF' : 'Gambar'})</span>
+            </a>
+          </div>
+
+          ${isProofPdf ? `
+            <div style="background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.35); border-radius: var(--radius-sm); padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 32px;">📄</span>
+                <div>
+                  <div style="font-size: 13.5px; font-weight: 600; color: #fff;">${firstProof.name}</div>
+                  <div style="font-size: 11.5px; color: #FCA5A5;">Dokumen Rekap Nota PDF Resmi</div>
+                </div>
+              </div>
+              <a href="${firstProof.dataUrl}" download="${firstProof.name}" target="_blank" class="btn-nalar-secondary" style="padding: 6px 14px; font-size: 11.5px; color: #FCA5A5; border-color: rgba(239,68,68,0.4); text-decoration: none;">
+                Buka / Unduh PDF ➔
+              </a>
+            </div>
+          ` : `
+            <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px; text-align: center;">
+              <img src="${firstProof.dataUrl}" alt="Foto Bukti Kwitansi" style="max-width: 100%; max-height: 280px; object-fit: contain; border-radius: 4px; display: inline-block;">
+            </div>
+          `}
         </div>
       ` : ''}
 

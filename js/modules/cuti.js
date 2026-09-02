@@ -13,8 +13,8 @@
 
 window.CutiModule = {
   currentAttachment: { url: null, name: null },
-  calendarYear: new Date().getFullYear(),
-  calendarMonth: new Date().getMonth(),
+  calendarYear: (typeof getRealtimeDateStr === 'function' ? parseInt(getRealtimeDateStr().split('-')[0]) : 2026),
+  calendarMonth: (typeof getRealtimeDateStr === 'function' ? parseInt(getRealtimeDateStr().split('-')[1]) - 1 : 8),
   selectedDateStr: null,
 
   // Kamus Tanggal Merah & Libur Nasional Indonesia 2026
@@ -508,9 +508,10 @@ window.CutiModule = {
 
   // Helper Kalender: Kembali ke Hari Ini Real-Time
   setToday: function() {
-    const now = new Date();
-    this.calendarYear = now.getFullYear();
-    this.calendarMonth = now.getMonth();
+    const todayStr = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : '2026-09-01');
+    const parts = todayStr.split('-').map(Number);
+    this.calendarYear = parts[0] || 2026;
+    this.calendarMonth = parts[1] ? (parts[1] - 1) : 8;
     this.updateCalendarView();
   },
 
@@ -812,22 +813,36 @@ window.CutiModule = {
     `;
   },
 
-  handleFileUpload: function(e) {
+  handleFileUpload: async function(e) {
     const file = e.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      this.currentAttachment = {
-        url: ev.target.result,
-        name: file.name
-      };
+    try {
+      if (file.type && file.type.startsWith('image/')) {
+        const compressed = (typeof compressImageFile === 'function')
+          ? await compressImageFile(file, 1000, 0.7)
+          : { url: null, name: file.name };
+        this.currentAttachment = {
+          url: compressed.url,
+          name: file.name
+        };
+      } else {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          this.currentAttachment = {
+            url: ev.target.result,
+            name: file.name
+          };
+        };
+        reader.readAsDataURL(file);
+      }
       App.showToast(`Berkas "${file.name}" siap dilampirkan.`, 'info');
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('File upload notice:', err);
+    }
   },
 
-  handleSubmit: function(e) {
+  handleSubmit: async function(e) {
     e.preventDefault();
     const user = DB.getCurrentUser();
     const select = document.getElementById('leave-type-select');
@@ -839,6 +854,33 @@ window.CutiModule = {
     if (!select.value || !startDate || !endDate || !reason) {
       App.showToast('Mohon lengkapi seluruh field formulir cuti!', 'warn');
       return;
+    }
+
+    if (startDate > endDate) {
+      App.showToast('Tanggal mulai cuti tidak boleh lebih besar dari tanggal akhir!', 'warn');
+      return;
+    }
+
+    // Validasi Anti-Duplikasi: Cek apakah karyawan sudah memiliki cuti aktif pada rentang tanggal tersebut
+    const existingLeaves = DB.getLeaves() || [];
+    const hasOverlap = existingLeaves.some(l => {
+      if (!l || (l.employeeId !== user.id && l.employeeName !== user.name)) return false;
+      if (l.status === 'REJECTED' || l.status === 'CANCELLED') return false;
+      const lStart = l.startDate;
+      const lEnd = l.endDate || l.startDate;
+      return (startDate <= lEnd && endDate >= lStart);
+    });
+
+    if (hasOverlap) {
+      App.showToast('Anda sudah memiliki pengajuan cuti yang aktif pada rentang tanggal tersebut!', 'warn');
+      return;
+    }
+
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const origBtnText = submitBtn ? submitBtn.innerHTML : 'Kirim Pengajuan';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '⏳ Menyimpan ke Database Cloud...';
     }
 
     const isHalf = opt.getAttribute('data-half') === 'true';
@@ -874,10 +916,22 @@ window.CutiModule = {
       attachmentUrl: this.currentAttachment.url || null
     };
 
-    DB.addLeave(newLeave);
-    App.closeModal('modal-cuti');
-    App.showToast(`Permohonan cuti "${opt.text}" (${duration} Hari) berhasil diajukan!`, 'success');
-    this.render(document.getElementById('main-content-area'));
+    try {
+      await DB.addLeave(newLeave);
+      App.closeModal('modal-cuti');
+      App.showToast(`Permohonan cuti "${opt.text}" (${duration} Hari) berhasil diajukan & tersimpan aman!`, 'success');
+      this.render(document.getElementById('main-content-area'));
+    } catch (err) {
+      console.error('Gagal mengajukan cuti:', err);
+      App.showToast('Pengajuan cuti tersimpan di cache lokal.', 'info');
+      App.closeModal('modal-cuti');
+      this.render(document.getElementById('main-content-area'));
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origBtnText;
+      }
+    }
   },
 
   handleCancelLeave: async function(leaveId) {

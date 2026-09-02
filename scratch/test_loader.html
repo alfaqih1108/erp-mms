@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+window.errors = [];
+window.onerror = function(msg, url, line, col, err) {
+  window.errors.push({msg: msg, url: url, line: line, col: col, stack: err ? err.stack : ''});
+  console.error("ERROR CAUGHT: ", msg, url, line, col);
+};
+</script>
+<script src="../js/supabase-config.js"></script>
+<script src="../js/modules/data.js"></script>
+<script src="../js/modules/dashboard.js"></script>
+<script src="../js/modules/cuti.js"></script>
+<script src="../js/modules/timesheet.js"></script>
+<script src="../js/modules/pengajuan-barang.js"></script>
+<script src="../js/modules/cash-advance.js"></script>
+<script src="../js/modules/dapur-yayasan.js"></script>
+<script src="../js/modules/hc-hub.js"></script>
+<script src="../js/modules/admin-hub.js"></script>
+<script src="../js/modules/approval-center.js"></script>
+<script src="../js/app.js"></script>
+</head>
+<body>
+<div id="main-content-area"></div>
+<div id="login-overlay" style="display:none"></div>
+<div id="toast-container"></div>
+<script>
+setTimeout(function() {
+  var dump = {
+    errors: window.errors,
+    DB: typeof window.DB,
+    App: typeof window.App,
+    DashboardModule: typeof window.DashboardModule,
+    user: window.DB ? window.DB.getCurrentUser() : null,
+    renderedContentLength: document.getElementById('main-content-area') ? document.getElementById('main-content-area').innerHTML.length : 0
+  };
+  document.body.setAttribute('data-test-result', JSON.stringify(dump));
+}, 1000);
+</script>
+</body>
+</html>

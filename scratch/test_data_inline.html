@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+<pre id="output"></pre>
+<script>
+window.SupabaseConfig = { isConfigured: function() { return false; }, getUrl: function(){return '';}, getAnonKey: function(){return '';} };
+</script>
+<script>
+var out = document.getElementById('output');
+try {
+  // We will load data.js content via fetch or iframe
+} catch(e) {
+  out.textContent = e.stack || e.toString();
+}
+</script>
+</body>
+</html>

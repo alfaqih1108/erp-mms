@@ -14,12 +14,11 @@ window.PengajuanBarangModule = {
 
   render: function(container) {
     if (!container) return;
-
     const allPrs = DB.getItemRequests() || [];
     const catalog = DB.getCatalog() || [];
     const user = DB.getCurrentUser();
 
-    // Filter fleksibel: cocokkan berdasarkan employeeId atau nama pemohon
+    // Filter ketat mandiri: HANYA menampilkan pengajuan dari akun user yang sedang aktif
     const myPrs = allPrs.filter(p => {
       if (!p) return false;
       const matchId = (p.employeeId && user.id && p.employeeId.toLowerCase() === user.id.toLowerCase());
@@ -27,9 +26,7 @@ window.PengajuanBarangModule = {
       return matchId || matchName;
     });
 
-    const isAllScope = (this.filterScope === 'ALL');
-    const prs = isAllScope ? allPrs : myPrs;
-
+    const prs = myPrs;
     const totalSpend = prs.reduce((acc, curr) => acc + (Number(curr.totalPrice) || 0), 0);
     const pendingPrs = prs.filter(p => p.status === 'PENDING');
 
@@ -67,14 +64,14 @@ window.PengajuanBarangModule = {
 
             <div style="position: relative; z-index: 2;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span class="text-mono-badge" style="color: var(--text-muted);">${isAllScope ? 'Total Anggaran Seluruh Pengajuan (Konsolidasi)' : 'Total Anggaran Diajukan Saya'}</span>
+                <span class="text-mono-badge" style="color: var(--text-muted);">Total Anggaran Diajukan Saya</span>
                 <span style="font-size: 11px; color: #FCD34D; font-family: var(--font-mono);">${prs.length} Berkas PR</span>
               </div>
               <div style="margin: 12px 0 6px 0;">
                 <span style="font-size: 32px; font-weight: 700; color: #FCD34D; line-height: 1.1;">Rp ${totalSpend.toLocaleString('id-ID')}</span>
               </div>
               <p style="color: var(--text-muted); font-size: 12.5px; font-weight: 300; margin-bottom: 16px; line-height: 1.5;">
-                ${isAllScope ? 'Akumulasi seluruh Purchase Request fasilitas, operasional & dapur dari seluruh divisi yayasan.' : 'Akumulasi seluruh Purchase Request yang diajukan oleh akun Anda.'}
+                Akumulasi seluruh Purchase Request yang diajukan oleh akun Anda.
               </p>
 
               <div style="display: flex; gap: 18px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 12px; flex-wrap: wrap;">
@@ -118,28 +115,18 @@ window.PengajuanBarangModule = {
           </div>
         </div>
 
-        <!-- PR History Table with Filter Toggle -->
+        <!-- PR History Table (Strictly My Submissions Only) -->
         <div class="nalar-card" style="width: 100%;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 14px;">
             <div>
               <span class="text-mono-badge" style="color: var(--text-muted);">Riwayat Permintaan Pengadaan</span>
               <h3 style="font-size: 18px; margin-top: 2px;">
-                ${isAllScope ? 'Daftar Seluruh Purchase Requisition (PR) Organisasi' : 'Daftar Purchase Requisition (PR) yang Anda Ajukan'}
+                Daftar Purchase Requisition (PR) yang Anda Ajukan
               </h3>
             </div>
 
-            <!-- Filter Switcher Buttons (Pengajuan Saya vs Semua Pengajuan) -->
-            <div style="display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.35); padding: 4px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
-              <button type="button" class="btn-nalar-secondary ${!isAllScope ? 'active' : ''}" 
-                      style="padding: 5px 12px; font-size: 11.5px; ${!isAllScope ? 'background: rgba(245, 158, 11, 0.2); border-color: var(--brand-orange); color: #FCD34D; font-weight: 600;' : 'color: var(--text-muted);'}"
-                      onclick="PengajuanBarangModule.setFilterScope('MY')">
-                👤 Pengajuan Saya (${myPrs.length})
-              </button>
-              <button type="button" class="btn-nalar-secondary ${isAllScope ? 'active' : ''}" 
-                      style="padding: 5px 12px; font-size: 11.5px; ${isAllScope ? 'background: rgba(245, 158, 11, 0.2); border-color: var(--brand-orange); color: #FCD34D; font-weight: 600;' : 'color: var(--text-muted);'}"
-                      onclick="PengajuanBarangModule.setFilterScope('ALL')">
-                🌐 Semua Pengajuan (${allPrs.length})
-              </button>
+            <div style="font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); background: rgba(255,255,255,0.05); padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border-card);">
+              Total: <strong style="color: #FCD34D;">${myPrs.length} Pengajuan Saya</strong>
             </div>
           </div>
 
@@ -185,8 +172,8 @@ window.PengajuanBarangModule = {
                         <div>
                           <div style="font-weight: 500; color: #fff;">${p.itemName}</div>
                           ${p.targetKitchen ? `
-                            <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: #FB7185; background: rgba(225,29,72,0.12); padding: 1px 6px; border-radius: 4px; margin: 2px 0;">
-                              🍲 Untuk: ${p.targetKitchen}
+                            <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? '#60A5FA' : '#FB7185'}; background: ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? 'rgba(59,130,246,0.12)' : 'rgba(225,29,72,0.12)'}; padding: 1px 6px; border-radius: 4px; margin: 2px 0;">
+                              ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? '🏢 Untuk: Kantor Yayasan' : `🍲 Untuk: ${p.targetKitchen}`}
                             </div>
                           ` : ''}
                           <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">${p.reason}</div>
@@ -317,27 +304,41 @@ window.PengajuanBarangModule = {
     const kitchenSelect = document.getElementById('pr-kitchen-select');
     const user = DB.getCurrentUser();
 
-    // Tampilkan pilihan Dapur Program (Khusus Perwakilan Yayasan: hanya 1 dapur yang ditugaskan)
+    // Tampilkan pilihan Dapur Program / Kantor
     if (kitchenContainer && kitchenSelect) {
       kitchenContainer.style.display = 'block';
       const isPerwakilanYayasan = (user && user.role === 'PERWAKILAN_YAYASAN');
-      const kitchenOptions = isPerwakilanYayasan ? (DB.getKitchenDropdownOptions(user) || []) : (DB.getKitchenDropdownOptions() || []);
-      
-      kitchenSelect.innerHTML = kitchenOptions.map(k => `
-        <option value="${k.idSppg} — ${k.namaDapur}">${k.idSppg} — ${k.namaDapur}</option>
-      `).join('');
-
-      if (kitchenOptions.length > 0) {
-        kitchenSelect.value = `${kitchenOptions[0].idSppg} — ${kitchenOptions[0].namaDapur}`;
-      }
-
-      // Berikan penanda visual/keterangan khusus untuk Perwakilan Yayasan
+      const isMakerYayasan = (user && user.role === 'MAKER_YAYASAN');
+      const labelEl = kitchenContainer.querySelector('label');
       const hintEl = kitchenContainer.querySelector('div[style*="font-size: 11px"]');
-      if (hintEl) {
-        if (isPerwakilanYayasan) {
+
+      if (isPerwakilanYayasan || isMakerYayasan) {
+        if (labelEl) labelEl.innerHTML = `🍳 Untuk Kepentingan Dapur Apa? (Pilih Database SPPG) <span style="color: #F87171;">*</span>`;
+        const kitchenOptions = DB.getKitchenDropdownOptions(user) || [];
+        kitchenSelect.innerHTML = kitchenOptions.map(k => `
+          <option value="${k.idSppg} — ${k.namaDapur}">${k.idSppg} — ${k.namaDapur}</option>
+        `).join('');
+
+        if (kitchenOptions.length > 0) {
+          kitchenSelect.value = `${kitchenOptions[0].idSppg} — ${kitchenOptions[0].namaDapur}`;
+        }
+
+        if (hintEl) {
           hintEl.innerHTML = `🔒 <strong style="color: #FCD34D;">Dapur SPPG Penugasan:</strong> Terkunci otomatis 1 titik dapur sesuai penugasan resmi yayasan Anda (${user.name}).`;
-        } else {
-          hintEl.innerHTML = `*Setiap pengajuan PR wajib ditautkan ke titik dapur operasional SPPG tujuan.`;
+        }
+      } else {
+        if (labelEl) labelEl.innerHTML = `🏢 / 🍳 Untuk Keperluan Apa? (Pilih Kantor atau Dapur SPPG) <span style="color: #F87171;">*</span>`;
+        const kitchenOptions = DB.getKitchenDropdownOptions() || [];
+        let optionsHtml = `<option value="Kantor">🏢 Kantor (Operasional Kantor Yayasan)</option>`;
+        optionsHtml += kitchenOptions.map(k => `
+          <option value="${k.idSppg} — ${k.namaDapur}">🍳 ${k.idSppg} — ${k.namaDapur}</option>
+        `).join('');
+        
+        kitchenSelect.innerHTML = optionsHtml;
+        kitchenSelect.value = "Kantor";
+
+        if (hintEl) {
+          hintEl.innerHTML = `*Pilih opsi <strong>"Kantor"</strong> untuk operasional kantor yayasan atau pilih titik Dapur SPPG tujuan.`;
         }
       }
     }
@@ -345,7 +346,7 @@ window.PengajuanBarangModule = {
     App.openModal('modal-pr');
   },
 
-  handleFileSelect: function(event) {
+  handleFileSelect: async function(event) {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -354,10 +355,13 @@ window.PengajuanBarangModule = {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    try {
+      const compressed = (typeof compressImageFile === 'function') 
+        ? await compressImageFile(file, 1000, 0.7) 
+        : { url: null, name: file.name };
+
       this.currentAttachment = {
-        url: e.target.result,
+        url: compressed.url,
         name: file.name
       };
 
@@ -368,10 +372,11 @@ window.PengajuanBarangModule = {
 
       if (promptEl) promptEl.style.display = 'none';
       if (previewEl) previewEl.style.display = 'flex';
-      if (previewImg) previewImg.src = e.target.result;
+      if (previewImg && compressed.url) previewImg.src = compressed.url;
       if (previewName) previewName.textContent = file.name;
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Image compression fallback:', err);
+    }
   },
 
   removeAttachment: function() {
@@ -402,7 +407,7 @@ window.PengajuanBarangModule = {
     App.openModal('modal-image-preview');
   },
 
-  handleSubmit: function(e) {
+  handleSubmit: async function(e) {
     e.preventDefault();
     const user = DB.getCurrentUser();
     const itemName = document.getElementById('pr-name').value;
@@ -425,24 +430,43 @@ window.PengajuanBarangModule = {
       return;
     }
 
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const origBtnText = submitBtn ? submitBtn.innerHTML : 'Kirim Pengajuan';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '⏳ Menyimpan ke Database Cloud...';
+    }
+
     const totalPrice = quantity * unitPrice;
 
-    DB.addItemRequest({
-      itemName,
-      category,
-      quantity,
-      unitPrice,
-      totalPrice,
-      urgency,
-      reason,
-      targetKitchen,
-      attachmentUrl: this.currentAttachment.url,
-      attachmentName: this.currentAttachment.name
-    });
+    try {
+      await DB.addItemRequest({
+        itemName,
+        category,
+        quantity,
+        unitPrice,
+        totalPrice,
+        urgency,
+        reason,
+        targetKitchen,
+        attachmentUrl: this.currentAttachment.url,
+        attachmentName: this.currentAttachment.name
+      });
 
-    App.closeModal('modal-pr');
-    this.removeAttachment();
-    App.showToast(`Pengajuan ${itemName} (${quantity} unit untuk ${targetKitchen}) berhasil disubmit!`, 'success');
-    App.refreshCurrentTab();
+      App.closeModal('modal-pr');
+      this.removeAttachment();
+      App.showToast(`Pengajuan ${itemName} (${quantity} unit untuk ${targetKitchen}) berhasil disubmit!`, 'success');
+      App.refreshCurrentTab();
+    } catch (err) {
+      console.error('Gagal mengajukan PR:', err);
+      App.showToast('Pengajuan PR tersimpan di cache lokal.', 'info');
+      App.closeModal('modal-pr');
+      App.refreshCurrentTab();
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origBtnText;
+      }
+    }
   }
 };

@@ -10,23 +10,63 @@ window.App = {
   currentTab: 'dashboard',
 
   init: function() {
+    // 0. Auto-Login & Tab Persistence jika user sebelumnya sudah login
+    const savedUserId = localStorage.getItem('erpmms_auth_user_id');
+    const savedTab = localStorage.getItem('erpmms_active_tab') || 'dashboard';
+    const savedSubView = localStorage.getItem('erpmms_active_subview') || null;
+
+    if (savedUserId) {
+      DB.switchRole(savedUserId);
+      this.closeLoginScreen();
+    } else {
+      this.openLoginScreen();
+    }
+
     this.initRoleSwitcher();
     this.initEventListeners();
     this.applyRoleRestrictions();
     this.initLoginWaveAnimation();
     this.updateCloudBadge();
-    this.switchTab('dashboard');
+    
+    // Buka langsung halaman / modul yang terakhir dibuka
+    this.switchTab(savedTab, savedSubView);
 
-    // Real-Time Background Pull dari Supabase saat startup tanpa re-render berlebih
+    // Real-Time Background Pull dari Supabase saat startup
     if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
       window.DB.pullLatestFromSupabase().then(() => {
         this.updateUserHeader();
         this.applyRoleRestrictions();
         this.updateSidebarBadges();
         this.updateCloudBadge();
+        if (this.currentTab) {
+          this.refreshCurrentTab();
+        }
       }).catch(e => {
         console.warn('Real-time sync on start notice:', e);
       });
+
+      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif
+      window.addEventListener('focus', async () => {
+        try {
+          await window.DB.pullLatestFromSupabase();
+          this.updateSidebarBadges();
+          this.updateCloudBadge();
+          this.refreshCurrentTab();
+        } catch (err) {
+          console.warn('Focus sync notice:', err);
+        }
+      });
+
+      // 2. Multi-Device Periodic Background Polling setiap 30 detik
+      setInterval(async () => {
+        try {
+          await window.DB.pullLatestFromSupabase();
+          this.updateSidebarBadges();
+          this.updateCloudBadge();
+        } catch (err) {
+          console.warn('Periodic sync notice:', err);
+        }
+      }, 30000);
     }
   },
 
@@ -498,6 +538,7 @@ window.App = {
   },
 
   handleLoginAs: function(userId) {
+    localStorage.setItem('erpmms_auth_user_id', userId);
     DB.switchRole(userId);
     const user = DB.getCurrentUser();
     
@@ -565,13 +606,14 @@ window.App = {
       // 3. Masuk ke dashboard seketika tanpa jeda
       this.handleLoginAs(matchedUser.id);
 
-      // 4. Sinkronkan seluruh data transaksi di background secara senyap tanpa glitch/re-render ulang
+      // 4. Sinkronkan seluruh data transaksi di background secara senyap
       if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
         window.DB.pullLatestFromSupabase().then(() => {
           this.updateUserHeader();
           this.applyRoleRestrictions();
           this.updateSidebarBadges();
           this.updateCloudBadge();
+          this.refreshCurrentTab();
         }).catch(() => {});
       }
     } else {
@@ -612,6 +654,9 @@ window.App = {
   },
 
   confirmLogout: function() {
+    localStorage.removeItem('erpmms_auth_user_id');
+    localStorage.removeItem('erpmms_active_tab');
+    localStorage.removeItem('erpmms_active_subview');
     this.closeModal('modal-logout-confirm');
     this.openLoginScreen();
     this.showToast('Anda telah berhasil keluar dari sistem (Log Out). Silakan login kembali.', 'info');
@@ -699,6 +744,13 @@ window.App = {
   // Main Tab Router
   switchTab: function(tabId, subView = null) {
     this.currentTab = tabId;
+    this.currentSubView = subView;
+    localStorage.setItem('erpmms_active_tab', tabId);
+    if (subView) {
+      localStorage.setItem('erpmms_active_subview', subView);
+    } else {
+      localStorage.removeItem('erpmms_active_subview');
+    }
 
     // Tutup dropdown HC Hub & Admin Hub dan sidebar mobile
     const hcDropdown = document.getElementById('nav-item-hc-hub');
@@ -828,6 +880,12 @@ window.App = {
   },
 
   refreshCurrentTab: function() {
+    // Jangan overwrite DOM jika user sedang aktif membuka/mengisi modal form (misal: modal-ca-settlement, modal-pr, modal-cuti)
+    const activeModal = document.querySelector('.modal-backdrop.show, .modal-backdrop.active');
+    if (activeModal) {
+      this.updateSidebarBadges();
+      return;
+    }
     this.switchTab(this.currentTab);
   },
 
@@ -1097,7 +1155,7 @@ window.App = {
                 <h4 style="font-size: 15.5px; color: #fff; font-weight: 600; margin: 0 0 4px 0;">${details.title}</h4>
                 <div style="font-size: 12px; color: var(--text-secondary);">
                   Diajukan oleh: <strong>${details.requester}</strong>
-                  ${details.targetKitchen ? ` · <span style="color: #FCD34D;">🍲 Untuk: ${details.targetKitchen}</span>` : ''}
+                  ${details.targetKitchen ? ` · <span style="color: ${details.targetKitchen === 'Kantor' || details.targetKitchen.startsWith('Kantor') ? '#93C5FD' : '#FCD34D'};">${details.targetKitchen === 'Kantor' || details.targetKitchen.startsWith('Kantor') ? '🏢 Untuk: Kantor Yayasan' : `🍲 Untuk: ${details.targetKitchen}`}</span>` : ''}
                 </div>
               </div>
               <div>

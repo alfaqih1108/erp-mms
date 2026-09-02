@@ -382,6 +382,15 @@
        SPLIT-SCREEN MODERN LOGIN PAGE WITH ANIMATED NEURAL WAVE BACKGROUND
        ========================================================================== -->
   <div id="login-screen-overlay" class="split-login-overlay show active">
+    <script>
+      (function(){
+        try {
+          if (localStorage.getItem('erpmms_auth_user_id')) {
+            document.getElementById('login-screen-overlay').classList.remove('show', 'active');
+          }
+        } catch(e){}
+      })();
+    </script>
     <!-- Animated Neural Sine Wave Canvas Background (Matching Main Dashboard) -->
     <canvas id="login-neural-wave-canvas" class="login-bg-wave-canvas"></canvas>
 

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="../js/supabase-config.js"></script>
+<script src="../js/modules/data.js"></script>
+<script src="../js/modules/dashboard.js"></script>
+<script src="../js/modules/cuti.js"></script>
+<script src="../js/modules/timesheet.js"></script>
+<script src="../js/modules/pengajuan-barang.js"></script>
+<script src="../js/modules/cash-advance.js"></script>
+<script src="../js/modules/dapur-yayasan.js"></script>
+<script src="../js/modules/hc-hub.js"></script>
+<script src="../js/modules/admin-hub.js"></script>
+<script src="../js/modules/approval-center.js"></script>
+<script src="../js/app.js"></script>
+</head>
+<body>
+<div id="main-content-area"></div>
+<div id="toast-container"></div>
+<pre id="output"></pre>
+
+<script>
+var out = document.getElementById('output');
+function log(msg) { out.textContent += msg + "\n"; }
+
+async function runTest() {
+  try {
+    var user = DB.switchRole('PY-010');
+    log("Logged in as: " + user.name + " (" + user.id + ")");
+
+    var leave = await DB.addLeave({
+      type: 'Cuti Tahunan',
+      startDate: '2026-09-15',
+      endDate: '2026-09-15',
+      duration: 1,
+      reason: 'Testing Lifecycle Cuti'
+    });
+    log("1. AddLeave: " + leave.id);
+
+    var ts = await DB.addTimesheet({
+      date: '2026-09-02',
+      startTime: '08:00',
+      endTime: '12:00',
+      hours: 4.0,
+      activityPreset: 'Monitoring Dapur',
+      activity: 'Monitoring Dapur SPPG',
+      detail: 'Detail pekerjaan'
+    });
+    log("2. AddTimesheet: " + ts.id);
+
+    var pr = await DB.addItemRequest({
+      itemName: 'Panci Komersial 50L',
+      category: 'Fasilitas Kantor & Dapur',
+      quantity: 2,
+      unitPrice: 2000000,
+      totalPrice: 4000000,
+      urgency: 'HIGH',
+      reason: 'Kebutuhan Dapur',
+      targetKitchen: 'SPPG Mandalamekar'
+    });
+    log("3. AddPR: " + pr.id);
+
+    var ca = await DB.addCashAdvance({
+      title: 'Beli Bahan Baku Tambahan',
+      targetLocation: 'SPPG Mandalamekar',
+      amountRequested: 750000,
+      reason: 'Kebutuhan mendesak'
+    });
+    log("4. AddCA: " + ca.id);
+
+    await DB.pullLatestFromSupabase();
+
+    var myLeaves = DB.getLeaves().filter(l => l.employeeId === user.id);
+    var myTs = DB.getTimesheets().filter(t => t.employeeId === user.id);
+    var myPr = DB.getItemRequests().filter(p => p.employeeId === user.id);
+    var myCa = DB.getCashAdvances().filter(c => c.employeeId === user.id);
+
+    log("5. After Pull -> My Leaves: " + myLeaves.length + ", My TS: " + myTs.length + ", My PR: " + myPr.length + ", My CA: " + myCa.length);
+
+    var newDB = new DatabaseManager();
+    await newDB.pullLatestFromSupabase();
+    var reloadedLeaves = newDB.getLeaves().filter(l => l.employeeId === user.id);
+    var reloadedTs = newDB.getTimesheets().filter(t => t.employeeId === user.id);
+    var reloadedPr = newDB.getItemRequests().filter(p => p.employeeId === user.id);
+    var reloadedCa = newDB.getCashAdvances().filter(c => c.employeeId === user.id);
+
+    log("6. After Reload+Pull -> My Leaves: " + reloadedLeaves.length + ", My TS: " + reloadedTs.length + ", My PR: " + reloadedPr.length + ", My CA: " + reloadedCa.length);
+
+    await newDB.deleteLeave(leave.id);
+    await newDB.deleteItemRequest(pr.id);
+    await newDB.deleteCashAdvance(ca.id);
+    await newDB.deleteTimesheet(ts.id);
+    log("7. Cleanup Done!");
+
+  } catch(err) {
+    log("ERROR: " + err.message);
+  }
+}
+
+runTest();
+</script>
+</body>
+</html>

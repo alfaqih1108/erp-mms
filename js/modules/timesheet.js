@@ -28,7 +28,19 @@ window.TimesheetModule = {
 
     const user = DB.getCurrentUser();
     const allTimesheets = DB.getTimesheets() || [];
-    const userTimesheets = allTimesheets.filter(t => t.employeeId === user.id);
+    
+    const getHours = (t) => {
+      if (t.hours !== undefined && t.hours !== null && !isNaN(Number(t.hours))) return Number(t.hours);
+      if (t.startTime && t.endTime) {
+        const s = t.startTime.split(':').map(Number);
+        const e = t.endTime.split(':').map(Number);
+        const dur = Math.max(0, (e[0] + (e[1] || 0)/60) - (s[0] + (s[1] || 0)/60));
+        return Math.round(dur * 10) / 10;
+      }
+      return 0;
+    };
+
+    const userTimesheets = allTimesheets.filter(t => t && (t.employeeId === user.id || t.employeeName === user.name));
     
     // Check Integrasi Cuti: Apakah user sedang Cuti Approved pada tanggal yang dipilih?
     const approvedLeave = DB.getUserApprovedLeaveOnDate(user.id, this.selectedDate);
@@ -40,11 +52,11 @@ window.TimesheetModule = {
       .filter(t => t.date === this.selectedDate)
       .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'));
 
-    const dayTotalHours = dayTimesheets.reduce((acc, curr) => acc + (Number(curr.hours) || 0), 0);
+    const dayTotalHours = dayTimesheets.reduce((acc, curr) => acc + getHours(curr), 0);
     const targetHours = isHalfDayLeave ? 4.0 : 8.0;
     const progressPercent = Math.min(100, Math.round((dayTotalHours / targetHours) * 100));
 
-    const totalAllHours = userTimesheets.reduce((acc, curr) => acc + (Number(curr.hours) || 0), 0);
+    const totalAllHours = userTimesheets.reduce((acc, curr) => acc + getHours(curr), 0);
     const defaultActivities = DB.getDefaultActivities() || [];
 
     container.innerHTML = `
@@ -554,64 +566,6 @@ window.TimesheetModule = {
           </div>
 
         </div>
-
-        <!-- Master History Table (All Records & Approved Leaves) -->
-        <div class="nalar-card">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-            <div>
-              <span class="text-mono-badge" style="color: var(--text-muted);">Riwayat Kumulatif</span>
-              <h3 style="font-size: 18px; margin-top: 2px;">Seluruh Catatan Timesheet & Log Aktivitas Anda</h3>
-            </div>
-            <div style="font-size: 12px; color: var(--text-muted);">
-              Total Terakumulasi: <strong style="color: #60A5FA;">${totalAllHours} Jam</strong>
-            </div>
-          </div>
-
-          <div class="nalar-table-container">
-            <table class="nalar-table">
-              <thead>
-                <tr>
-                  <th>ID Log</th>
-                  <th>Tanggal</th>
-                  <th>Rentang Jam</th>
-                  <th>Kategori Aktivitas</th>
-                  <th>Rincian Tugas Detail</th>
-                  <th>Durasi</th>
-                  <th>Status</th>
-                  <th>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${userTimesheets.length === 0 ? `
-                  <tr>
-                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">Belum ada riwayat timesheet.</td>
-                  </tr>
-                ` : userTimesheets.map(t => `
-                  <tr>
-                    <td style="color: #60A5FA; font-weight: 500;">${t.id}</td>
-                    <td>${t.date}</td>
-                    <td style="color: #fff;">${t.startTime || '08:00'} - ${t.endTime || '12:00'}</td>
-                    <td>
-                      <span class="text-mono-badge" style="color: var(--text-secondary); font-size: 9.5px;">${t.activityPreset || 'Aktivitas'}</span>
-                    </td>
-                    <td style="max-width: 260px; color: var(--text-secondary); font-size: 13px;">${t.activity}</td>
-                    <td><strong style="color: #fff; font-size: 13.5px;">${t.hours}</strong> Jam</td>
-                    <td>
-                      <span class="badge-status ${t.status === 'APPROVED' ? 'badge-approved' : t.status === 'PENDING' ? 'badge-pending' : 'badge-rejected'}">
-                        ${t.status}
-                      </span>
-                    </td>
-                    <td>
-                      <button class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 11px; color: var(--text-dim);" title="Hapus entri" onclick="TimesheetModule.deleteEntry('${t.id}')">
-                        Hapus
-                      </button>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>
       </div>
     `;
 
@@ -751,7 +705,7 @@ window.TimesheetModule = {
     }
   },
 
-  handleInlineSubmit: function(e) {
+  handleInlineSubmit: async function(e) {
     e.preventDefault();
     const user = DB.getCurrentUser();
     const date = document.getElementById('inline-ts-date').value || this.selectedDate;
@@ -800,19 +754,37 @@ window.TimesheetModule = {
       return;
     }
 
-    // Simpan entri ke database
-    DB.addTimesheet({
-      date,
-      startTime,
-      endTime,
-      activityPreset: activityName,
-      activity: detail,
-      hours: validation.hours
-    });
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const origBtnText = submitBtn ? submitBtn.innerHTML : '+ Simpan Aktivitas Harian';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '⏳ Menyimpan...';
+    }
 
-    this.selectedDate = date;
-    App.showToast(`✓ Aktivitas "${activityName}" (${startTime} - ${endTime} · ${validation.hours} Jam) berhasil dicatat & summary diperbarui!`, 'success');
-    this.render(document.getElementById('main-content-area'));
+    try {
+      // Simpan entri ke database
+      await DB.addTimesheet({
+        date,
+        startTime,
+        endTime,
+        activityPreset: activityName,
+        activity: detail,
+        hours: validation.hours
+      });
+
+      this.selectedDate = date;
+      App.showToast(`✓ Aktivitas "${activityName}" (${startTime} - ${endTime} · ${validation.hours} Jam) berhasil dicatat!`, 'success');
+      this.render(document.getElementById('main-content-area'));
+    } catch (err) {
+      console.error('Gagal mencatat timesheet:', err);
+      App.showToast('Catatan disimpan di cache lokal.', 'info');
+      this.render(document.getElementById('main-content-area'));
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origBtnText;
+      }
+    }
   },
 
   // =========================================================================

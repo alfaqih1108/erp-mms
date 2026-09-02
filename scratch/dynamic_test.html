@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+<pre id="log"></pre>
+<script>
+var logEl = document.getElementById('log');
+function log(msg) {
+  logEl.textContent += msg + "\n";
+}
+
+var modules = [
+  "supabase-config.js",
+  "modules/data.js",
+  "modules/dashboard.js",
+  "modules/cuti.js",
+  "modules/timesheet.js",
+  "modules/pengajuan-barang.js",
+  "modules/cash-advance.js",
+  "modules/dapur-yayasan.js",
+  "modules/hc-hub.js",
+  "modules/admin-hub.js",
+  "modules/approval-center.js",
+  "app.js"
+];
+
+var idx = 0;
+function loadNext() {
+  if (idx >= modules.length) {
+    log("ALL FINISHED! window.DB=" + typeof window.DB + ", window.App=" + typeof window.App);
+    return;
+  }
+  var m = modules[idx++];
+  var script = document.createElement('script');
+  script.src = "../js/" + m;
+  script.onload = function() {
+    log("[OK] " + m);
+    loadNext();
+  };
+  script.onerror = function(e) {
+    log("[FAIL] " + m);
+    loadNext();
+  };
+  document.head.appendChild(script);
+}
+loadNext();
+</script>
+</body>
+</html>

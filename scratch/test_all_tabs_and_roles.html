@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="../js/supabase-config.js"></script>
+<script src="../js/modules/data.js"></script>
+<script src="../js/modules/dashboard.js"></script>
+<script src="../js/modules/cuti.js"></script>
+<script src="../js/modules/timesheet.js"></script>
+<script src="../js/modules/pengajuan-barang.js"></script>
+<script src="../js/modules/cash-advance.js"></script>
+<script src="../js/modules/dapur-yayasan.js"></script>
+<script src="../js/modules/hc-hub.js"></script>
+<script src="../js/modules/admin-hub.js"></script>
+<script src="../js/modules/approval-center.js"></script>
+<script src="../js/app.js"></script>
+</head>
+<body>
+<div id="main-content-area"></div>
+<div id="toast-container"></div>
+<div id="approval-badge-count"></div>
+<pre id="output"></pre>
+<script>
+var out = document.getElementById('output');
+function log(msg) { out.textContent += msg + "\n"; }
+
+var users = DB.getUsers();
+var tabs = [
+  'dashboard', 'cuti', 'timesheet', 'pengajuan', 'cash-advance', 
+  'approval', 'dapur', 'hc-struktur', 'hc-karyawan', 'hc-dokumen', 'admin-dapur'
+];
+
+var container = document.getElementById('main-content-area');
+var hasError = false;
+
+users.forEach(function(u) {
+  DB.switchRole(u.id);
+  tabs.forEach(function(tab) {
+    try {
+      App.switchTab(tab);
+      // Check if fallback error was injected into container
+      if (container.innerHTML.indexOf('Sinkronisasi Data Cache Organisasi') !== -1) {
+        log("ERROR in tab '" + tab + "' for user " + u.name + " (" + u.role + "): FALLBACK TRIGGERED");
+        hasError = true;
+      }
+    } catch(err) {
+      log("EXCEPTION in tab '" + tab + "' for user " + u.name + " (" + u.role + "): " + err.message + "\nStack: " + err.stack);
+      hasError = true;
+    }
+  });
+});
+
+if (!hasError) {
+  log("ALL TABS AND ALL ROLES RENDERED PERFECTLY WITH 0 ERRORS!");
+}
+</script>
+</body>
+</html>

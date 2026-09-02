@@ -1,3 +1,10 @@
+<!DOCTYPE html>
+<html>
+<body>
+<pre id="result"></pre>
+<script>
+window.SupabaseConfig = { isConfigured: function() { return false; }, getUrl: function(){return '';}, getAnonKey: function(){return '';} };
+try {
 /**
  * ERP YAYASAN - Data Store & LocalStorage Persistence (V15 Architecture)
  * Enterprise HRIS Master Profile (36 Fields), Admin Hub Master Dapur SPPG, Multi-Tier Approval Tracking & Real-Time Timestamps
@@ -37,53 +44,6 @@ function getRealtimeTimestamp() {
   return `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}`;
 }
 window.getRealtimeTimestamp = getRealtimeTimestamp;
-
-// Utility: Kompresi Gambar Cerdas (<100 KB) agar penyimpanan LocalStorage & Cloud REST instan
-function compressImageFile(file, maxWidth = 1000, quality = 0.7) {
-  return new Promise((resolve) => {
-    if (!file || !file.type || !file.type.startsWith('image/')) {
-      resolve({ url: null, name: null });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          let w = img.width;
-          let h = img.height;
-          if (w > maxWidth || h > maxWidth) {
-            if (w > h) {
-              h = Math.round((h * maxWidth) / w);
-              w = maxWidth;
-            } else {
-              w = Math.round((w * maxWidth) / h);
-              h = maxWidth;
-            }
-          }
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-          resolve({ url: compressedDataUrl, name: file.name });
-        } catch (err) {
-          resolve({ url: e.target.result, name: file.name });
-        }
-      };
-      img.onerror = () => {
-        resolve({ url: e.target.result, name: file.name });
-      };
-      img.src = e.target.result;
-    };
-    reader.onerror = () => {
-      resolve({ url: null, name: null });
-    };
-    reader.readAsDataURL(file);
-  });
-}
-window.compressImageFile = compressImageFile;
 
 // Utility: Hitung Masa Kerja Dinamis
 function calculateTenure(joinDateStr) {
@@ -2362,23 +2322,13 @@ class DatabaseManager {
       console.warn('Gagal menyimpan ke localStorage (kemungkinan ukuran attachment besar), mencoba fallback tanpa binary data:', e);
       try {
         const copy = JSON.parse(JSON.stringify(data || this.data));
-        const stripHeavy = (obj) => {
-          if (!obj) return;
-          if (Array.isArray(obj)) {
-            obj.forEach(item => stripHeavy(item));
-          } else if (typeof obj === 'object') {
-            for (const k in obj) {
-              if (typeof obj[k] === 'string' && obj[k].length > 30000 && (k === 'fileData' || k === 'attachmentUrl' || k === 'spmAttachmentUrl' || obj[k].startsWith('data:image/'))) {
-                obj[k] = null;
-              }
+        if (Array.isArray(copy.guidelineDocuments)) {
+          copy.guidelineDocuments.forEach(doc => {
+            if (doc.fileData && doc.fileData.length > 50000) {
+              doc.fileData = null; // Lepaskan binary berat agar storage tidak gagal
             }
-          }
-        };
-        if (Array.isArray(copy.guidelineDocuments)) stripHeavy(copy.guidelineDocuments);
-        if (Array.isArray(copy.itemRequests)) stripHeavy(copy.itemRequests);
-        if (Array.isArray(copy.leaves)) stripHeavy(copy.leaves);
-        if (Array.isArray(copy.cashAdvances)) stripHeavy(copy.cashAdvances);
-        if (Array.isArray(copy.kitchenReports)) stripHeavy(copy.kitchenReports);
+          });
+        }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
       } catch (err2) {
         console.error('Penyimpanan database fallback juga gagal:', err2);
@@ -2412,9 +2362,6 @@ class DatabaseManager {
     }
     if (user) {
       this.data.currentUser = user;
-      try {
-        localStorage.setItem('erpmms_auth_user_id', user.id);
-      } catch (e) {}
       this.save();
       return user;
     }
@@ -3512,7 +3459,7 @@ class DatabaseManager {
     return (this.data && Array.isArray(this.data.itemRequests)) ? this.data.itemRequests : INITIAL_DATABASE.itemRequests;
   }
 
-  async addItemRequest(prData) {
+  addItemRequest(prData) {
     const user = this.getCurrentUser();
     const allPrs = this.getItemRequests() || [];
     let maxNum = 44;
@@ -4851,6 +4798,7 @@ class DatabaseManager {
       count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
     } else if (user.role === 'STAFF_AHLI_KEUANGAN') {
       count += prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION').length;
+      count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
     } else if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') {
       count += leaves.filter(l => l.status === 'PENDING').length;
       count += prs.filter(p => p.status === 'PENDING').length;
@@ -5743,3 +5691,11 @@ setTimeout(async () => {
     window.App.updateUserHeader();
   }
 }, 300);
+
+  document.getElementById('result').textContent = "SUCCESS: DB is " + typeof window.DB;
+} catch(err) {
+  document.getElementById('result').textContent = "ERROR: " + err.message + "\nStack: " + err.stack;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+<pre id="output"></pre>
+<script src="../js/supabase-config.js"></script>
+<script>
+fetch('../js/modules/data.js')
+  .then(res => res.text())
+  .then(code => {
+    try {
+      eval(code);
+      document.getElementById('output').textContent = "EVAL SUCCESS! DB is " + typeof window.DB;
+    } catch(e) {
+      document.getElementById('output').textContent = "EVAL ERROR: " + e.message + "\nLine: " + e.lineNumber + "\nStack: " + e.stack;
+    }
+  })
+  .catch(err => {
+    document.getElementById('output').textContent = "FETCH ERROR: " + err;
+  });
+</script>
+</body>
+</html>

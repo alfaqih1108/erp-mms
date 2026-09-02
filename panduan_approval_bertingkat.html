@@ -315,27 +315,22 @@
   <!-- =========================================================================
        FLOW 1: PENGADAAN BARANG (PURCHASE REQUEST)
        ========================================================================= -->
-  <h2>1. Alur Pengadaan Barang / Purchase Request (PR) — 3 Tahap</h2>
+  <h2>1. Alur Pengadaan Barang / Purchase Request (PR)</h2>
   
   <div class="flow-chain">
     <div class="flow-node highlight">
       <span class="flow-node-role">Tahap 1: Input</span>
-      <span class="flow-node-title">Staff / Manajer</span>
+      <span class="flow-node-title">Staff / Manajer / FAT</span>
     </div>
     <span class="flow-arrow">➔</span>
     <div class="flow-node">
-      <span class="flow-node-role">Tahap 2: Manajerial</span>
-      <span class="flow-node-title">Manager Area / Keu</span>
-    </div>
-    <span class="flow-arrow">➔</span>
-    <div class="flow-node">
-      <span class="flow-node-role">Tahap 3: Anggaran</span>
-      <span class="flow-node-title">Staff Ahli Keuangan</span>
+      <span class="flow-node-role">Tahap 2: Operasional / Anggaran</span>
+      <span class="flow-node-title">Manager Area / Staff Ahli</span>
     </div>
     <span class="flow-arrow">➔</span>
     <div class="flow-node highlight">
-      <span class="flow-node-role">Tahap 4: Final & PO</span>
-      <span class="flow-node-title">Direktur / Dirut</span>
+      <span class="flow-node-role">Tahap 3: Final & PO</span>
+      <span class="flow-node-title">Direktur Keuangan / Ops</span>
     </div>
   </div>
 
@@ -344,35 +339,29 @@
       <span class="stage-badge">TAHAP 1</span>
       <div class="stage-content">
         <strong>Penginputan Pengajuan Barang (PR):</strong>
-        <div class="stage-role"><em>Pelaksana:</em> Staf Operasional, Surveyor, Perwakilan Yayasan, atau Manajer Area (Dapur SPPG).</div>
-        <div>User mengisi rincian nama barang, kategori belanja, estimasi biaya (RAB), jumlah unit, keterangan urgensi, dan melampirkan foto nota referensi / katalog.</div>
+        <div class="stage-role"><em>Pelaksana:</em> Staf Operasional, Surveyor, Perwakilan Yayasan, Maker Dapur, Tim Keuangan (FAT & Staff Ahli), atau Manager.</div>
+        <div>User mengisi nama barang, kategori belanja, estimasi biaya (RAB), kuantiti unit, urgensi, kepentingan dapur SPPG, dan melampirkan foto nota/katalog referensi.</div>
       </div>
     </div>
 
     <div class="stage-item">
       <span class="stage-badge">TAHAP 2</span>
       <div class="stage-content">
-        <strong>Verifikasi Manajerial Teknis (Tier 1 Manager Approval):</strong>
-        <div class="stage-role"><em>Pemberi Persetujuan:</em> Manajer Area (Dian Ekawati / Bivaldie A.R.) atau Manajer Keuangan (Viona).</div>
-        <div>Memeriksa kelayakan dan kebutuhan fisik barang di unit kerja lapangan. <em>(Catatan: Jika pemohon adalah Manajer Area atau Direktur, alur otomatis langsung melompat ke Tahap 3)</em>.</div>
+        <strong>Review Operasional & Verifikasi Anggaran:</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em>
+          <br>• <strong>Staf Lapangan & Maker Dapur:</strong> Manager Area terkait (Rendy Seftiana / Bivaldie A.R. / Dian Ekawati) ➔ Diteruskan ke Verifikasi Anggaran (Staff Ahli Keuangan).
+          <br>• <strong>FAT Officer & Staff Ahli:</strong> Langsung ke Level Direktur Keuangan / Direktur Operasional (tidak memerlukan persetujuan Manager Keuangan).
+          <br>• <strong>Manager Area / Manager Keuangan / HC:</strong> Langsung ke Verifikasi Anggaran (Staff Ahli Keuangan).
+        </div>
       </div>
     </div>
 
     <div class="stage-item">
       <span class="stage-badge">TAHAP 3</span>
       <div class="stage-content">
-        <strong>Verifikasi Pos Anggaran & Pajak (Finance Verification):</strong>
-        <div class="stage-role"><em>Pemberi Persetujuan:</em> Staff Ahli Keuangan & Administrasi / FAT Officer (Rendy).</div>
-        <div>Memeriksa ketersediaan saldo anggaran, validasi vendor, dan memverifikasi kewajaran harga sebelum diteruskan ke jajaran direksi.</div>
-      </div>
-    </div>
-
-    <div class="stage-item">
-      <span class="stage-badge">TAHAP 4</span>
-      <div class="stage-content">
-        <strong>Persetujuan Eksekutif & Penerbitan Purchase Order (Final Director Approval):</strong>
-        <div class="stage-role"><em>Pemberi Persetujuan:</em> Direktur Operasional (M. Arrasyid / M. Alfaqih), Direktur Keuangan (Kody Suryo), atau Direktur Utama (Rochmad).</div>
-        <div>Otorisasi pencairan dana pembelian dan penerbitan nomor Purchase Order (PO) sah yayasan. Status berubah menjadi <strong>APPROVED</strong>.</div>
+        <strong>Persetujuan Direksi & Penerbitan Purchase Order (PO):</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em> Direktur Keuangan (Kody Suryo Nugroho) atau Direktur Operasional (Muhammad Arrasyid / Muhammad Alfaqih).</div>
+        <div>Otorisasi final disahkan dan nomor Purchase Order (PO) resmi diterbitkan. Status berubah menjadi <strong>APPROVED / COMPLETED</strong>.</div>
       </div>
     </div>
   </div>
@@ -380,12 +369,12 @@
   <!-- =========================================================================
        FLOW 2: KASBON OPERASIONAL (CASH ADVANCE) & LPJ
        ========================================================================= -->
-  <h2>2. Alur Kasbon Operasional (Cash Advance) & Pertanggungjawaban (LPJ) — 4 Tahap</h2>
+  <h2>2. Alur Kasbon Operasional (Cash Advance) & Pertanggungjawaban (LPJ)</h2>
   
   <div class="flow-chain">
     <div class="flow-node highlight">
       <span class="flow-node-role">Tahap 1: Pengajuan</span>
-      <span class="flow-node-title">Pemohon Dana</span>
+      <span class="flow-node-title">Pemohon Kasbon</span>
     </div>
     <span class="flow-arrow">➔</span>
     <div class="flow-node">
@@ -395,12 +384,12 @@
     <span class="flow-arrow">➔</span>
     <div class="flow-node">
       <span class="flow-node-role">Tahap 3: Transfer</span>
-      <span class="flow-node-title">Disbursement Keuangan</span>
+      <span class="flow-node-title">FAT Officer</span>
     </div>
     <span class="flow-arrow">➔</span>
     <div class="flow-node highlight">
-      <span class="flow-node-role">Tahap 4: LPJ Nota</span>
-      <span class="flow-node-title">Audit Settlement Lunas</span>
+      <span class="flow-node-role">Tahap 4: LPJ & Audit</span>
+      <span class="flow-node-title">FAT Officer (Settled)</span>
     </div>
   </div>
 
@@ -408,35 +397,35 @@
     <div class="stage-item">
       <span class="stage-badge">TAHAP 1</span>
       <div class="stage-content">
-        <strong>Penginputan Permohonan Kasbon (CA Submission):</strong>
-        <div class="stage-role"><em>Pelaksana:</em> Seluruh Karyawan / Manajer / Staf Operasional Lapangan.</div>
-        <div>Mengisi nominal dana kasbon yang dibutuhkan, rincian keperluan perjalanan dinas / operasional mendesak, tanggal tenggat LPJ, dan nomor rekening penerima.</div>
+        <strong>Pengajuan Kasbon (CA Submission):</strong>
+        <div class="stage-role"><em>Pelaksana:</em> Seluruh Karyawan / Manajer / Staf Operasional / Perwakilan Yayasan / Maker Dapur.</div>
+        <div>Mengisi nominal dana kasbon yang dibutuhkan, rincian keperluan, target tanggal penyelesaian LPJ, dan nomor rekening bank penerima.</div>
       </div>
     </div>
 
     <div class="stage-item">
       <span class="stage-badge">TAHAP 2</span>
       <div class="stage-content">
-        <strong>Persetujuan Otorisasi Anggaran Kasbon (Director Review):</strong>
-        <div class="stage-role"><em>Pemberi Persetujuan:</em> Direktur Keuangan (Kody Suryo Nugroho) atau Direktur Operasional (M. Alfaqih).</div>
-        <div>Memeriksa urgensi permohonan dana dan memastikan pemohon tidak memiliki tunggakan LPJ kasbon lama yang belum selesai.</div>
+        <strong>Otorisasi Direksi (Director Review):</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em> Direktur Keuangan (Kody Suryo Nugroho) atau Direktur Operasional (Muhammad Arrasyid).</div>
+        <div>Memeriksa urgensi permohonan dana dan menyetujui plafon nominal kasbon.</div>
       </div>
     </div>
 
     <div class="stage-item">
       <span class="stage-badge">TAHAP 3</span>
       <div class="stage-content">
-        <strong>Pencairan & Transfer Dana Kasbon (FAT Disbursement):</strong>
-        <div class="stage-role"><em>Pelaksana:</em> Staff Ahli Keuangan / Tim Kasir Yayasan (Rendy / Viona).</div>
-        <div>Melakukan transfer dana ke rekening pemohon, mengunggah bukti transfer bank resmi, dan menetapkan status <strong>DISBURSED (Dana Dicairkan)</strong>.</div>
+        <strong>Pencairan & Transfer Dana (FAT Disbursement):</strong>
+        <div class="stage-role"><em>Pelaksana:</em> FAT Officer (Muhammad Imam Adamy / Rendy Seftiana).</div>
+        <div>Melakukan transfer bank ke rekening pemohon, mengunggah bukti transfer, dan status menjadi <strong>DISBURSED</strong>.</div>
       </div>
     </div>
 
     <div class="stage-item">
       <span class="stage-badge">TAHAP 4</span>
       <div class="stage-content">
-        <strong>Pelaporan LPJ Nota Riil & Rekonsiliasi Akhir (Settlement Audit):</strong>
-        <div class="stage-role"><em>Pelaksana & Verifikator:</em> Pemohon mengunggah foto nota bukti pengeluaran riil ➔ Tim Keuangan memvalidasi saldo lebih/kurang ➔ Status <strong>SETTLED (Lunas & Terverifikasi)</strong>.</div>
+        <strong>Pelaporan LPJ Nota Riil & Monitoring Settlement:</strong>
+        <div class="stage-role"><em>Pelaksana & Verifikator:</em> Pemohon submit nota riil belanja ➔ <strong>FAT Officer</strong> memonitoring, memverifikasi nota, dan menutup status menjadi <strong>SETTLED (Lunas)</strong>.</div>
       </div>
     </div>
   </div>
@@ -446,7 +435,7 @@
   <!-- =========================================================================
        FLOW 3: CUTI & IZIN KARYAWAN
        ========================================================================= -->
-  <h2>3. Alur Pengajuan Cuti & Izin Karyawan — 2 atau 3 Tahap</h2>
+  <h2>3. Alur Pengajuan Cuti & Izin Karyawan</h2>
   
   <div class="flow-chain">
     <div class="flow-node highlight">
@@ -455,13 +444,13 @@
     </div>
     <span class="flow-arrow">➔</span>
     <div class="flow-node">
-      <span class="flow-node-role">Tahap 2: Atasan</span>
-      <span class="flow-node-title">Direktur Terkait (Ops/Keu)</span>
+      <span class="flow-node-role">Tahap 2: Review Wilayah / Direksi</span>
+      <span class="flow-node-title">Manager Area / Direktur</span>
     </div>
     <span class="flow-arrow">➔</span>
     <div class="flow-node highlight">
-      <span class="flow-node-role">Tahap 3: Final</span>
-      <span class="flow-node-title">Head of HC / Dirut</span>
+      <span class="flow-node-role">Tahap 3: Validasi Final</span>
+      <span class="flow-node-title">Human Capital (HC)</span>
     </div>
   </div>
 
@@ -469,18 +458,21 @@
     <div class="stage-item">
       <span class="stage-badge">TAHAP 1</span>
       <div class="stage-content">
-        <strong>Penginputan Cuti / Izin (Leave Submission):</strong>
-        <div class="stage-role"><em>Pelaksana:</em> Seluruh Tenaga Kerja & Pejabat Yayasan.</div>
-        <div>Memilih jenis cuti (Tahunan, Cuti Pribadi Q3 Pasal 14, Izin Terencana, Sakit dengan Surat Dokter, atau Melahirkan), rentang tanggal, dan delegasi tugas pekerjaan.</div>
+        <strong>Penginputan Cuti / Izin Mandiri (Leave Submission):</strong>
+        <div class="stage-role"><em>Pelaksana:</em> Seluruh Tenaga Kerja & Pejabat.</div>
+        <div>Memilih jenis cuti (Tahunan, Izin Khusus, dsb), rentang tanggal, alasan, kontak darurat, dan lampiran surat jika ada.</div>
       </div>
     </div>
 
     <div class="stage-item">
       <span class="stage-badge">TAHAP 2</span>
       <div class="stage-content">
-        <strong>Persetujuan Operasional & Atasan Langsung (Operational Endorsement):</strong>
-        <div class="stage-role"><em>Pemberi Persetujuan:</em> Direktur Keuangan (untuk staf keuangan) atau Direktur Operasional (untuk manajer area/staf lapangan).</div>
-        <div>Memastikan kontinuitas operasional kantor dan SPPG dapur tetap berjalan saat pemohon mengambil cuti.</div>
+        <strong>Persetujuan Tahap 1:</strong>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em>
+          <br>• <strong>Staf Operasional, Surveyor, Perwakilan Yayasan, Maker Dapur:</strong> Tahap 1 ke <strong>Manager Area terkait</strong> (Rendy Seftiana / Bivaldie A.R. / Dian Ekawati).
+          <br>• <strong>FAT Officer & Staff Ahli Keuangan:</strong> Tahap 1 langsung ke <strong>Direktur Keuangan</strong> (Kody Suryo Nugroho) atau <strong>Direktur Operasional</strong> (Muhammad Arrasyid).
+          <br>• <strong>Manager Area, Manager Keuangan, HC:</strong> Tahap 1 ke <strong>Direktur Operasional / Direktur Keuangan / Direktur Utama</strong>.
+        </div>
       </div>
     </div>
 
@@ -488,8 +480,8 @@
       <span class="stage-badge">TAHAP 3</span>
       <div class="stage-content">
         <strong>Validasi Kuota Hak Cuti & Finalisasi HRIS (HC Final Approval):</strong>
-        <div class="stage-role"><em>Pemberi Persetujuan:</em> Head of Human Capital (Dian Ekawati) atau Direktur Utama (Rochmad).</div>
-        <div>Validasi masa kerja dan pemotongan otomatis kuota cuti. Kalender kerja pemohon otomatis berubah warna menjadi 🟢 <strong>Hijau (Cuti Approved)</strong>.</div>
+        <div class="stage-role"><em>Pemberi Persetujuan:</em> Human Capital (Tazkia Aulia).</div>
+        <div>Validasi kuota hak cuti karyawan, sinkronisasi kalender kerja, dan pemotongan saldo kuota cuti secara otomatis. Status menjadi <strong>APPROVED</strong>.</div>
       </div>
     </div>
   </div>
@@ -497,36 +489,27 @@
   <!-- =========================================================================
        FLOW 4: TIMESHEET & PRESENSI HARIAN
        ========================================================================= -->
-  <h2>4. Alur Timesheet Presensi & Rekapitulasi Jam Kerja — 2 Tahap</h2>
+  <h2>4. Alur Timesheet Presensi Harian — Direct Recorded (Semua Role)</h2>
   
   <div class="flow-chain">
     <div class="flow-node highlight">
-      <span class="flow-node-role">Tahap 1: Input Presensi</span>
-      <span class="flow-node-title">Karyawan / Staf</span>
+      <span class="flow-node-role">Pengisian Mandiri</span>
+      <span class="flow-node-title">Seluruh Karyawan & Role</span>
     </div>
     <span class="flow-arrow">➔</span>
     <div class="flow-node highlight">
-      <span class="flow-node-role">Tahap 2: Verifikasi & Rekap</span>
-      <span class="flow-node-title">Head of Human Capital (HC)</span>
+      <span class="flow-node-role">Sistem Otomatis</span>
+      <span class="flow-node-title">Direct Recorded ke Database</span>
     </div>
   </div>
 
   <div class="flow-card">
     <div class="stage-item">
-      <span class="stage-badge">TAHAP 1</span>
+      <span class="stage-badge">DIRECT</span>
       <div class="stage-content">
-        <strong>Pencatatan Presensi & Log Aktivitas Mandiri:</strong>
-        <div class="stage-role"><em>Pelaksana:</em> Seluruh Karyawan Kantor & Lapangan.</div>
-        <div>Mencatat jam masuk, jam pulang, uraian tugas yang diselesaikan hari ini, dan melampirkan foto selfie / bukti kerja harian.</div>
-      </div>
-    </div>
-
-    <div class="stage-item">
-      <span class="stage-badge">TAHAP 2</span>
-      <div class="stage-content">
-        <strong>Verifikasi & Audit Rekapitulasi Jam Kerja (HC Monthly Audit):</strong>
-        <div class="stage-role"><em>Pemberi Persetujuan:</em> Head of Human Capital (Dian Ekawati).</div>
-        <div>Memvalidasi total jam kerja harian/lembur yang sah, mengunci log presensi, dan mengunduh format laporan resmi Excel (.xlsx) untuk penggajian.</div>
+        <strong>Pencatatan Log Kerja Mandiri Langsung Tercatat (No Approval Needed):</strong>
+        <div class="stage-role"><em>Pelaksana:</em> Seluruh Karyawan, Staf Lapangan, Maker, FAT, hingga Manajerial.</div>
+        <div>Setiap pengisian timesheet langsung tersimpan ke dalam database dengan status <strong>RECORDED</strong> tanpa melalui antrean approval. Menu Approval Hub bersih dari antrean timesheet untuk efisiensi kerja.</div>
       </div>
     </div>
   </div>
@@ -550,66 +533,58 @@
       <tr>
         <td><strong>Rochmad</strong></td>
         <td>Direktur Utama</td>
-        <td><span class="tag-flow tag-pr">Final Approval</span></td>
-        <td><span class="tag-flow tag-ca">Final Approval</span></td>
-        <td><span class="tag-flow tag-cuti">Final Approval</span></td>
-        <td><span class="tag-flow tag-ts">Oversight</span></td>
+        <td><span class="tag-flow tag-pr">Final Approval & PO</span></td>
+        <td><span class="tag-flow tag-ca">Director Review</span></td>
+        <td><span class="tag-flow tag-cuti">Director Tier</span></td>
+        <td><span class="tag-flow tag-ts">Direct Recorded</span></td>
       </tr>
       <tr>
-        <td><strong>M. Arrasyid</strong></td>
+        <td><strong>Muhammad Arrasyid</strong></td>
         <td>Direktur Operasional</td>
-        <td><span class="tag-flow tag-pr">Director Approval</span></td>
+        <td><span class="tag-flow tag-pr">Director Approval & PO</span></td>
         <td><span class="tag-flow tag-ca">Director Review</span></td>
-        <td><span class="tag-flow tag-cuti">Endorsement Ops</span></td>
-        <td><span class="tag-flow tag-ts">Oversight</span></td>
+        <td><span class="tag-flow tag-cuti">Director Review</span></td>
+        <td><span class="tag-flow tag-ts">Direct Recorded</span></td>
       </tr>
       <tr>
         <td><strong>Kody Suryo Nugroho</strong></td>
         <td>Direktur Keuangan</td>
-        <td><span class="tag-flow tag-pr">Director Approval</span></td>
+        <td><span class="tag-flow tag-pr">Director Approval & PO</span></td>
         <td><span class="tag-flow tag-ca">Director Review</span></td>
-        <td><span class="tag-flow tag-cuti">Endorsement Keu</span></td>
-        <td><span class="tag-flow tag-ts">Oversight</span></td>
+        <td><span class="tag-flow tag-cuti">Director Review</span></td>
+        <td><span class="tag-flow tag-ts">Direct Recorded</span></td>
       </tr>
       <tr>
-        <td><strong>M. Alfaqih</strong></td>
-        <td>Direktur Operasional</td>
-        <td><span class="tag-flow tag-pr">Director Approval</span></td>
-        <td><span class="tag-flow tag-ca">Director Review</span></td>
-        <td><span class="tag-flow tag-cuti">Endorsement Ops</span></td>
-        <td><span class="tag-flow tag-ts">Oversight</span></td>
+        <td><strong>Tazkia Aulia</strong></td>
+        <td>Human Capital & GA</td>
+        <td><span class="tag-flow tag-pr">Pengaju PR HC</span></td>
+        <td><span class="tag-flow tag-ca">Pengaju CA HC</span></td>
+        <td><span class="tag-flow tag-cuti">Final HC Approval & Kuota</span></td>
+        <td><span class="tag-flow tag-ts">Direct Recorded</span></td>
       </tr>
       <tr>
-        <td><strong>Viona</strong></td>
-        <td>Manager Keuangan</td>
-        <td><span class="tag-flow tag-pr">Manager Review</span></td>
-        <td><span class="tag-flow tag-ca">Verifikasi LPJ</span></td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td><strong>Dian Ekawati</strong></td>
-        <td>Head of HC / Area</td>
+        <td><strong>Rendy Seftiana / Bivaldie A.R. / Dian Ekawati</strong></td>
+        <td>Manager Area</td>
         <td><span class="tag-flow tag-pr">Manager Area Review</span></td>
         <td>-</td>
-        <td><span class="tag-flow tag-cuti">Final HC Approval</span></td>
-        <td><span class="tag-flow tag-ts">Audit & Export</span></td>
+        <td><span class="tag-flow tag-cuti">Manager Area Review</span></td>
+        <td><span class="tag-flow tag-ts">Direct Recorded</span></td>
       </tr>
       <tr>
-        <td><strong>Bivaldie A.R.</strong></td>
-        <td>Manager Area Jakarta</td>
-        <td><span class="tag-flow tag-pr">Manager Area Review</span></td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td><strong>Rendy</strong></td>
-        <td>Staff Ahli Keuangan</td>
+        <td><strong>Sakhiyah Karomah Salam</strong></td>
+        <td>Staf Ahli Keuangan</td>
         <td><span class="tag-flow tag-pr">Finance Verification</span></td>
-        <td><span class="tag-flow tag-ca">Disbursement & LPJ</span></td>
         <td>-</td>
         <td>-</td>
+        <td><span class="tag-flow tag-ts">Direct Recorded</span></td>
+      </tr>
+      <tr>
+        <td><strong>Muhammad Imam Adamy</strong></td>
+        <td>FAT Officer</td>
+        <td>-</td>
+        <td><span class="tag-flow tag-ca">Disbursement & Monitoring LPJ</span></td>
+        <td>-</td>
+        <td><span class="tag-flow tag-ts">Direct Recorded</span></td>
       </tr>
       <tr>
         <td><strong>Super Administrator</strong></td>
@@ -617,7 +592,7 @@
         <td><span class="tag-flow tag-pr">Full Override</span></td>
         <td><span class="tag-flow tag-ca">Full Override</span></td>
         <td><span class="tag-flow tag-cuti">Full Override</span></td>
-        <td><span class="tag-flow tag-ts">Full Override</span></td>
+        <td><span class="tag-flow tag-ts">Direct Recorded</span></td>
       </tr>
     </tbody>
   </table>
@@ -625,7 +600,7 @@
   <!-- FOOTER -->
   <div class="footer">
     <span>ERP YAYASAN Enterprise Hub © 2026 — Dokumen Resmi Matriks Alur Approval Bertingkat</span>
-    <span>Tanggal Efektif: 21 Agustus 2026</span>
+    <span>Tanggal Efektif: 21 Agustus 2026 (Updated)</span>
   </div>
 
 </body>

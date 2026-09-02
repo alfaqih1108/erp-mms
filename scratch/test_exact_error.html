@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="../js/supabase-config.js"></script>
+<script src="../js/modules/data.js"></script>
+<script src="../js/modules/dashboard.js"></script>
+<script src="../js/modules/cuti.js"></script>
+<script src="../js/modules/timesheet.js"></script>
+<script src="../js/modules/pengajuan-barang.js"></script>
+<script src="../js/modules/cash-advance.js"></script>
+<script src="../js/modules/dapur-yayasan.js"></script>
+<script src="../js/modules/hc-hub.js"></script>
+<script src="../js/modules/admin-hub.js"></script>
+<script src="../js/modules/approval-center.js"></script>
+<script src="../js/app.js"></script>
+</head>
+<body>
+<div id="main-content-area"></div>
+<pre id="output"></pre>
+<script>
+var out = document.getElementById('output');
+function log(msg) { out.textContent += msg + "\n"; }
+
+var container = document.getElementById('main-content-area');
+
+// 1. Test TimesheetModule.render
+try {
+  TimesheetModule.render(container);
+  log("TimesheetModule.render SUCCESS");
+} catch(err) {
+  log("TimesheetModule.render ERROR: " + err.message + "\nStack: " + err.stack);
+}
+
+// 2. Test ApprovalCenterModule.render
+try {
+  ApprovalCenterModule.render(container);
+  log("ApprovalCenterModule.render SUCCESS");
+} catch(err) {
+  log("ApprovalCenterModule.render ERROR: " + err.message + "\nStack: " + err.stack);
+}
+</script>
+</body>
+</html>
