@@ -3,13 +3,14 @@
  * Enterprise HRIS Master Profile (36 Fields), Admin Hub Master Dapur SPPG, Multi-Tier Approval Tracking & Real-Time Timestamps
  */
 
-const STORAGE_KEY = 'ERP_YAYASAN_DB_STABLE';
+const STORAGE_KEY = 'ERP_YAYASAN_DB_V3_2_PROD';
 
-// Pembersihan otomatis cache database versi lama (V1 - V24) untuk membebaskan kuota LocalStorage
+// Pembersihan otomatis cache database versi lama untuk memastikan database bersih 100% untuk pengujian data real
 try {
+  localStorage.removeItem('ERP_YAYASAN_DB_STABLE');
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const k = localStorage.key(i);
-    if (k && k.startsWith('ERP_YAYASAN_DATABASE_V')) {
+    if (k && (k.startsWith('ERP_YAYASAN_DATABASE_V') || k === 'erpmms_v3_state' || k === 'ERP_YAYASAN_DB_STABLE')) {
       localStorage.removeItem(k);
     }
   }
@@ -5526,13 +5527,11 @@ class DatabaseManager {
             createdAt: p.created_at
           }));
 
-          const remoteMap = new Map(remotePRs.map(r => [r.id, r]));
-          const localOnly = (this.data.itemRequests || []).filter(loc => loc.id && !remoteMap.has(loc.id));
-          this.data.itemRequests = [...localOnly, ...remotePRs];
+          this.data.itemRequests = remotePRs;
         }
       }
 
-      // 4. Process Leaves (Smart Merge)
+      // 4. Process Leaves (Authoritative Cloud Sync)
       if (leaveRes.status === 'fulfilled' && leaveRes.value.ok) {
         const leaves = await leaveRes.value.json();
         if (Array.isArray(leaves)) {
@@ -5558,16 +5557,14 @@ class DatabaseManager {
             createdAt: l.created_at
           }));
 
-          const remoteMap = new Map(remoteLeaves.map(r => [r.id, r]));
-          const localOnly = (this.data.leaves || []).filter(loc => loc.id && !remoteMap.has(loc.id));
-          this.data.leaves = [...localOnly, ...remoteLeaves];
+          this.data.leaves = remoteLeaves;
         }
       }
 
-      // 5. Process Kitchen Reports
+      // 5. Process Kitchen Reports (Authoritative Cloud Sync)
       if (krRes.status === 'fulfilled' && krRes.value.ok) {
         const krs = await krRes.value.json();
-        if (Array.isArray(krs) && krs.length > 0) {
+        if (Array.isArray(krs)) {
           this.data.kitchenReports = krs.map(kr => ({
             id: kr.id,
             kitchenId: kr.kitchen_id,
@@ -5595,7 +5592,7 @@ class DatabaseManager {
         }
       }
 
-      // 6. Process Timesheets (Smart Merge)
+      // 6. Process Timesheets (Authoritative Cloud Sync)
       if (tsRes.status === 'fulfilled' && tsRes.value.ok) {
         const tss = await tsRes.value.json();
         if (Array.isArray(tss)) {
@@ -5624,13 +5621,11 @@ class DatabaseManager {
             };
           });
 
-          const remoteMap = new Map(remoteTS.map(r => [r.id, r]));
-          const localOnly = (this.data.timesheets || []).filter(loc => loc.id && !remoteMap.has(loc.id));
-          this.data.timesheets = [...localOnly, ...remoteTS];
+          this.data.timesheets = remoteTS;
         }
       }
 
-      // 7. Process Cash Advances (Smart Merge)
+      // 7. Process Cash Advances (Authoritative Cloud Sync)
       if (caRes.status === 'fulfilled' && caRes.value.ok) {
         const cas = await caRes.value.json();
         if (Array.isArray(cas)) {
@@ -5656,9 +5651,7 @@ class DatabaseManager {
             createdAt: ca.created_at
           }));
 
-          const remoteMap = new Map(remoteCAs.map(r => [r.id, r]));
-          const localOnly = (this.data.cashAdvances || []).filter(loc => loc.id && !remoteMap.has(loc.id));
-          this.data.cashAdvances = [...localOnly, ...remoteCAs];
+          this.data.cashAdvances = remoteCAs;
         }
       }
 
