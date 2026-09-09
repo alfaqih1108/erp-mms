@@ -444,8 +444,9 @@ window.DashboardModule = {
                 ` : `
                   <div style="display: flex; flex-direction: column; gap: 10px;">
                     ${filteredIssues.map(issue => {
-                      const totalPoints = issue.points.length;
-                      const donePoints = issue.points.filter(p => (typeof p === 'object' ? p.status === 'SUDAH_SELESAI' : issue.status === 'FOLLOWED_UP')).length;
+                      const pts = Array.isArray(issue.points) ? issue.points : [];
+                      const totalPoints = pts.length;
+                      const donePoints = pts.filter(p => (typeof p === 'object' ? p.status === 'SUDAH_SELESAI' : issue.status === 'FOLLOWED_UP')).length;
 
                       return `
                         <div style="background: rgba(14, 18, 28, 0.95); border: 1px solid ${issue.status === 'FOLLOWED_UP' ? 'rgba(52, 211, 153, 0.3)' : issue.status === 'IN_PROGRESS' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(245, 158, 11, 0.3)'}; border-radius: var(--radius-sm); padding: 10px 14px;">
@@ -474,7 +475,7 @@ window.DashboardModule = {
 
                           <!-- Compact Points List -->
                           <div style="display: flex; flex-direction: column; gap: 6px;">
-                            ${issue.points.map((pt, pIdx) => {
+                            ${pts.map((pt, pIdx) => {
                               const pId = typeof pt === 'object' ? pt.id : `PT-${pIdx + 1}`;
                               const pText = typeof pt === 'object' ? pt.text : pt;
                               const pStatus = typeof pt === 'object' ? (pt.status || 'BELUM_DIRESPON') : (issue.status === 'FOLLOWED_UP' ? 'SUDAH_SELESAI' : 'BELUM_DIRESPON');

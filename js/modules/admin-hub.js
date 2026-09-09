@@ -511,9 +511,10 @@ window.AdminHubModule = {
         ` : `
           <div style="display: flex; flex-direction: column; gap: 18px;">
             ${filteredIssues.map(issue => {
-              const totalPts = issue.points.length;
-              const donePts = issue.points.filter(p => (typeof p === 'object' ? p.status === 'SUDAH_SELESAI' : issue.status === 'FOLLOWED_UP')).length;
-              const inProgressPts = issue.points.filter(p => (typeof p === 'object' && (p.status === 'SUDAH_DITANGGAPI' || p.status === 'SUDAH_DIRESPON'))).length;
+              const pts = Array.isArray(issue.points) ? issue.points : [];
+              const totalPts = pts.length;
+              const donePts = pts.filter(p => (typeof p === 'object' ? p.status === 'SUDAH_SELESAI' : issue.status === 'FOLLOWED_UP')).length;
+              const inProgressPts = pts.filter(p => (typeof p === 'object' && (p.status === 'SUDAH_DITANGGAPI' || p.status === 'SUDAH_DIRESPON'))).length;
 
               return `
                 <div class="nalar-card" style="padding: 18px 22px; background: rgba(14, 18, 28, 0.95); border: 1px solid ${issue.status === 'FOLLOWED_UP' ? 'rgba(52, 211, 153, 0.35)' : issue.status === 'IN_PROGRESS' ? 'rgba(59, 130, 246, 0.35)' : 'rgba(245, 158, 11, 0.35)'};">
@@ -552,7 +553,7 @@ window.AdminHubModule = {
 
                   <!-- Butir-Butir Kendala -->
                   <div style="display: flex; flex-direction: column; gap: 10px;">
-                    ${issue.points.map((pt, pIdx) => {
+                    ${pts.map((pt, pIdx) => {
                       const pId = typeof pt === 'object' ? pt.id : `PT-${pIdx + 1}`;
                       const pText = typeof pt === 'object' ? pt.text : pt;
                       const pStatus = typeof pt === 'object' ? (pt.status || 'BELUM_DIRESPON') : (issue.status === 'FOLLOWED_UP' ? 'SUDAH_SELESAI' : 'BELUM_DIRESPON');

@@ -518,7 +518,7 @@ window.TimesheetModule = {
 
                               <!-- Rincian Status Per Poin -->
                               <div style="display: flex; flex-direction: column; gap: 8px;">
-                                ${issue.points.map((pt, pIdx) => {
+                                ${(Array.isArray(issue.points) ? issue.points : []).map((pt, pIdx) => {
                                   const pText = typeof pt === 'object' ? pt.text : pt;
                                   const pStatus = typeof pt === 'object' ? (pt.status || 'BELUM_DIRESPON') : (issue.status === 'FOLLOWED_UP' ? 'SUDAH_SELESAI' : 'BELUM_DIRESPON');
                                   const pResponse = typeof pt === 'object' ? pt.response : issue.managerResponse;
