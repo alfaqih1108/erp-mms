@@ -5909,6 +5909,39 @@ class DatabaseManager {
     return p ? (p.attachmentUrl || '') : '';
   }
 
+  // On-demand loader data file dokumen panduan (PDF / PPT) dari Supabase
+  async fetchGuidelineDocumentFile(docId) {
+    if (!docId) return null;
+    const docs = this.getGuidelineDocuments() || [];
+    const doc = docs.find(d => d.id === docId);
+    if (doc && doc.fileData && doc.fileData.length > 50) {
+      return doc.fileData;
+    }
+
+    if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+      try {
+        const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+        const key = window.SupabaseConfig.getAnonKey();
+        const res = await fetch(`${url}/rest/v1/guideline_documents?select=id,file_data&id=eq.${encodeURIComponent(docId)}`, {
+          headers: {
+            'apikey': key,
+            'Authorization': `Bearer ${key}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0 && data[0].file_data) {
+            if (doc) doc.fileData = data[0].file_data;
+            return data[0].file_data;
+          }
+        }
+      } catch (e) {
+        console.warn('Gagal memuat berkas dokumen panduan on-demand dari Supabase:', e);
+      }
+    }
+    return doc ? (doc.fileData || null) : null;
+  }
+
   // Helper Kompresi Gambar Otomatis di Browser sebelum dikirim ke database
   async compressImageFile(file, maxWidth = 1600, maxHeight = 1600, quality = 0.75) {
     if (!file) return null;

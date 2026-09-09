@@ -2886,49 +2886,73 @@ window.HCHubModule = {
     App.showToast(`Laporan Timesheet Excel (${filter.formatScope}) berhasil didownload!`, 'success');
   },
 
-  downloadDocument: function(docId) {
+  downloadDocument: async function(docId) {
+    if (window.DashboardModule && typeof window.DashboardModule.downloadDocument === 'function') {
+      return window.DashboardModule.downloadDocument(docId);
+    }
     const doc = (DB.getGuidelineDocuments() || []).find(d => d.id === docId);
-    if (!doc) return;
-
-    let filename = doc.title || `dokumen-${doc.id}.${doc.fileType.toLowerCase()}`;
-    if (!filename.includes('.')) {
-      filename += doc.fileType === 'PDF' ? '.pdf' : '.pptx';
+    if (!doc) {
+      App.showToast('Dokumen tidak ditemukan!', 'warn');
+      return;
     }
 
-    if (doc.fileData) {
-      const a = document.createElement('a');
-      a.href = doc.fileData;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } else {
-      const sampleContent = `=======================================================\n` +
-        `ERP YAYASAN - DOKUMEN RESMI PANDUAN & SOSIALISASI\n` +
-        `=======================================================\n\n` +
-        `Judul Dokumen : ${doc.title}\n` +
-        `Format        : ${doc.fileType}\n` +
-        `Kategori      : ${doc.category}\n` +
-        `Target Role   : ${doc.targetLabel}\n` +
-        `Diterbitkan   : ${doc.uploadDate} oleh ${doc.uploadedBy}\n\n` +
-        `RINGKASAN & INSTRUKSI:\n` +
-        `${doc.description}\n\n` +
-        `=======================================================\n` +
-        `Dokumen ini diterbitkan resmi oleh Human Capital ERP YAYASAN.\n` +
-        `Status: Terverifikasi & Sah.\n`;
-
-      const blob = new Blob([sampleContent], { type: doc.fileType === 'PDF' ? 'application/pdf' : 'application/vnd.ms-powerpoint' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+    let filename = doc.title || `dokumen-${doc.id}`;
+    const ext = (doc.fileType === 'PPT' || doc.fileType === 'PPTX') ? '.pptx' : '.pdf';
+    if (!filename.toLowerCase().endsWith('.pdf') && !filename.toLowerCase().endsWith('.ppt') && !filename.toLowerCase().endsWith('.pptx') && !filename.toLowerCase().endsWith('.doc') && !filename.toLowerCase().endsWith('.docx')) {
+      filename += ext;
     }
 
-    App.showToast(`Berhasil mengunduh: "${filename}"!`, 'success');
+    App.showToast(`Mempersiapkan unduhan "${filename}"...`, 'info');
+
+    const fileData = await DB.fetchGuidelineDocumentFile(docId);
+
+    if (fileData) {
+      try {
+        if (fileData.startsWith('data:')) {
+          let mimeType = (doc.fileType === 'PPT' || doc.fileType === 'PPTX' || filename.endsWith('.pptx') || filename.endsWith('.ppt'))
+            ? (filename.endsWith('.ppt') ? 'application/vnd.ms-powerpoint' : 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
+            : 'application/pdf';
+
+          const matches = fileData.match(/^data:([^;]+);base64,(.+)$/);
+          if (matches) {
+            mimeType = matches[1] || mimeType;
+            const base64Data = matches[2];
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mimeType });
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
+            App.showToast(`Berhasil mengunduh: "${filename}"!`, 'success');
+            return;
+          }
+        } else if (fileData.startsWith('http://') || fileData.startsWith('https://')) {
+          const a = document.createElement('a');
+          a.href = fileData;
+          a.download = filename;
+          a.target = '_blank';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          App.showToast(`Berhasil mengunduh: "${filename}"!`, 'success');
+          return;
+        }
+      } catch (err) {
+        console.error('Gagal mengunduh berkas fisik:', err);
+      }
+    }
+
+    App.showToast(`Dokumen "${doc.title}" belum memiliki berkas fisik lampiran di server.`, 'warn');
   },
 
   openAddUserModal: function() {
