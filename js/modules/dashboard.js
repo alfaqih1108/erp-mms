@@ -63,7 +63,7 @@ window.DashboardModule = {
     const pendingApprovals = DB.getPendingApprovalsCount() || 0;
     const userActiveSubmissions = userPendingPrCount + userLeaves.filter(l => l.status === 'PENDING').length + userTimesheets.filter(t => t.status === 'PENDING').length;
 
-    const isSenior = hasWorkedOneYear(user.joinDate);
+    const isSenior = (typeof hasWorkedOneYear === 'function') ? hasWorkedOneYear(user.joinDate) : false;
     const displayLeaveRemaining = isSenior ? (user.remainingAnnualLeave !== undefined ? user.remainingAnnualLeave : 12) : (user.remainingPersonalLeave !== undefined ? user.remainingPersonalLeave : 3);
     const displayLeaveQuota = isSenior ? (user.quotaAnnualLeave || 12) : (user.quotaPersonalLeave || 3);
 
@@ -142,7 +142,7 @@ window.DashboardModule = {
             <div style="display: flex; align-items: center; gap: 14px;">
               <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
                 ${!isSenior ? `
-                  Status Cuti: <strong style="color: #FCD34D;">${displayLeaveRemaining} Hari Pribadi (Q3)</strong> · Masa Kerja: <strong style="color: #34D399;">${calculateTenure(user.joinDate)}</strong>
+                  Status Cuti: <strong style="color: #FCD34D;">${displayLeaveRemaining} Hari Pribadi (Q3)</strong> · Masa Kerja: <strong style="color: #34D399;">${(typeof calculateTenure === 'function') ? calculateTenure(user.joinDate) : '-'}</strong>
                 ` : `
                   Status Cuti: <strong style="color: #A78BFA;">${displayLeaveRemaining} Hari Tahunan</strong> · Jam TS Hari Ini: <strong style="color: #60A5FA;">${todayHours.toFixed(1)} Jam</strong>
                 `}

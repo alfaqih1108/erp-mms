@@ -140,6 +140,10 @@ function calculateAge(birthDateStr) {
   return `${age} Tahun`;
 }
 
+window.calculateTenure = calculateTenure;
+window.hasWorkedOneYear = hasWorkedOneYear;
+window.calculateAge = calculateAge;
+
 /// Seed Database
 const INITIAL_DATABASE = {
   currentUser: {
