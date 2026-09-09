@@ -358,7 +358,7 @@ window.CutiModule = {
             <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 14px; border-left: 3px solid #34D399;">
               <div style="font-size: 13px; font-weight: 600; color: #6EE7B7;">5. Izin Meninggalkan Pekerjaan dengan Upah Penuh (Izin Khusus)</div>
               <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.55;">
-                Pernikahan karyawan sendiri (3 hari), pernikahan anak kandung (2 hari), pengkhitanan/baptis/potong gigi anak (2 hari), istri sah melahirkan/keguguran (2 hari), duka keluarga inti meninggal dunia (2 hari), duka anggota keluarga serumah (1 hari), bencana alam (2 hari), serta ibadah keagamaan luar negeri (disesuaikan jadwal resmi).
+                Pernikahan karyawan sendiri (3 hari), pernikahan anak kandung (2 hari), pengkhitanan/baptis/potong gigi anak (2 hari), istri sah melahirkan/keguguran (2 hari), duka keluarga inti meninggal dunia (2 hari), duka anggota keluarga serumah (1 hari), musibah (sakit, kebakaran, bencana alam) (2 hari), serta ibadah keagamaan luar negeri (disesuaikan jadwal resmi).
               </div>
             </div>
 
@@ -425,7 +425,7 @@ window.CutiModule = {
                     <option value="ISTRI_LAHIRAN" data-pasal="PASAL_16" data-deduct="NONE">Istri Sah Melahirkan / Keguguran (2 Hari)</option>
                     <option value="DUKA_INTI" data-pasal="PASAL_16" data-deduct="NONE">Duka Keluarga Inti (Suami/Istri/Orang Tua/Anak Meninggal - 2 Hari)</option>
                     <option value="DUKA_SERUMAH" data-pasal="PASAL_16" data-deduct="NONE">Duka Anggota Keluarga Serumah Meninggal (1 Hari)</option>
-                    <option value="BENCANA" data-pasal="PASAL_16" data-deduct="NONE">Musibah Kebakaran / Bencana Alam (2 Hari)</option>
+                    <option value="BENCANA" data-pasal="PASAL_16" data-deduct="NONE">Musibah (Sakit, Kebakaran, Bencana Alam) (2 Hari)</option>
                     <option value="IBADAH_LUAR_NEGERI" data-pasal="PASAL_16" data-deduct="NONE">Ibadah Keagamaan Luar Negeri (Haji/Umrah/Ziarah Resmi)</option>
                   </optgroup>
                 </select>

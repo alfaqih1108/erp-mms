@@ -2941,13 +2941,13 @@ class DatabaseManager {
     const id = `KR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-0${this.getKitchenReports().length + 1}`;
     const porsiBesar = Number(report.porsiBesar) || 0;
     const porsiKecil = Number(report.porsiKecil) || 0;
-    const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (Number(report.beneficiariesCount) || 1);
+    const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (report.beneficiariesCount !== undefined ? (Number(report.beneficiariesCount) || 0) : 0);
     const rawMaterialCost = Number(report.rawMaterialCost) || 0;
     const operationalCost = Number(report.operationalCost) || 0;
     const carRentalCost = Number(report.carRentalCost) || 0;
     const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost;
 
-    const targetBudget = (porsiBesar * 10000) + (porsiKecil * 8000);
+    const targetBudget = (porsiBesar * 10000) + (pKecil * 8000);
     const costPerPortion = beneficiariesCount > 0 ? Math.round(rawMaterialCost / beneficiariesCount) : 0;
     const costPerPortionAllIn = beneficiariesCount > 0 ? Math.round(totalDailyExpense / beneficiariesCount) : 0;
     
@@ -2998,6 +2998,97 @@ class DatabaseManager {
     });
 
     return newReport;
+  }
+
+  async updateKitchenReport(reportId, updatedData) {
+    if (!this.data || !Array.isArray(this.data.kitchenReports)) return false;
+    const idx = this.data.kitchenReports.findIndex(r => r.id === reportId);
+    if (idx === -1) return false;
+
+    const existing = this.data.kitchenReports[idx];
+    const porsiBesar = updatedData.porsiBesar !== undefined ? Number(updatedData.porsiBesar) : (Number(existing.porsiBesar) || 0);
+    const porsiKecil = updatedData.porsiKecil !== undefined ? Number(updatedData.porsiKecil) : (Number(existing.porsiKecil) || 0);
+    const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (updatedData.beneficiariesCount !== undefined ? (Number(updatedData.beneficiariesCount) || 0) : (Number(existing.beneficiariesCount) || 0));
+    const rawMaterialCost = updatedData.rawMaterialCost !== undefined ? Number(updatedData.rawMaterialCost) : (Number(existing.rawMaterialCost) || 0);
+    const operationalCost = updatedData.operationalCost !== undefined ? Number(updatedData.operationalCost) : (Number(existing.operationalCost) || 0);
+    const carRentalCost = updatedData.carRentalCost !== undefined ? Number(updatedData.carRentalCost) : (Number(existing.carRentalCost) || 0);
+    const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost;
+
+    const targetBudget = (porsiBesar * 10000) + (pKecil * 8000);
+    const costPerPortion = beneficiariesCount > 0 ? Math.round(rawMaterialCost / beneficiariesCount) : 0;
+    const costPerPortionAllIn = beneficiariesCount > 0 ? Math.round(totalDailyExpense / beneficiariesCount) : 0;
+
+    const merged = {
+      ...existing,
+      ...updatedData,
+      rawMaterialCost,
+      operationalCost,
+      carRentalCost,
+      totalDailyExpense,
+      porsiBesar,
+      porsiKecil,
+      beneficiariesCount,
+      targetBudget,
+      costPerPortion,
+      costPerPortionAllIn,
+      updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+    };
+
+    this.data.kitchenReports[idx] = merged;
+    this.addLog(`${this.getCurrentUser().name} memperbarui laporan transaksi ${merged.kitchenName} (${merged.id})`, 'kitchen');
+    this.save();
+
+    await this.syncToSupabase('kitchen_reports', {
+      id: merged.id,
+      kitchen_id: merged.kitchenId || merged.targetKitchenId || 'DAPUR-01',
+      kitchen_name: merged.kitchenName,
+      date: merged.date || new Date().toISOString().slice(0, 10),
+      reporter_id: merged.reporterId || this.getCurrentUser().id,
+      reporter_name: merged.reporterName || this.getCurrentUser().name,
+      raw_material_cost: Number(merged.rawMaterialCost) || 0,
+      operational_cost: Number(merged.operationalCost) || 0,
+      car_rental_cost: Number(merged.carRentalCost) || 0,
+      total_daily_expense: Number(merged.totalDailyExpense) || 0,
+      porsi_besar: Number(merged.porsiBesar) || 0,
+      porsi_kecil: Number(merged.porsiKecil) || 0,
+      beneficiaries_count: Number(merged.beneficiariesCount) || 0,
+      target_budget: Number(merged.targetBudget) || 0,
+      cost_per_portion: Number(merged.costPerPortion) || 0,
+      cost_per_portion_all_in: Number(merged.costPerPortionAllIn) || 0,
+      spm_file_name: merged.spmFileName || null,
+      spm_attachment_url: merged.spmAttachmentUrl || null,
+      va_bank_name: merged.vaBankName || 'Bank Mandiri',
+      va_balance: Number(merged.vaBalance) || 0,
+      notes: merged.notes || ''
+    });
+
+    return merged;
+  }
+
+  async deleteKitchenReport(reportId) {
+    if (!this.data || !Array.isArray(this.data.kitchenReports)) return false;
+    const idx = this.data.kitchenReports.findIndex(r => r.id === reportId);
+    if (idx !== -1) {
+      const deleted = this.data.kitchenReports.splice(idx, 1)[0];
+      this.addLog(`${this.getCurrentUser().name} menghapus laporan transaksi dapur: ${deleted.kitchenName} (${deleted.id})`, 'kitchen');
+      this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/kitchen_reports?id=eq.${reportId}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+          console.log(`✅ [Supabase DELETE] Berhasil menghapus laporan transaksi "${reportId}" dari Supabase.`);
+        } catch (e) {
+          console.warn('Gagal menghapus kitchen report dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   // =========================================================================

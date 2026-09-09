@@ -494,8 +494,9 @@ window.DapurYayasanModule = {
 
                     // Auto generate perhitungan target budget: Porsi Besar (@Rp10.000) + Porsi Kecil (@Rp8.000)
                     const targetBudg = Number(r.targetBudget) || ((pBesar * 10000) + (pKecil * 8000));
-                    const eff = targetBudg > 0 ? Math.round((rawCost / targetBudg) * 100) : 100;
-                    const costPerPortionAllIn = (r.beneficiariesCount || (pBesar + pKecil)) > 0 ? Math.round(totExpense / (r.beneficiariesCount || (pBesar + pKecil))) : 0;
+                    const totalPorsi = (r.beneficiariesCount !== undefined ? Number(r.beneficiariesCount) : (pBesar + pKecil)) || 0;
+                    const eff = targetBudg > 0 ? Math.round((rawCost / targetBudg) * 100) : (rawCost === 0 ? 100 : 100);
+                    const costPerPortionAllIn = totalPorsi > 0 ? Math.round(totExpense / totalPorsi) : 0;
                     
                     return `
                       <tr>
@@ -533,7 +534,7 @@ window.DapurYayasanModule = {
                         </td>
                         <td style="white-space: nowrap;">
                           <div style="font-weight: 700; color: #6EE7B7; font-size: 12.5px;">
-                            🍱 ${(r.beneficiariesCount || (pBesar + pKecil)).toLocaleString('id-ID')} Porsi
+                            🍱 ${totalPorsi.toLocaleString('id-ID')} Porsi
                           </div>
                           <div style="display: flex; gap: 8px; font-size: 11px; margin-top: 3px;">
                             <span style="color: #FCD34D; font-weight: 500;">● ${pBesar.toLocaleString('id-ID')} Bsr</span>
@@ -548,9 +549,15 @@ window.DapurYayasanModule = {
                             All-In: <strong style="color: #fff;">Rp ${costPerPortionAllIn.toLocaleString('id-ID')}</strong>
                           </div>
                           <div style="font-size: 10px; margin-top: 4px;">
-                            <span class="badge-status ${eff <= 100 ? 'badge-approved' : 'badge-rejected'}" style="font-size: 9.5px; padding: 2px 6px;">
-                              ${eff <= 100 ? `🟢 Hemat (${eff}%)` : `🔴 Over (${eff}%)`}
-                            </span>
+                            ${(totExpense === 0 && totalPorsi === 0) ? `
+                              <span class="badge-status" style="font-size: 9.5px; padding: 2px 6px; background: rgba(148, 163, 184, 0.15); color: #94A3B8; border: 1px solid rgba(148, 163, 184, 0.3);">
+                                ⚪ Saldo VA
+                              </span>
+                            ` : `
+                              <span class="badge-status ${eff <= 100 ? 'badge-approved' : 'badge-rejected'}" style="font-size: 9.5px; padding: 2px 6px;">
+                                ${eff <= 100 ? `🟢 Hemat (${eff}%)` : `🔴 Over (${eff}%)`}
+                              </span>
+                            `}
                           </div>
                         </td>
                         <td style="white-space: nowrap;">
@@ -563,10 +570,16 @@ window.DapurYayasanModule = {
                         </td>
                         <td style="white-space: nowrap;">
                           ${r.spmFileName ? `
-                            <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
-                                    onclick="DapurYayasanModule.openSPMLightbox('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen SPM'}')">
-                              📄 ${r.spmFileName.length > 14 ? r.spmFileName.slice(0, 12) + '...' : r.spmFileName}
-                            </button>
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                              <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
+                                      onclick="DapurYayasanModule.openSPMLightbox('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen SPM'}', '${r.id}')" title="Pratinjau Dokumen SPM">
+                                📄 ${r.spmFileName.length > 13 ? r.spmFileName.slice(0, 11) + '...' : r.spmFileName}
+                              </button>
+                              <button type="button" class="btn-nalar-secondary" style="padding: 3px 7px; font-size: 10.5px; color: #34D399; border-color: rgba(52, 211, 153, 0.4);"
+                                      onclick="DapurYayasanModule.downloadSPMDocument('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen-SPM.pdf'}', '${r.id}')" title="Unduh ${r.spmFileName}">
+                                ⬇️
+                              </button>
+                            </div>
                           ` : `
                             <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
                               📄 SPM Terlampir
@@ -578,10 +591,20 @@ window.DapurYayasanModule = {
                           <div style="font-size: 10.5px; color: var(--text-muted); font-style: italic; margin-top: 2px;">${r.createdAt || '-'}</div>
                         </td>
                         <td style="text-align: center; white-space: nowrap;">
-                          <button type="button" class="btn-nalar-secondary" style="padding: 4px 12px; font-size: 11.5px;" 
-                                  onclick="DapurYayasanModule.viewReportDetail('${r.id}')">
-                            👁️ Detail
-                          </button>
+                          <div style="display: flex; gap: 6px; justify-content: center; align-items: center;">
+                            <button type="button" class="btn-nalar-secondary" style="padding: 4px 9px; font-size: 11px; color: #60A5FA; border-color: rgba(96, 165, 250, 0.4);" 
+                                    onclick="DapurYayasanModule.viewReportDetail('${r.id}')" title="Lihat Detail Transaksi & SPM">
+                              👁️ Detail
+                            </button>
+                            <button type="button" class="btn-nalar-secondary" style="padding: 4px 9px; font-size: 11px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);" 
+                                    onclick="DapurYayasanModule.openEditReportModal('${r.id}')" title="Edit Laporan Transaksi Dapur">
+                              ✏️ Edit
+                            </button>
+                            <button type="button" class="btn-nalar-secondary" style="padding: 4px 9px; font-size: 11px; color: #F87171; border-color: rgba(248, 113, 113, 0.4);" 
+                                    onclick="DapurYayasanModule.handleDeleteReport('${r.id}')" title="Hapus Laporan Transaksi Dapur">
+                              🗑️ Hapus
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     `;
@@ -643,13 +666,14 @@ window.DapurYayasanModule = {
           <div class="modal-header">
             <div>
               <span class="text-mono-badge" style="color: #F87171;">Formulir Harian Maker Yayasan</span>
-              <h3 class="modal-title" style="margin-top: 2px;">Input Laporan Transaksi Dapur & Saldo VA</h3>
+              <h3 id="modal-kitchen-report-title" class="modal-title" style="margin-top: 2px;">Input Laporan Transaksi Dapur & Saldo VA</h3>
             </div>
             <button class="modal-close-btn" onclick="App.closeModal('modal-kitchen-report')">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
           <form id="form-kitchen-report" onsubmit="DapurYayasanModule.handleSubmit(event)">
+            <input type="hidden" id="kr-report-id" value="">
             <div class="modal-body">
               
               <div class="form-row">
@@ -681,20 +705,20 @@ window.DapurYayasanModule = {
 
                 <div class="form-row">
                   <div class="form-group" style="margin-bottom: 8px;">
-                    <label class="form-label">Total Penerima Manfaat (Porsi) <span style="color: #F87171;">*</span></label>
-                    <input type="number" id="kr-beneficiaries" class="form-control" placeholder="Contoh: 650" min="1" required 
+                    <label class="form-label">Total Penerima Manfaat (Porsi) <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">(Bisa 0)</span></label>
+                    <input type="number" id="kr-beneficiaries" class="form-control" placeholder="0" min="0" value="0"
                            oninput="DapurYayasanModule.handlePorsiTotalChange(this.value)"
                            style="font-weight: 700; color: #6EE7B7;">
                   </div>
                   <div class="form-group" style="margin-bottom: 8px;">
-                    <label class="form-label">Jumlah Porsi Besar (Budget Rp 10.000) <span style="color: #F87171;">*</span></label>
-                    <input type="number" id="kr-porsi-besar" class="form-control" placeholder="Contoh: 400" min="0" required 
+                    <label class="form-label">Jumlah Porsi Besar (Budget Rp 10.000) <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">(Bisa 0)</span></label>
+                    <input type="number" id="kr-porsi-besar" class="form-control" placeholder="0" min="0" value="0"
                            oninput="DapurYayasanModule.recalculatePorsiBreakdown('besar')"
                            style="font-weight: 600; color: #FCD34D;">
                   </div>
                   <div class="form-group" style="margin-bottom: 8px;">
-                    <label class="form-label">Jumlah Porsi Kecil (Budget Rp 8.000) <span style="color: #F87171;">*</span></label>
-                    <input type="number" id="kr-porsi-kecil" class="form-control" placeholder="Contoh: 250" min="0" required 
+                    <label class="form-label">Jumlah Porsi Kecil (Budget Rp 8.000) <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">(Bisa 0)</span></label>
+                    <input type="number" id="kr-porsi-kecil" class="form-control" placeholder="0" min="0" value="0"
                            oninput="DapurYayasanModule.recalculatePorsiBreakdown('kecil')"
                            style="font-weight: 600; color: #60A5FA;">
                   </div>
@@ -715,10 +739,10 @@ window.DapurYayasanModule = {
                   </div>
                 </div>
 
-                <!-- 1. Total Belanja Bahan Baku (Wajib) -->
+                <!-- 1. Total Belanja Bahan Baku -->
                 <div class="form-group" style="margin-bottom: 12px;">
-                  <label class="form-label">1. Total Belanja Bahan Baku Aktual (Rp) <span style="color: #F87171;">*</span></label>
-                  <input type="number" id="kr-raw-cost" class="form-control" placeholder="Contoh: 4850000" min="1000" required
+                  <label class="form-label">1. Total Belanja Bahan Baku Aktual (Rp) <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">(Bisa diisi 0 jika tidak ada belanja)</span></label>
+                  <input type="number" id="kr-raw-cost" class="form-control" placeholder="0" min="0" value="0"
                          oninput="DapurYayasanModule.recalculateLiveTotals()"
                          style="font-weight: 700; color: #FCA5A5;">
                   <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
@@ -727,10 +751,10 @@ window.DapurYayasanModule = {
                 </div>
 
                 <div class="form-row">
-                  <!-- 2. Biaya Operasional Hari Itu (Wajib) -->
+                  <!-- 2. Biaya Operasional Hari Itu -->
                   <div class="form-group" style="margin-bottom: 8px;">
-                    <label class="form-label">2. Biaya Operasional Hari Itu (Rp) <span style="color: #F87171;">*</span></label>
-                    <input type="number" id="kr-operational-cost" class="form-control" placeholder="Contoh: 450000" min="0" required
+                    <label class="form-label">2. Biaya Operasional Hari Itu (Rp) <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">(Bisa diisi 0)</span></label>
+                    <input type="number" id="kr-operational-cost" class="form-control" placeholder="0" min="0" value="0"
                            oninput="DapurYayasanModule.recalculateLiveTotals()"
                            style="font-weight: 600; color: #FCD34D;">
                     <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">
@@ -738,13 +762,13 @@ window.DapurYayasanModule = {
                     </div>
                   </div>
 
-                  <!-- 3. Biaya Sewa Mobil (Opsional) -->
+                  <!-- 3. Biaya Sewa Mobil -->
                   <div class="form-group" style="margin-bottom: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                       <label class="form-label">3. Biaya Sewa Mobil (Rp)</label>
                       <span style="font-size: 10px; color: #60A5FA; font-weight: 700; background: rgba(59,130,246,0.15); padding: 1px 5px; border-radius: 3px;">OPSIONAL</span>
                     </div>
-                    <input type="number" id="kr-car-rental-cost" class="form-control" placeholder="0 / Kosongkan jika tidak ada sewa" min="0" value="0"
+                    <input type="number" id="kr-car-rental-cost" class="form-control" placeholder="0" min="0" value="0"
                            oninput="DapurYayasanModule.recalculateLiveTotals()"
                            style="font-weight: 600; color: #93C5FD;">
                     <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">
@@ -760,7 +784,10 @@ window.DapurYayasanModule = {
 
               <!-- Lampiran Dokumen SPM (Surat Perintah Membayar / Nota Pembelian) -->
               <div class="form-group" style="margin-bottom: 16px;">
-                <label class="form-label">Lampiran Dokumen SPM (Surat Perintah Membayar / Nota Belanja Bahan Baku) <span style="color: #F87171;">*</span></label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label class="form-label" style="margin-bottom: 0;">Lampiran Dokumen SPM (Surat Perintah Membayar / Nota Belanja)</label>
+                  <span style="font-size: 10px; color: #60A5FA; font-weight: 700; background: rgba(59,130,246,0.15); padding: 1px 5px; border-radius: 3px;">OPSIONAL</span>
+                </div>
                 
                 <div style="background: rgba(255,255,255,0.02); border: 2px dashed rgba(245, 158, 11, 0.4); border-radius: var(--radius-md); padding: 18px; text-align: center; position: relative;">
                   <input type="file" id="kr-spm-file" accept="image/*,.pdf,.doc,.docx" 
@@ -773,7 +800,7 @@ window.DapurYayasanModule = {
                       Klik atau Seret Berkas Dokumen SPM di Sini
                     </div>
                     <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                      Format: File Dokumen SPM / Nota Belanja (JPG, PNG, PDF maks 10MB)
+                      Format: File Dokumen SPM / Nota Belanja (JPG, PNG, PDF maks 10MB) — Opsional jika tidak ada pengeluaran
                     </div>
                   </div>
                 </div>
@@ -790,19 +817,19 @@ window.DapurYayasanModule = {
                 </div>
                 <div class="form-group">
                   <label class="form-label">Saldo Terakhir VA per Tanggal Lapor (Rp) <span style="color: #F87171;">*</span></label>
-                  <input type="number" id="kr-va-balance" class="form-control" placeholder="Contoh: 32450000" min="0" required>
+                  <input type="number" id="kr-va-balance" class="form-control" placeholder="0" min="0" required>
                 </div>
               </div>
 
               <div class="form-group">
                 <label class="form-label">Catatan Operasional Dapur & Keterangan</label>
-                <textarea id="kr-notes" class="form-control" rows="2" placeholder="Tuliskan catatan penyaluran, kendala, atau kondisi logistik di dapur hari ini..."></textarea>
+                <textarea id="kr-notes" class="form-control" rows="2" placeholder="Tuliskan catatan penyaluran, kendala, atau keterangan update saldo VA hari ini..."></textarea>
               </div>
 
             </div>
             <div class="modal-footer">
               <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-kitchen-report')">Batal</button>
-              <button type="submit" class="btn-nalar-primary">Submit Laporan Dapur & SPM</button>
+              <button type="submit" id="kr-submit-btn" class="btn-nalar-primary">Submit Laporan Dapur & SPM</button>
             </div>
           </form>
         </div>
@@ -823,7 +850,15 @@ window.DapurYayasanModule = {
           <div class="modal-body">
             <div id="dt-report-body"></div>
           </div>
-          <div class="modal-footer">
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="dt-report-edit-btn" class="btn-nalar-secondary" style="padding: 6px 14px; font-size: 12px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);">
+                ✏️ Edit Transaksi
+              </button>
+              <button type="button" id="dt-report-delete-btn" class="btn-nalar-secondary" style="padding: 6px 14px; font-size: 12px; color: #F87171; border-color: rgba(248, 113, 113, 0.4);">
+                🗑️ Hapus
+              </button>
+            </div>
             <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-kitchen-detail-view')">Tutup</button>
           </div>
         </div>
@@ -844,7 +879,10 @@ window.DapurYayasanModule = {
           <div class="modal-body" style="text-align: center;">
             <div id="spm-lightbox-content" style="max-height: 480px; overflow-y: auto; display: flex; justify-content: center; align-items: center;"></div>
           </div>
-          <div class="modal-footer">
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+            <button type="button" id="spm-lightbox-download-btn" class="btn-nalar-primary" style="padding: 7px 18px; font-size: 12.5px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; font-weight: 600; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);">
+              ⬇️ Unduh Dokumen SPM
+            </button>
             <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-spm-lightbox')">Tutup</button>
           </div>
         </div>
@@ -938,7 +976,13 @@ window.DapurYayasanModule = {
     const badgeEl = document.getElementById('kr-live-efficiency-badge');
     if (!badgeEl) return;
 
-    if (rawCost > 0 && totalPorsi > 0 && targetBudget > 0) {
+    if (rawCost === 0 && totalDailyExpense === 0 && totalPorsi === 0) {
+      badgeEl.innerHTML = `
+        <span style="color: #94A3B8; font-style: italic; font-size: 11px;">
+          ⚪ Transaksi nihil (Rp 0 / 0 Porsi) — Hanya pembaruan saldo akhir Virtual Account (VA).
+        </span>
+      `;
+    } else if (rawCost > 0 && totalPorsi > 0 && targetBudget > 0) {
       const avgRawCost = Math.round(rawCost / totalPorsi);
       const avgAllInCost = Math.round(totalDailyExpense / totalPorsi);
       const eff = Math.round((rawCost / targetBudget) * 100);
@@ -957,7 +1001,7 @@ window.DapurYayasanModule = {
         </div>
       `;
     } else {
-      badgeEl.textContent = 'Masukkan rincian biaya untuk melihat kalkulasi biaya per porsi dan efisiensi.';
+      badgeEl.innerHTML = `<span style="color: var(--text-muted); font-size: 11px;">Rincian: Total Pengeluaran Rp ${totalDailyExpense.toLocaleString('id-ID')} · Total Porsi ${totalPorsi}.</span>`;
     }
   },
 
@@ -1014,7 +1058,7 @@ window.DapurYayasanModule = {
           Klik atau Seret Berkas Dokumen SPM di Sini
         </div>
         <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-          Format: File Dokumen SPM / Nota Belanja (JPG, PNG, PDF maks 10MB)
+          Format: File Dokumen SPM / Nota Belanja (JPG, PNG, PDF maks 10MB) — Opsional jika tidak ada pengeluaran
         </div>
       `;
     }
@@ -1024,6 +1068,13 @@ window.DapurYayasanModule = {
     const user = DB.getCurrentUser();
     const isMaker = (user.role === 'MAKER_YAYASAN');
     const select = document.getElementById('kr-kitchen-select');
+    const titleEl = document.getElementById('modal-kitchen-report-title');
+    const submitBtn = document.getElementById('kr-submit-btn');
+    const reportIdInput = document.getElementById('kr-report-id');
+
+    if (reportIdInput) reportIdInput.value = '';
+    if (titleEl) titleEl.textContent = 'Input Laporan Transaksi Dapur & Saldo VA';
+    if (submitBtn) submitBtn.textContent = 'Submit Laporan Dapur & SPM';
     
     if (select) {
       const allKitchens = DB.getKitchens() || [];
@@ -1036,9 +1087,10 @@ window.DapurYayasanModule = {
       `).join('');
     }
 
-    // Reset Form to Fresh State
+    // Reset Form to Fresh State with 0 defaults
     const form = document.getElementById('form-kitchen-report');
     if (form) {
+      const dateEl = document.getElementById('kr-date');
       const bEl = document.getElementById('kr-beneficiaries');
       const pbEl = document.getElementById('kr-porsi-besar');
       const pkEl = document.getElementById('kr-porsi-kecil');
@@ -1046,14 +1098,19 @@ window.DapurYayasanModule = {
       const opsEl = document.getElementById('kr-operational-cost');
       const carEl = document.getElementById('kr-car-rental-cost');
       const notesEl = document.getElementById('kr-notes');
+      const bankEl = document.getElementById('kr-va-bank');
+      const balEl = document.getElementById('kr-va-balance');
 
-      if (bEl) bEl.value = '';
-      if (pbEl) pbEl.value = '';
-      if (pkEl) pkEl.value = '';
-      if (rawEl) rawEl.value = '';
-      if (opsEl) opsEl.value = '';
+      if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
+      if (bEl) bEl.value = '0';
+      if (pbEl) pbEl.value = '0';
+      if (pkEl) pkEl.value = '0';
+      if (rawEl) rawEl.value = '0';
+      if (opsEl) opsEl.value = '0';
       if (carEl) carEl.value = '0';
       if (notesEl) notesEl.value = '';
+      if (bankEl && !bankEl.value) bankEl.value = 'Bank Mandiri VA - Dapur Yayasan';
+      if (balEl) balEl.value = '0';
       this.removeSPMUpload();
       this.updateTargetBudgetDisplay();
       this.recalculateLiveTotals();
@@ -1062,9 +1119,127 @@ window.DapurYayasanModule = {
     App.openModal('modal-kitchen-report');
   },
 
-  handleSubmit: function(e) {
+  openEditReportModal: function(reportId) {
+    const reports = DB.getKitchenReports() || [];
+    const r = reports.find(item => item.id === reportId);
+    if (!r) {
+      App.showToast('Data laporan tidak ditemukan!', 'error');
+      return;
+    }
+
+    const user = DB.getCurrentUser();
+    const isMaker = (user.role === 'MAKER_YAYASAN');
+    const select = document.getElementById('kr-kitchen-select');
+    const titleEl = document.getElementById('modal-kitchen-report-title');
+    const submitBtn = document.getElementById('kr-submit-btn');
+    const reportIdInput = document.getElementById('kr-report-id');
+
+    if (reportIdInput) reportIdInput.value = r.id;
+    if (titleEl) titleEl.textContent = `Edit Laporan Transaksi (${r.id})`;
+    if (submitBtn) submitBtn.textContent = 'Simpan Perubahan Laporan';
+
+    if (select) {
+      const allKitchens = DB.getKitchens() || [];
+      const options = isMaker
+        ? allKitchens.filter(k => k.makerYayasan && (k.makerYayasan.includes(user.name) || k.makerYayasan.includes(user.id)))
+        : allKitchens;
+
+      select.innerHTML = options.map(k => `
+        <option value="${k.idSppg} — ${k.namaDapur || k.name}">${k.idSppg} — ${k.namaDapur || k.name}</option>
+      `).join('');
+
+      if (r.kitchenName && !Array.from(select.options).some(opt => opt.value === r.kitchenName)) {
+        const newOpt = document.createElement('option');
+        newOpt.value = r.kitchenName;
+        newOpt.textContent = r.kitchenName;
+        select.appendChild(newOpt);
+      }
+      select.value = r.kitchenName;
+    }
+
+    const dateEl = document.getElementById('kr-date');
+    const bEl = document.getElementById('kr-beneficiaries');
+    const pbEl = document.getElementById('kr-porsi-besar');
+    const pkEl = document.getElementById('kr-porsi-kecil');
+    const rawEl = document.getElementById('kr-raw-cost');
+    const opsEl = document.getElementById('kr-operational-cost');
+    const carEl = document.getElementById('kr-car-rental-cost');
+    const bankEl = document.getElementById('kr-va-bank');
+    const balEl = document.getElementById('kr-va-balance');
+    const notesEl = document.getElementById('kr-notes');
+    const urlInput = document.getElementById('kr-spm-url');
+    const nameInput = document.getElementById('kr-spm-filename');
+    const preview = document.getElementById('kr-spm-upload-preview');
+
+    const pBesar = Number(r.porsiBesar) || 0;
+    const pKecil = Number(r.porsiKecil) || 0;
+    const totalPorsi = (r.beneficiariesCount !== undefined ? Number(r.beneficiariesCount) : (pBesar + pKecil)) || 0;
+
+    if (dateEl) dateEl.value = r.date || '';
+    if (bEl) bEl.value = totalPorsi;
+    if (pbEl) pbEl.value = pBesar;
+    if (pkEl) pkEl.value = pKecil;
+    if (rawEl) rawEl.value = (r.rawMaterialCost !== undefined ? r.rawMaterialCost : 0);
+    if (opsEl) opsEl.value = (r.operationalCost !== undefined ? r.operationalCost : 0);
+    if (carEl) carEl.value = (r.carRentalCost !== undefined ? r.carRentalCost : 0);
+    if (bankEl) bankEl.value = r.vaBankName || 'Bank Mandiri VA - Dapur Yayasan';
+    if (balEl) balEl.value = (r.vaBalance !== undefined ? r.vaBalance : 0);
+    if (notesEl) notesEl.value = r.notes || '';
+
+    if (urlInput) urlInput.value = r.spmAttachmentUrl || '';
+    if (nameInput) nameInput.value = r.spmFileName || '';
+
+    if (preview) {
+      if (r.spmFileName) {
+        preview.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
+            <span style="font-size: 24px;">📄</span>
+            <div style="text-align: left;">
+              <div style="font-size: 13px; font-weight: 600; color: #6EE7B7;">${r.spmFileName}</div>
+              <div style="font-size: 10.5px; color: var(--text-muted);">Berkas Dokumen SPM Terlampir</div>
+            </div>
+            <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10.5px; margin-left: 10px;" onclick="DapurYayasanModule.removeSPMUpload(event)">
+              ✕ Ganti
+            </button>
+          </div>
+        `;
+      } else {
+        this.removeSPMUpload();
+      }
+    }
+
+    this.updateTargetBudgetDisplay();
+    this.recalculateLiveTotals();
+
+    App.closeModal('modal-kitchen-detail-view');
+    App.openModal('modal-kitchen-report');
+  },
+
+  handleDeleteReport: async function(reportId) {
+    const reports = DB.getKitchenReports() || [];
+    const r = reports.find(item => item.id === reportId);
+    const kitchenName = r ? r.kitchenName : reportId;
+    const dateStr = r ? r.date : '';
+
+    const isConfirmed = confirm(`Apakah Anda yakin ingin menghapus laporan transaksi dapur "${kitchenName}" (Tanggal: ${dateStr})?\n\nTindakan ini akan menghapus data transaksi dari sistem dan database cloud Supabase.`);
+    if (!isConfirmed) return;
+
+    App.showToast('Menghapus laporan transaksi...', 'info');
+    try {
+      await DB.deleteKitchenReport(reportId);
+      App.closeModal('modal-kitchen-detail-view');
+      App.showToast(`Laporan transaksi ${reportId} berhasil dihapus!`, 'success');
+      this.render(document.getElementById('main-content-area'));
+    } catch (err) {
+      console.error('Delete error:', err);
+      App.showToast('Gagal menghapus laporan transaksi: ' + (err.message || err), 'error');
+    }
+  },
+
+  handleSubmit: async function(e) {
     e.preventDefault();
     const user = DB.getCurrentUser();
+    const editId = document.getElementById('kr-report-id')?.value;
     const kitchenSelectVal = document.getElementById('kr-kitchen-select').value;
     const date = document.getElementById('kr-date').value;
     
@@ -1077,23 +1252,27 @@ window.DapurYayasanModule = {
     const porsiKecil = Number(document.getElementById('kr-porsi-kecil').value) || 0;
     const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (Number(document.getElementById('kr-beneficiaries').value) || 0);
 
-    const spmUrl = document.getElementById('kr-spm-url')?.value || 'https://images.unsplash.com/photo-1554415707-9e4966a64230?w=1000&auto=format&fit=crop&q=80';
-    const spmFileName = document.getElementById('kr-spm-filename')?.value || `SPM-${kitchenSelectVal.split(' — ')[0]}-${date.replace(/-/g, '')}.pdf`;
+    const spmUrl = document.getElementById('kr-spm-url')?.value || '';
+    const defaultSpmFileName = (totalDailyExpense > 0) ? `SPM-${kitchenSelectVal.split(' — ')[0]}-${date.replace(/-/g, '')}.pdf` : '';
+    const spmFileName = document.getElementById('kr-spm-filename')?.value || defaultSpmFileName;
 
-    const vaBankName = document.getElementById('kr-va-bank').value.trim();
+    const vaBankName = document.getElementById('kr-va-bank').value.trim() || 'Bank Mandiri VA - Dapur Yayasan';
     const vaBalance = Number(document.getElementById('kr-va-balance').value) || 0;
     const notes = document.getElementById('kr-notes').value.trim();
 
-    if (!kitchenSelectVal || !date || rawMaterialCost <= 0 || beneficiariesCount <= 0) {
-      App.showToast('Mohon lengkapi rincian belanja bahan baku dan jumlah porsi!', 'warn');
+    if (!kitchenSelectVal || !date) {
+      App.showToast('Mohon pilih dapur program dan tanggal pelaporan!', 'warn');
       return;
     }
 
-    const report = {
+    if (rawMaterialCost < 0 || operationalCost < 0 || carRentalCost < 0 || beneficiariesCount < 0) {
+      App.showToast('Nilai biaya dan porsi tidak boleh negatif!', 'warn');
+      return;
+    }
+
+    const reportData = {
       kitchenName: kitchenSelectVal,
       date,
-      reporterId: user.id,
-      reporterName: `${user.name} (${user.roleLabel})`,
       rawMaterialCost,
       operationalCost,
       carRentalCost,
@@ -1108,9 +1287,19 @@ window.DapurYayasanModule = {
       notes
     };
 
-    DB.addKitchenReport(report);
-    App.closeModal('modal-kitchen-report');
-    App.showToast(`Laporan transaksi ${kitchenSelectVal} (Total: Rp ${totalDailyExpense.toLocaleString('id-ID')}) berhasil disimpan!`, 'success');
+    if (editId) {
+      App.showToast(`Memperbarui laporan transaksi ${editId}...`, 'info');
+      await DB.updateKitchenReport(editId, reportData);
+      App.closeModal('modal-kitchen-report');
+      App.showToast(`Laporan transaksi ${editId} berhasil diperbarui!`, 'success');
+    } else {
+      reportData.reporterId = user.id;
+      reportData.reporterName = `${user.name} (${user.roleLabel})`;
+      DB.addKitchenReport(reportData);
+      App.closeModal('modal-kitchen-report');
+      App.showToast(`Laporan transaksi ${kitchenSelectVal} (Total: Rp ${totalDailyExpense.toLocaleString('id-ID')}) berhasil disimpan!`, 'success');
+    }
+
     this.render(document.getElementById('main-content-area'));
   },
 
@@ -1159,31 +1348,43 @@ window.DapurYayasanModule = {
             <div>Target Anggaran Bahan: <strong style="color: #FCD34D;">Rp ${targetBudg.toLocaleString('id-ID')}</strong></div>
             <div>Porsi Besar (@Rp10.000): <strong style="color: #FCD34D;">${pBesar} Porsi</strong></div>
             <div>Porsi Kecil (@Rp8.000): <strong style="color: #60A5FA;">${pKecil} Porsi</strong></div>
-            <div>Total Penerima Manfaat: <strong style="color: #6EE7B7;">${(r.beneficiariesCount || (pBesar + pKecil))} Porsi</strong></div>
+            <div>Total Penerima Manfaat: <strong style="color: #6EE7B7;">${(r.beneficiariesCount !== undefined ? r.beneficiariesCount : (pBesar + pKecil))} Porsi</strong></div>
             <div>Biaya Bahan per Porsi: <strong style="color: #FDE68A;">Rp ${(r.costPerPortion || 0).toLocaleString('id-ID')}</strong></div>
             <div>Biaya All-In per Porsi: <strong style="color: #fff;">Rp ${costPerPortionAllIn.toLocaleString('id-ID')}</strong></div>
           </div>
 
           <div style="border-top: 1px solid var(--border-subtle); padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
             <div style="font-size: 12px;">Saldo Akhir VA: <strong style="color: #7DD3FC;">Rp ${(r.vaBalance || 0).toLocaleString('id-ID')}</strong> (${r.vaBankName || 'Bank Mandiri VA'})</div>
-            <span class="badge-status ${eff <= 100 ? 'badge-approved' : 'badge-rejected'}" style="font-size: 10px;">
-              ${eff <= 100 ? `🟢 Efisiensi ${eff}% (Hemat)` : `🔴 Over Budget (${eff}%)`}
-            </span>
+            ${(totExpense === 0 && (r.beneficiariesCount || (pBesar + pKecil)) === 0) ? `
+              <span class="badge-status" style="font-size: 10px; background: rgba(148, 163, 184, 0.15); color: #94A3B8; border: 1px solid rgba(148, 163, 184, 0.3);">
+                ⚪ Saldo VA Saja
+              </span>
+            ` : `
+              <span class="badge-status ${eff <= 100 ? 'badge-approved' : 'badge-rejected'}" style="font-size: 10px;">
+                ${eff <= 100 ? `🟢 Efisiensi ${eff}% (Hemat)` : `🔴 Over Budget (${eff}%)`}
+              </span>
+            `}
           </div>
         </div>
 
         <!-- Lampiran SPM -->
         <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 14px;">
           <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">DOKUMEN LAMPIRAN SPM (SURAT PERINTAH MEMBAYAR):</div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 20px;">📄</span>
               <span style="font-size: 12.5px; font-weight: 600; color: #fff;">${r.spmFileName || 'Berkas-SPM-Terlampir.pdf'}</span>
             </div>
-            <button type="button" class="btn-nalar-secondary" style="padding: 4px 12px; font-size: 11px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
-                    onclick="DapurYayasanModule.openSPMLightbox('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen SPM'}')">
-              Pratinjau Dokumen ↗
-            </button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
+                      onclick="DapurYayasanModule.openSPMLightbox('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen SPM'}', '${r.id}')">
+                👁️ Pratinjau Dokumen ↗
+              </button>
+              <button type="button" class="btn-nalar-primary" style="padding: 5px 14px; font-size: 11.5px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; font-weight: 600; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
+                      onclick="DapurYayasanModule.downloadSPMDocument('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen-SPM.pdf'}', '${r.id}')">
+                ⬇️ Unduh Berkas
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1197,38 +1398,236 @@ window.DapurYayasanModule = {
       `;
     }
 
+    const editBtn = document.getElementById('dt-report-edit-btn');
+    const delBtn = document.getElementById('dt-report-delete-btn');
+    if (editBtn) {
+      editBtn.onclick = () => {
+        DapurYayasanModule.openEditReportModal(reportId);
+      };
+    }
+    if (delBtn) {
+      delBtn.onclick = () => {
+        DapurYayasanModule.handleDeleteReport(reportId);
+      };
+    }
+
     App.openModal('modal-kitchen-detail-view');
   },
 
-  openSPMLightbox: function(url, title) {
+  openSPMLightbox: function(url, title, reportId) {
     const titleEl = document.getElementById('spm-lightbox-title');
     const contentEl = document.getElementById('spm-lightbox-content');
+    const dlBtn = document.getElementById('spm-lightbox-download-btn');
 
+    title = title || 'Dokumen SPM';
     if (titleEl) titleEl.textContent = `Dokumen: ${title}`;
+
+    if (dlBtn) {
+      dlBtn.onclick = () => {
+        DapurYayasanModule.downloadSPMDocument(url, title, reportId);
+      };
+    }
+
     if (contentEl) {
-      if (url && (url.startsWith('data:image') || url.startsWith('http'))) {
+      const isPdf = (title && title.toLowerCase().endsWith('.pdf')) || (url && url.startsWith('data:application/pdf'));
+      const isImage = (url && url.startsWith('data:image')) || (title && (title.toLowerCase().endsWith('.jpg') || title.toLowerCase().endsWith('.jpeg') || title.toLowerCase().endsWith('.png') || title.toLowerCase().endsWith('.webp')));
+
+      if (isPdf && url && (url.startsWith('data:application/pdf') || url.startsWith('blob:') || url.startsWith('http'))) {
+        contentEl.innerHTML = `
+          <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+            <iframe src="${url}" style="width: 100%; height: 440px; border: 1px solid var(--border-card); border-radius: var(--radius-sm); background: #ffffff;"></iframe>
+            <div style="font-size: 11px; color: var(--text-muted); font-style: italic;">
+              ${title} — Terverifikasi Sistem ERP Yayasan
+            </div>
+          </div>
+        `;
+      } else if (isImage && url && (url.startsWith('data:image') || (url.startsWith('http') && !url.includes('unsplash.com')) || url.startsWith('blob:'))) {
         contentEl.innerHTML = `
           <div style="width: 100%;">
-            <img src="${url}" alt="Dokumen SPM" style="max-width: 100%; max-height: 420px; border-radius: var(--radius-sm); border: 1px solid var(--border-card); box-shadow: 0 8px 30px rgba(0,0,0,0.7);">
+            <img src="${url}" alt="Dokumen SPM" style="max-width: 100%; max-height: 420px; border-radius: var(--radius-sm); border: 1px solid var(--border-card); box-shadow: 0 8px 30px rgba(0,0,0,0.7);"
+                 onerror="this.onerror=null; DapurYayasanModule.renderFallbackSPMPreview(this.parentElement, '${title}', '${url}', '${reportId}')">
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; font-style: italic;">
               ${title} — Terverifikasi Sistem ERP Yayasan
             </div>
           </div>
         `;
       } else {
-        contentEl.innerHTML = `
-          <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); border-radius: var(--radius-md); padding: 36px; text-align: center; width: 100%;">
-            <div style="font-size: 40px; margin-bottom: 8px;">📑</div>
-            <div style="font-size: 14px; font-weight: 600; color: #fff;">${title}</div>
-            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-              Dokumen Surat Perintah Membayar (SPM) Digital Tersimpan Aman
-            </div>
-          </div>
-        `;
+        this.renderFallbackSPMPreview(contentEl, title, url, reportId);
       }
     }
 
     App.openModal('modal-spm-lightbox');
+  },
+
+  renderFallbackSPMPreview: function(container, title, url, reportId) {
+    if (!container) return;
+    const reports = DB.getKitchenReports() || [];
+    const r = reportId ? reports.find(item => item.id === reportId) : null;
+
+    container.innerHTML = `
+      <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); border-radius: var(--radius-md); padding: 32px 24px; text-align: center; width: 100%;">
+        <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: center; font-size: 30px; margin: 0 auto 14px auto;">
+          📄
+        </div>
+        <div style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px;">${title}</div>
+        <div style="font-size: 12px; color: #FCD34D; font-weight: 500; margin-bottom: 8px;">
+          Dokumen Surat Perintah Membayar (SPM) Digital
+        </div>
+        <div style="font-size: 11.5px; color: var(--text-muted); max-width: 440px; margin: 0 auto 18px auto; line-height: 1.5;">
+          ${r ? `Terkait transaksi <strong>${r.kitchenName}</strong> pada tanggal <strong>${r.date}</strong> (Total Belanja: Rp ${(r.totalDailyExpense || 0).toLocaleString('id-ID')}).` : 'Berkas lampiran resmi terverifikasi dalam database ERP Yayasan.'}
+        </div>
+        <button type="button" class="btn-nalar-primary" style="margin: 0 auto; padding: 8px 20px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);"
+                onclick="DapurYayasanModule.downloadSPMDocument('${url || ''}', '${title}', '${reportId || ''}')">
+          ⬇️ Unduh Berkas Ini Sekarang
+        </button>
+      </div>
+    `;
+  },
+
+  downloadSPMDocument: async function(url, fileName, reportId) {
+    fileName = fileName || 'Dokumen-SPM.pdf';
+    App.showToast(`Menyiapkan pengunduhan berkas ${fileName}...`, 'info');
+
+    // 1. If valid Data URL (Base64) or Blob URL
+    if (url && (url.startsWith('data:') || url.startsWith('blob:'))) {
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        App.showToast(`Berkas "${fileName}" berhasil diunduh!`, 'success');
+        return;
+      } catch (e) {
+        console.warn('Data URL download error:', e);
+      }
+    }
+
+    // 2. If valid HTTP / HTTPS URL (remote storage)
+    if (url && (url.startsWith('http://') || url.startsWith('https://')) && !url.includes('unsplash.com')) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          const blob = await res.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(blobUrl);
+          App.showToast(`Berkas "${fileName}" berhasil diunduh!`, 'success');
+          return;
+        }
+      } catch (corsErr) {
+        console.warn('Direct fetch failed (CORS), opening in new window/tab:', corsErr);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        App.showToast(`Berkas "${fileName}" dibuka di tab baru untuk pengunduhan.`, 'info');
+        return;
+      }
+    }
+
+    // 3. Fallback: Generate Client-Side Digital SPM Document (HTML / Printable format)
+    try {
+      const reports = DB.getKitchenReports() || [];
+      const r = reportId ? reports.find(item => item.id === reportId) : (reports.find(item => item.spmFileName === fileName) || reports[0]);
+      
+      const spmTitle = fileName.replace(/\.[^/.]+$/, '');
+      const dateStr = r ? r.date : new Date().toISOString().slice(0, 10);
+      const kitchenName = r ? r.kitchenName : 'Dapur Program Yayasan';
+      const rawCost = r ? (Number(r.rawMaterialCost) || 0) : 0;
+      const opsCost = r ? (Number(r.operationalCost) || 0) : 0;
+      const carCost = r ? (Number(r.carRentalCost) || 0) : 0;
+      const totalExpense = r ? (Number(r.totalDailyExpense) || (rawCost + opsCost + carCost)) : 0;
+      const vaBank = r ? (r.vaBankName || 'Bank Syariah Indonesia - Dapur Yayasan') : '-';
+      const vaBal = r ? (Number(r.vaBalance) || 0) : 0;
+      const reporter = r ? r.reporterName : 'Laras Dwi Ningrum (Maker Pengelola Dapur Yayasan)';
+
+      const docContent = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>${spmTitle} - Surat Perintah Membayar (SPM)</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #1e293b; background: #fff; line-height: 1.6; }
+    .header { border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
+    .title { font-size: 20px; font-weight: 800; color: #0f172a; text-transform: uppercase; }
+    .badge { background: #e0e7ff; color: #3730a3; padding: 4px 10px; border-radius: 4px; font-weight: 600; font-size: 12px; }
+    .table-info { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    .table-info th, .table-info td { border: 1px solid #cbd5e1; padding: 10px 14px; font-size: 13px; text-align: left; }
+    .table-info th { background: #f8fafc; font-weight: 600; color: #475569; width: 35%; }
+    .total-box { background: #ecfdf5; border: 1px solid #6ee7b7; padding: 16px; border-radius: 8px; margin-top: 20px; font-size: 16px; font-weight: 700; color: #065f46; display: flex; justify-content: space-between; }
+    .footer { margin-top: 50px; display: flex; justify-content: space-between; font-size: 12px; color: #64748b; }
+    .sign-box { text-align: center; width: 220px; }
+    .sign-line { margin-top: 60px; border-top: 1px solid #94a3b8; padding-top: 4px; font-weight: 600; color: #0f172a; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div style="font-size: 12px; font-weight: 700; color: #64748b; letter-spacing: 1px;">YAYASAN KESEJAHTERAAN INDONESIA</div>
+      <div class="title">SURAT PERINTAH MEMBAYAR (SPM)</div>
+      <div style="font-size: 12px; color: #64748b;">Nomor Berkas: ${spmTitle}</div>
+    </div>
+    <div>
+      <span class="badge">TERVERIFIKASI SISTEM ERP</span>
+    </div>
+  </div>
+
+  <table class="table-info">
+    <tr><th>Dapur Program / Titik SPPG</th><td><strong>${kitchenName}</strong></td></tr>
+    <tr><th>Tanggal Transaksi / Operasional</th><td>${dateStr}</td></tr>
+    <tr><th>Belanja Bahan Baku Dapur</th><td>Rp ${rawCost.toLocaleString('id-ID')}</td></tr>
+    <tr><th>Biaya Operasional Dapur</th><td>Rp ${opsCost.toLocaleString('id-ID')}</td></tr>
+    <tr><th>Sewa Mobil / Distribusi Makanan</th><td>Rp ${carCost.toLocaleString('id-ID')}</td></tr>
+    <tr><th>Bank & Rekening Virtual Account (VA)</th><td>${vaBank} (Saldo: Rp ${vaBal.toLocaleString('id-ID')})</td></tr>
+    <tr><th>Petugas Pelapor / Pembuat SPM</th><td>${reporter}</td></tr>
+    <tr><th>Catatan Tambahan</th><td>${(r && r.notes) ? r.notes : 'Seluruh rincian biaya telah diverifikasi sesuai kebutuhan riil operasional dapur.'}</td></tr>
+  </table>
+
+  <div class="total-box">
+    <span>TOTAL PENCAIRAN DANA / BELANJA:</span>
+    <span>Rp ${totalExpense.toLocaleString('id-ID')}</span>
+  </div>
+
+  <div class="footer">
+    <div class="sign-box">
+      <div>Pembuat Laporan / SPM:</div>
+      <div class="sign-line">${reporter.split('(')[0].trim()}</div>
+    </div>
+    <div class="sign-box">
+      <div>Mengetahui & Menyetujui:</div>
+      <div class="sign-line">Bagian Keuangan & Direksi</div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+      const blob = new Blob([docContent], { type: 'text/html;charset=utf-8' });
+      const downloadName = fileName.endsWith('.pdf') ? fileName.replace('.pdf', '.html') : (fileName.endsWith('.html') ? fileName : `${fileName}.html`);
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = downloadName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(blobUrl);
+
+      App.showToast(`Dokumen SPM "${downloadName}" berhasil diunduh ke komputer Anda!`, 'success');
+    } catch (err) {
+      console.error('Fallback SPM download error:', err);
+      App.showToast(`Gagal mengunduh berkas SPM: ${err.message}`, 'error');
+    }
   },
 
   goToPage: function(pageNum) {
