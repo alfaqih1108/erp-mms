@@ -572,11 +572,11 @@ window.DapurYayasanModule = {
                           ${r.spmFileName ? `
                             <div style="display: flex; align-items: center; gap: 4px;">
                               <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
-                                      onclick="DapurYayasanModule.openSPMLightbox('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen SPM'}', '${r.id}')" title="Pratinjau Dokumen SPM">
+                                      onclick="DapurYayasanModule.openSPMLightbox('${r.id}')" title="Pratinjau Dokumen SPM">
                                 📄 ${r.spmFileName.length > 13 ? r.spmFileName.slice(0, 11) + '...' : r.spmFileName}
                               </button>
                               <button type="button" class="btn-nalar-secondary" style="padding: 3px 7px; font-size: 10.5px; color: #34D399; border-color: rgba(52, 211, 153, 0.4);"
-                                      onclick="DapurYayasanModule.downloadSPMDocument('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen-SPM.pdf'}', '${r.id}')" title="Unduh ${r.spmFileName}">
+                                      onclick="DapurYayasanModule.downloadSPMDocument('${r.id}')" title="Unduh Berkas ${r.spmFileName}">
                                 ⬇️
                               </button>
                             </div>
@@ -1377,11 +1377,11 @@ window.DapurYayasanModule = {
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
               <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
-                      onclick="DapurYayasanModule.openSPMLightbox('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen SPM'}', '${r.id}')">
+                      onclick="DapurYayasanModule.openSPMLightbox('${r.id}')">
                 👁️ Pratinjau Dokumen ↗
               </button>
               <button type="button" class="btn-nalar-primary" style="padding: 5px 14px; font-size: 11.5px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; font-weight: 600; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
-                      onclick="DapurYayasanModule.downloadSPMDocument('${r.spmAttachmentUrl || ''}', '${r.spmFileName || 'Dokumen-SPM.pdf'}', '${r.id}')">
+                      onclick="DapurYayasanModule.downloadSPMDocument('${r.id}')">
                 ⬇️ Unduh Berkas
               </button>
             </div>
@@ -1414,17 +1414,40 @@ window.DapurYayasanModule = {
     App.openModal('modal-kitchen-detail-view');
   },
 
-  openSPMLightbox: function(url, title, reportId) {
+  openSPMLightbox: function(reportIdOrUrl, titleParam, reportIdParam) {
+    let url = '';
+    let title = 'Dokumen SPM';
+    let reportId = '';
+
+    const reports = DB.getKitchenReports() || [];
+
+    // If passed a report ID
+    if (typeof reportIdOrUrl === 'string' && reportIdOrUrl.length < 100) {
+      const foundReport = reports.find(item => item.id === reportIdOrUrl);
+      if (foundReport) {
+        reportId = foundReport.id;
+        url = foundReport.spmAttachmentUrl || '';
+        title = foundReport.spmFileName || titleParam || 'Dokumen SPM';
+      } else {
+        url = reportIdOrUrl;
+        title = titleParam || 'Dokumen SPM';
+        reportId = reportIdParam || '';
+      }
+    } else {
+      url = reportIdOrUrl || '';
+      title = titleParam || 'Dokumen SPM';
+      reportId = reportIdParam || '';
+    }
+
     const titleEl = document.getElementById('spm-lightbox-title');
     const contentEl = document.getElementById('spm-lightbox-content');
     const dlBtn = document.getElementById('spm-lightbox-download-btn');
 
-    title = title || 'Dokumen SPM';
     if (titleEl) titleEl.textContent = `Dokumen: ${title}`;
 
     if (dlBtn) {
       dlBtn.onclick = () => {
-        DapurYayasanModule.downloadSPMDocument(url, title, reportId);
+        DapurYayasanModule.downloadSPMDocument(reportId || url, title);
       };
     }
 
@@ -1435,31 +1458,31 @@ window.DapurYayasanModule = {
       if (isPdf && url && (url.startsWith('data:application/pdf') || url.startsWith('blob:') || url.startsWith('http'))) {
         contentEl.innerHTML = `
           <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;">
-            <iframe src="${url}" style="width: 100%; height: 440px; border: 1px solid var(--border-card); border-radius: var(--radius-sm); background: #ffffff;"></iframe>
+            <iframe src="${url}" style="width: 100%; height: 460px; border: 1px solid var(--border-card); border-radius: var(--radius-sm); background: #ffffff;"></iframe>
             <div style="font-size: 11px; color: var(--text-muted); font-style: italic;">
-              ${title} — Terverifikasi Sistem ERP Yayasan
+              ${title} — Berkas Asli Terverifikasi Sistem ERP Yayasan
             </div>
           </div>
         `;
       } else if (isImage && url && (url.startsWith('data:image') || (url.startsWith('http') && !url.includes('unsplash.com')) || url.startsWith('blob:'))) {
         contentEl.innerHTML = `
-          <div style="width: 100%;">
-            <img src="${url}" alt="Dokumen SPM" style="max-width: 100%; max-height: 420px; border-radius: var(--radius-sm); border: 1px solid var(--border-card); box-shadow: 0 8px 30px rgba(0,0,0,0.7);"
-                 onerror="this.onerror=null; DapurYayasanModule.renderFallbackSPMPreview(this.parentElement, '${title}', '${url}', '${reportId}')">
+          <div style="width: 100%; text-align: center;">
+            <img src="${url}" alt="Dokumen SPM" style="max-width: 100%; max-height: 440px; border-radius: var(--radius-sm); border: 1px solid var(--border-card); box-shadow: 0 8px 30px rgba(0,0,0,0.7);"
+                 onerror="this.onerror=null; DapurYayasanModule.renderFallbackSPMPreview(this.parentElement, '${title}', '${reportId}')">
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; font-style: italic;">
-              ${title} — Terverifikasi Sistem ERP Yayasan
+              ${title} — Berkas Asli Terverifikasi Sistem ERP Yayasan
             </div>
           </div>
         `;
       } else {
-        this.renderFallbackSPMPreview(contentEl, title, url, reportId);
+        this.renderFallbackSPMPreview(contentEl, title, reportId);
       }
     }
 
     App.openModal('modal-spm-lightbox');
   },
 
-  renderFallbackSPMPreview: function(container, title, url, reportId) {
+  renderFallbackSPMPreview: function(container, title, reportId) {
     if (!container) return;
     const reports = DB.getKitchenReports() || [];
     const r = reportId ? reports.find(item => item.id === reportId) : null;
@@ -1471,26 +1494,87 @@ window.DapurYayasanModule = {
         </div>
         <div style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px;">${title}</div>
         <div style="font-size: 12px; color: #FCD34D; font-weight: 500; margin-bottom: 8px;">
-          Dokumen Surat Perintah Membayar (SPM) Digital
+          Dokumen Lampiran SPM Digital
         </div>
         <div style="font-size: 11.5px; color: var(--text-muted); max-width: 440px; margin: 0 auto 18px auto; line-height: 1.5;">
           ${r ? `Terkait transaksi <strong>${r.kitchenName}</strong> pada tanggal <strong>${r.date}</strong> (Total Belanja: Rp ${(r.totalDailyExpense || 0).toLocaleString('id-ID')}).` : 'Berkas lampiran resmi terverifikasi dalam database ERP Yayasan.'}
         </div>
         <button type="button" class="btn-nalar-primary" style="margin: 0 auto; padding: 8px 20px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);"
-                onclick="DapurYayasanModule.downloadSPMDocument('${url || ''}', '${title}', '${reportId || ''}')">
-          ⬇️ Unduh Berkas Ini Sekarang
+                onclick="DapurYayasanModule.downloadSPMDocument('${reportId || ''}')">
+          ⬇️ Unduh Berkas Asli
         </button>
       </div>
     `;
   },
 
-  downloadSPMDocument: async function(url, fileName, reportId) {
-    fileName = fileName || 'Dokumen-SPM.pdf';
+  downloadSPMDocument: function(reportIdOrUrl, customFileName) {
+    let url = '';
+    let fileName = customFileName || '';
+
+    const reports = DB.getKitchenReports() || [];
+
+    // Check if passed a report ID
+    if (typeof reportIdOrUrl === 'string' && reportIdOrUrl.length < 100) {
+      const r = reports.find(item => item.id === reportIdOrUrl);
+      if (r) {
+        url = r.spmAttachmentUrl || '';
+        fileName = fileName || r.spmFileName || 'Dokumen-SPM';
+      } else {
+        url = reportIdOrUrl;
+      }
+    } else {
+      url = reportIdOrUrl || '';
+    }
+
+    if (!url) {
+      App.showToast('Tidak ada berkas lampiran yang diunggah untuk transaksi ini.', 'warn');
+      return;
+    }
+
+    fileName = fileName || 'Dokumen-SPM';
     App.showToast(`Menyiapkan pengunduhan berkas ${fileName}...`, 'info');
 
-    // 1. If valid Data URL (Base64) or Blob URL
-    if (url && (url.startsWith('data:') || url.startsWith('blob:'))) {
+    // 1. If Base64 Data URL (e.g. data:application/pdf;base64,...)
+    if (url.startsWith('data:')) {
       try {
+        const mimeMatch = url.match(/^data:([^;]+);/);
+        const mimeType = mimeMatch ? mimeMatch[1].toLowerCase() : '';
+
+        // Ensure genuine extension based on MIME type if filename has none or generic
+        if (mimeType.includes('pdf') && !fileName.toLowerCase().endsWith('.pdf')) {
+          fileName = fileName.replace(/\.[^/.]+$/, '') + '.pdf';
+        } else if ((mimeType.includes('jpeg') || mimeType.includes('jpg')) && !fileName.toLowerCase().endsWith('.jpg') && !fileName.toLowerCase().endsWith('.jpeg')) {
+          fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
+        } else if (mimeType.includes('png') && !fileName.toLowerCase().endsWith('.png')) {
+          fileName = fileName.replace(/\.[^/.]+$/, '') + '.png';
+        } else if (mimeType.includes('webp') && !fileName.toLowerCase().endsWith('.webp')) {
+          fileName = fileName.replace(/\.[^/.]+$/, '') + '.webp';
+        }
+
+        // Convert base64 to binary Blob for robust download across all browsers
+        const base64Data = url.split(',')[1];
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: mimeType || 'application/octet-stream' });
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 3000);
+
+        App.showToast(`Berkas asli "${fileName}" berhasil diunduh!`, 'success');
+        return;
+      } catch (e) {
+        console.error('Data URL blob conversion error:', e);
+        // Fallback to direct anchor download
         const a = document.createElement('a');
         a.href = url;
         a.download = fileName;
@@ -1499,135 +1583,23 @@ window.DapurYayasanModule = {
         document.body.removeChild(a);
         App.showToast(`Berkas "${fileName}" berhasil diunduh!`, 'success');
         return;
-      } catch (e) {
-        console.warn('Data URL download error:', e);
       }
     }
 
-    // 2. If valid HTTP / HTTPS URL (remote storage)
-    if (url && (url.startsWith('http://') || url.startsWith('https://')) && !url.includes('unsplash.com')) {
-      try {
-        const res = await fetch(url);
-        if (res.ok) {
-          const blob = await res.blob();
-          const blobUrl = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = blobUrl;
-          a.download = fileName;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          window.URL.revokeObjectURL(blobUrl);
-          App.showToast(`Berkas "${fileName}" berhasil diunduh!`, 'success');
-          return;
-        }
-      } catch (corsErr) {
-        console.warn('Direct fetch failed (CORS), opening in new window/tab:', corsErr);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.target = '_blank';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        App.showToast(`Berkas "${fileName}" dibuka di tab baru untuk pengunduhan.`, 'info');
-        return;
-      }
-    }
-
-    // 3. Fallback: Generate Client-Side Digital SPM Document (HTML / Printable format)
-    try {
-      const reports = DB.getKitchenReports() || [];
-      const r = reportId ? reports.find(item => item.id === reportId) : (reports.find(item => item.spmFileName === fileName) || reports[0]);
-      
-      const spmTitle = fileName.replace(/\.[^/.]+$/, '');
-      const dateStr = r ? r.date : new Date().toISOString().slice(0, 10);
-      const kitchenName = r ? r.kitchenName : 'Dapur Program Yayasan';
-      const rawCost = r ? (Number(r.rawMaterialCost) || 0) : 0;
-      const opsCost = r ? (Number(r.operationalCost) || 0) : 0;
-      const carCost = r ? (Number(r.carRentalCost) || 0) : 0;
-      const totalExpense = r ? (Number(r.totalDailyExpense) || (rawCost + opsCost + carCost)) : 0;
-      const vaBank = r ? (r.vaBankName || 'Bank Syariah Indonesia - Dapur Yayasan') : '-';
-      const vaBal = r ? (Number(r.vaBalance) || 0) : 0;
-      const reporter = r ? r.reporterName : 'Laras Dwi Ningrum (Maker Pengelola Dapur Yayasan)';
-
-      const docContent = `<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8">
-  <title>${spmTitle} - Surat Perintah Membayar (SPM)</title>
-  <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #1e293b; background: #fff; line-height: 1.6; }
-    .header { border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
-    .title { font-size: 20px; font-weight: 800; color: #0f172a; text-transform: uppercase; }
-    .badge { background: #e0e7ff; color: #3730a3; padding: 4px 10px; border-radius: 4px; font-weight: 600; font-size: 12px; }
-    .table-info { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    .table-info th, .table-info td { border: 1px solid #cbd5e1; padding: 10px 14px; font-size: 13px; text-align: left; }
-    .table-info th { background: #f8fafc; font-weight: 600; color: #475569; width: 35%; }
-    .total-box { background: #ecfdf5; border: 1px solid #6ee7b7; padding: 16px; border-radius: 8px; margin-top: 20px; font-size: 16px; font-weight: 700; color: #065f46; display: flex; justify-content: space-between; }
-    .footer { margin-top: 50px; display: flex; justify-content: space-between; font-size: 12px; color: #64748b; }
-    .sign-box { text-align: center; width: 220px; }
-    .sign-line { margin-top: 60px; border-top: 1px solid #94a3b8; padding-top: 4px; font-weight: 600; color: #0f172a; }
-    @media print { body { padding: 0; } }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div>
-      <div style="font-size: 12px; font-weight: 700; color: #64748b; letter-spacing: 1px;">YAYASAN KESEJAHTERAAN INDONESIA</div>
-      <div class="title">SURAT PERINTAH MEMBAYAR (SPM)</div>
-      <div style="font-size: 12px; color: #64748b;">Nomor Berkas: ${spmTitle}</div>
-    </div>
-    <div>
-      <span class="badge">TERVERIFIKASI SISTEM ERP</span>
-    </div>
-  </div>
-
-  <table class="table-info">
-    <tr><th>Dapur Program / Titik SPPG</th><td><strong>${kitchenName}</strong></td></tr>
-    <tr><th>Tanggal Transaksi / Operasional</th><td>${dateStr}</td></tr>
-    <tr><th>Belanja Bahan Baku Dapur</th><td>Rp ${rawCost.toLocaleString('id-ID')}</td></tr>
-    <tr><th>Biaya Operasional Dapur</th><td>Rp ${opsCost.toLocaleString('id-ID')}</td></tr>
-    <tr><th>Sewa Mobil / Distribusi Makanan</th><td>Rp ${carCost.toLocaleString('id-ID')}</td></tr>
-    <tr><th>Bank & Rekening Virtual Account (VA)</th><td>${vaBank} (Saldo: Rp ${vaBal.toLocaleString('id-ID')})</td></tr>
-    <tr><th>Petugas Pelapor / Pembuat SPM</th><td>${reporter}</td></tr>
-    <tr><th>Catatan Tambahan</th><td>${(r && r.notes) ? r.notes : 'Seluruh rincian biaya telah diverifikasi sesuai kebutuhan riil operasional dapur.'}</td></tr>
-  </table>
-
-  <div class="total-box">
-    <span>TOTAL PENCAIRAN DANA / BELANJA:</span>
-    <span>Rp ${totalExpense.toLocaleString('id-ID')}</span>
-  </div>
-
-  <div class="footer">
-    <div class="sign-box">
-      <div>Pembuat Laporan / SPM:</div>
-      <div class="sign-line">${reporter.split('(')[0].trim()}</div>
-    </div>
-    <div class="sign-box">
-      <div>Mengetahui & Menyetujui:</div>
-      <div class="sign-line">Bagian Keuangan & Direksi</div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-      const blob = new Blob([docContent], { type: 'text/html;charset=utf-8' });
-      const downloadName = fileName.endsWith('.pdf') ? fileName.replace('.pdf', '.html') : (fileName.endsWith('.html') ? fileName : `${fileName}.html`);
-      const blobUrl = window.URL.createObjectURL(blob);
+    // 2. If HTTP / HTTPS or Blob URL
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
       const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = downloadName;
+      a.href = url;
+      a.download = fileName;
+      a.target = '_blank';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(blobUrl);
-
-      App.showToast(`Dokumen SPM "${downloadName}" berhasil diunduh ke komputer Anda!`, 'success');
-    } catch (err) {
-      console.error('Fallback SPM download error:', err);
-      App.showToast(`Gagal mengunduh berkas SPM: ${err.message}`, 'error');
+      App.showToast(`Berkas "${fileName}" berhasil diunduh!`, 'success');
+      return;
     }
+
+    App.showToast('Format berkas tidak dikenali untuk diunduh.', 'error');
   },
 
   goToPage: function(pageNum) {
