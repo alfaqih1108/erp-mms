@@ -177,8 +177,8 @@ window.PengajuanBarangModule = {
                             </div>
                           ` : ''}
                           <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">${p.reason}</div>
-                          ${p.attachmentUrl ? `
-                            <button class="btn-preview-link" style="padding: 3px 8px; font-size: 10px;" onclick="event.stopPropagation(); PengajuanBarangModule.openLightbox('${p.attachmentUrl}', '${p.itemName}')">
+                          ${(p.attachmentName || p.attachmentUrl) ? `
+                            <button class="btn-preview-link" style="padding: 3px 8px; font-size: 10px;" onclick="event.stopPropagation(); PengajuanBarangModule.openLightbox('${p.id}', '${p.itemName}')">
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                               <span>Lihat Foto Barang yang Diajukan ↗</span>
                             </button>
@@ -356,12 +356,10 @@ window.PengajuanBarangModule = {
     }
 
     try {
-      const compressed = (typeof compressImageFile === 'function') 
-        ? await compressImageFile(file, 1000, 0.7) 
-        : { url: null, name: file.name };
+      const compressedUrl = await DB.compressImageFile(file, 1200, 1200, 0.75);
 
       this.currentAttachment = {
-        url: compressed.url,
+        url: compressedUrl,
         name: file.name
       };
 
@@ -372,7 +370,7 @@ window.PengajuanBarangModule = {
 
       if (promptEl) promptEl.style.display = 'none';
       if (previewEl) previewEl.style.display = 'flex';
-      if (previewImg && compressed.url) previewImg.src = compressed.url;
+      if (previewImg && compressedUrl) previewImg.src = compressedUrl;
       if (previewName) previewName.textContent = file.name;
     } catch (err) {
       console.warn('Image compression fallback:', err);
@@ -399,10 +397,23 @@ window.PengajuanBarangModule = {
     if (catEl) catEl.value = category;
   },
 
-  openLightbox: function(imgUrl, title) {
+  openLightbox: async function(prIdOrUrl, title) {
+    let imgUrl = prIdOrUrl;
+    if (typeof prIdOrUrl === 'string' && prIdOrUrl.length < 50 && !prIdOrUrl.startsWith('data:') && !prIdOrUrl.startsWith('http')) {
+      const prs = DB.getItemRequests() || [];
+      const pr = prs.find(p => p.id === prIdOrUrl);
+      if (pr) {
+        title = title || pr.itemName;
+        imgUrl = pr.attachmentUrl;
+        if (!imgUrl && pr.attachmentName) {
+          App.showToast('Memuat foto spesifikasi barang dari cloud...', 'info');
+          imgUrl = await DB.fetchItemRequestAttachment(pr.id);
+        }
+      }
+    }
     const lightboxImg = document.getElementById('lightbox-img');
     const lightboxTitle = document.getElementById('lightbox-title');
-    if (lightboxImg) lightboxImg.src = imgUrl;
+    if (lightboxImg) lightboxImg.src = imgUrl || '';
     if (lightboxTitle) lightboxTitle.textContent = title ? `Foto Spesifikasi: ${title}` : 'Foto Barang';
     App.openModal('modal-image-preview');
   },

@@ -5460,15 +5460,15 @@ class DatabaseManager {
       console.log('⚡ [Supabase Pull] Memuat data real-time dengan Smart Merge...');
 
       // Jalankan seluruh 9 endpoint secara PARALEL untuk kecepatan instan (<300ms)
-      // Guideline documents hanya menarik metadata tanpa binary data berat
+      // Dokumen binary berat (Base64) DIKECUALIKAN dari pull berkala (Lazy-Loaded On-Demand) untuk menghemat Egress hingga 99%
       const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes] = await Promise.allSettled([
         fetch(`${url}/rest/v1/users?select=*`, { headers }),
         fetch(`${url}/rest/v1/kitchens?select=*`, { headers }),
-        fetch(`${url}/rest/v1/item_requests?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/leaves?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/kitchen_reports?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,va_bank_name,va_balance,notes,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,purpose,stage,status,settlement,approval_history,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers })
       ]);
@@ -5591,95 +5591,107 @@ class DatabaseManager {
         }
       }
 
-      // 3. Process Item Requests (Smart Merge)
+      // 3. Process Item Requests (Smart Merge & Attachment Preserved)
       if (prRes.status === 'fulfilled' && prRes.value.ok) {
         const prs = await prRes.value.json();
         if (Array.isArray(prs)) {
-          const remotePRs = prs.map(p => ({
-            id: p.id,
-            employeeId: p.employee_id,
-            employeeName: p.employee_name,
-            role: p.role,
-            department: p.department,
-            itemName: p.item_name,
-            category: p.category,
-            quantity: p.quantity,
-            unitPrice: Number(p.unit_price) || 0,
-            totalPrice: Number(p.total_price) || 0,
-            urgency: p.urgency,
-            reason: p.reason,
-            targetKitchen: p.target_kitchen,
-            attachmentUrl: p.attachment_url,
-            attachmentName: p.attachment_name,
-            stage: p.stage,
-            status: p.status,
-            rejectionReason: p.rejection_reason,
-            approvalHistory: p.approval_history || [],
-            createdAt: p.created_at
-          }));
+          const existingPRs = this.data.itemRequests || [];
+          const remotePRs = prs.map(p => {
+            const local = existingPRs.find(item => item.id === p.id);
+            return {
+              id: p.id,
+              employeeId: p.employee_id,
+              employeeName: p.employee_name,
+              role: p.role,
+              department: p.department,
+              itemName: p.item_name,
+              category: p.category,
+              quantity: p.quantity,
+              unitPrice: Number(p.unit_price) || 0,
+              totalPrice: Number(p.total_price) || 0,
+              urgency: p.urgency,
+              reason: p.reason,
+              targetKitchen: p.target_kitchen,
+              attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : null,
+              attachmentName: p.attachment_name,
+              stage: p.stage,
+              status: p.status,
+              rejectionReason: p.rejection_reason,
+              approvalHistory: p.approval_history || [],
+              createdAt: p.created_at
+            };
+          });
 
           this.data.itemRequests = remotePRs;
         }
       }
 
-      // 4. Process Leaves (Authoritative Cloud Sync)
+      // 4. Process Leaves (Smart Merge & Attachment Preserved)
       if (leaveRes.status === 'fulfilled' && leaveRes.value.ok) {
         const leaves = await leaveRes.value.json();
         if (Array.isArray(leaves)) {
-          const remoteLeaves = leaves.map(l => ({
-            id: l.id,
-            employeeId: l.employee_id,
-            employeeName: l.employee_name,
-            role: l.role,
-            department: l.department,
-            leaveType: l.leave_type,
-            type: l.leave_type,
-            startDate: l.start_date,
-            endDate: l.end_date,
-            duration: l.duration,
-            reason: l.reason,
-            emergencyContact: l.emergency_contact,
-            attachmentUrl: l.attachment_url,
-            attachmentName: l.attachment_name,
-            stage: l.stage,
-            status: l.status,
-            rejectionReason: l.rejection_reason,
-            approvalHistory: l.approval_history || [],
-            createdAt: l.created_at
-          }));
+          const existingLeaves = this.data.leaves || [];
+          const remoteLeaves = leaves.map(l => {
+            const local = existingLeaves.find(item => item.id === l.id);
+            return {
+              id: l.id,
+              employeeId: l.employee_id,
+              employeeName: l.employee_name,
+              role: l.role,
+              department: l.department,
+              leaveType: l.leave_type,
+              type: l.leave_type,
+              startDate: l.start_date,
+              endDate: l.end_date,
+              duration: l.duration,
+              reason: l.reason,
+              emergencyContact: l.emergency_contact,
+              attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : null,
+              attachmentName: l.attachment_name,
+              stage: l.stage,
+              status: l.status,
+              rejectionReason: l.rejection_reason,
+              approvalHistory: l.approval_history || [],
+              createdAt: l.created_at
+            };
+          });
 
           this.data.leaves = remoteLeaves;
         }
       }
 
-      // 5. Process Kitchen Reports (Authoritative Cloud Sync)
+      // 5. Process Kitchen Reports (Smart Merge & SPM Attachment Preserved)
       if (krRes.status === 'fulfilled' && krRes.value.ok) {
         const krs = await krRes.value.json();
         if (Array.isArray(krs)) {
-          this.data.kitchenReports = krs.map(kr => ({
-            id: kr.id,
-            kitchenId: kr.kitchen_id,
-            kitchenName: kr.kitchen_name,
-            date: kr.date,
-            reporterId: kr.reporter_id,
-            reporterName: kr.reporter_name,
-            rawMaterialCost: Number(kr.raw_material_cost) || 0,
-            operationalCost: Number(kr.operational_cost) || 0,
-            carRentalCost: Number(kr.car_rental_cost) || 0,
-            totalDailyExpense: Number(kr.total_daily_expense) || 0,
-            porsiBesar: Number(kr.porsi_besar) || 0,
-            porsiKecil: Number(kr.porsi_kecil) || 0,
-            beneficiariesCount: Number(kr.beneficiaries_count) || 0,
-            targetBudget: Number(kr.target_budget) || 0,
-            costPerPortion: Number(kr.cost_per_portion) || 0,
-            costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
-            spmFileName: kr.spm_file_name,
-            spmAttachmentUrl: kr.spm_attachment_url,
-            vaBankName: kr.va_bank_name,
-            vaBalance: Number(kr.va_balance) || 0,
-            notes: kr.notes,
-            createdAt: kr.created_at
-          }));
+          const existingKRs = this.data.kitchenReports || [];
+          this.data.kitchenReports = krs.map(kr => {
+            const local = existingKRs.find(item => item.id === kr.id);
+            return {
+              id: kr.id,
+              kitchenId: kr.kitchen_id,
+              kitchenName: kr.kitchen_name,
+              date: kr.date,
+              reporterId: kr.reporter_id,
+              reporterName: kr.reporter_name,
+              rawMaterialCost: Number(kr.raw_material_cost) || 0,
+              operationalCost: Number(kr.operational_cost) || 0,
+              carRentalCost: Number(kr.car_rental_cost) || 0,
+              totalDailyExpense: Number(kr.total_daily_expense) || 0,
+              porsiBesar: Number(kr.porsi_besar) || 0,
+              porsiKecil: Number(kr.porsi_kecil) || 0,
+              beneficiariesCount: Number(kr.beneficiaries_count) || 0,
+              targetBudget: Number(kr.target_budget) || 0,
+              costPerPortion: Number(kr.cost_per_portion) || 0,
+              costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
+              spmFileName: kr.spm_file_name,
+              spmAttachmentUrl: (local && local.spmAttachmentUrl) ? local.spmAttachmentUrl : null,
+              vaBankName: kr.va_bank_name,
+              vaBalance: Number(kr.va_balance) || 0,
+              notes: kr.notes,
+              createdAt: kr.created_at
+            };
+          });
         }
       }
 
@@ -5716,7 +5728,7 @@ class DatabaseManager {
         }
       }
 
-      // 7. Process Cash Advances (Authoritative Cloud Sync)
+      // 7. Process Cash Advances (Smart Merge)
       if (caRes.status === 'fulfilled' && caRes.value.ok) {
         const cas = await caRes.value.json();
         if (Array.isArray(cas)) {
@@ -5794,10 +5806,156 @@ class DatabaseManager {
       }
 
       this.save();
-      console.log('✅ [Supabase Pull] Data tersinkronisasi instan dengan Smart Merge.');
+      console.log('✅ [Supabase Pull] Data tersinkronisasi instan & hemat Egress (~20KB payload).');
     } catch (err) {
       console.warn('⚠️ [Supabase Pull] Gagal mengambil data:', err);
     }
+  }
+
+  // =========================================================================
+  // ON-DEMAND LAZY ATTACHMENT FETCHERS (Hemat Egress 99%)
+  // =========================================================================
+
+  async fetchKitchenReportAttachment(reportId) {
+    const reports = this.getKitchenReports();
+    const r = reports.find(item => item.id === reportId);
+    if (r && r.spmAttachmentUrl && r.spmAttachmentUrl.length > 50) {
+      return r.spmAttachmentUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return r ? (r.spmAttachmentUrl || '') : '';
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/kitchen_reports?select=id,spm_attachment_url,spm_file_name&id=eq.${reportId}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].spm_attachment_url) {
+          if (r) {
+            r.spmAttachmentUrl = data[0].spm_attachment_url;
+            if (data[0].spm_file_name) r.spmFileName = data[0].spm_file_name;
+          }
+          return data[0].spm_attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat lampiran SPM on-demand dari Supabase:', e);
+    }
+    return r ? (r.spmAttachmentUrl || '') : '';
+  }
+
+  async fetchLeaveAttachment(leaveId) {
+    const leaves = this.getLeaves();
+    const l = leaves.find(item => item.id === leaveId);
+    if (l && l.attachmentUrl && l.attachmentUrl.length > 50) {
+      return l.attachmentUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return l ? (l.attachmentUrl || '') : '';
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/leaves?select=id,attachment_url,attachment_name&id=eq.${leaveId}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].attachment_url) {
+          if (l) {
+            l.attachmentUrl = data[0].attachment_url;
+            if (data[0].attachment_name) l.attachmentName = data[0].attachment_name;
+          }
+          return data[0].attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat lampiran Cuti on-demand dari Supabase:', e);
+    }
+    return l ? (l.attachmentUrl || '') : '';
+  }
+
+  async fetchItemRequestAttachment(prId) {
+    const prs = this.getItemRequests();
+    const p = prs.find(item => item.id === prId);
+    if (p && p.attachmentUrl && p.attachmentUrl.length > 50) {
+      return p.attachmentUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return p ? (p.attachmentUrl || '') : '';
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/item_requests?select=id,attachment_url,attachment_name&id=eq.${prId}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].attachment_url) {
+          if (p) {
+            p.attachmentUrl = data[0].attachment_url;
+            if (data[0].attachment_name) p.attachmentName = data[0].attachment_name;
+          }
+          return data[0].attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat foto lampiran PR on-demand dari Supabase:', e);
+    }
+    return p ? (p.attachmentUrl || '') : '';
+  }
+
+  // Helper Kompresi Gambar Otomatis di Browser sebelum dikirim ke database
+  async compressImageFile(file, maxWidth = 1600, maxHeight = 1600, quality = 0.75) {
+    if (!file) return null;
+    if (!file.type || !file.type.startsWith('image/')) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressedDataUrl);
+        };
+        img.onerror = () => {
+          resolve(e.target.result);
+        };
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
   }
 
   // Notifikasi Email Helper

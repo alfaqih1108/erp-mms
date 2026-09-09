@@ -818,24 +818,11 @@ window.CutiModule = {
     if (!file) return;
 
     try {
-      if (file.type && file.type.startsWith('image/')) {
-        const compressed = (typeof compressImageFile === 'function')
-          ? await compressImageFile(file, 1000, 0.7)
-          : { url: null, name: file.name };
-        this.currentAttachment = {
-          url: compressed.url,
-          name: file.name
-        };
-      } else {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          this.currentAttachment = {
-            url: ev.target.result,
-            name: file.name
-          };
-        };
-        reader.readAsDataURL(file);
-      }
+      const fileData = await DB.compressImageFile(file, 1200, 1200, 0.75);
+      this.currentAttachment = {
+        url: fileData,
+        name: file.name
+      };
       App.showToast(`Berkas "${file.name}" siap dilampirkan.`, 'info');
     } catch (err) {
       console.warn('File upload notice:', err);

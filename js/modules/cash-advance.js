@@ -916,16 +916,14 @@ window.CashAdvanceModule = {
         };
         reader.readAsDataURL(file);
       } else {
-        const compressed = (typeof compressImageFile === 'function')
-          ? await compressImageFile(file, 1200, 0.75)
-          : { url: null, name: file.name };
+        const compressedUrl = await DB.compressImageFile(file, 1200, 1200, 0.75);
 
-        this.settlementProofUrl = compressed.url;
+        this.settlementProofUrl = compressedUrl;
         this.settlementProofName = file.name;
         this.settlementProofType = file.type || 'image/jpeg';
 
         const previewBox = document.getElementById('settle-proof-preview-box');
-        if (previewBox && compressed.url) {
+        if (previewBox && compressedUrl) {
           previewBox.style.display = 'block';
           previewBox.innerHTML = `
             <div style="position: relative; display: inline-block;">

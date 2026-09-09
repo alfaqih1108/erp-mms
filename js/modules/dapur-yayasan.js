@@ -1009,7 +1009,7 @@ window.DapurYayasanModule = {
     this.recalculateLiveTotals();
   },
 
-  handleSPMFileUpload: function(e) {
+  handleSPMFileUpload: async function(e) {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -1017,10 +1017,9 @@ window.DapurYayasanModule = {
     const urlInput = document.getElementById('kr-spm-url');
     const nameInput = document.getElementById('kr-spm-filename');
 
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const fileData = uploadEvent.target.result;
-      if (urlInput) urlInput.value = fileData;
+    try {
+      const fileData = await DB.compressImageFile(file);
+      if (urlInput) urlInput.value = fileData || '';
       if (nameInput) nameInput.value = file.name;
 
       if (preview) {
@@ -1037,8 +1036,10 @@ window.DapurYayasanModule = {
           </div>
         `;
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('File upload error:', err);
+      App.showToast('Gagal memproses berkas unggahan: ' + err.message, 'error');
+    }
   },
 
   removeSPMUpload: function(e) {
@@ -1189,6 +1190,13 @@ window.DapurYayasanModule = {
     if (urlInput) urlInput.value = r.spmAttachmentUrl || '';
     if (nameInput) nameInput.value = r.spmFileName || '';
 
+    if (!r.spmAttachmentUrl && r.spmFileName) {
+      // Lazy fetch in background for edit modal
+      DB.fetchKitchenReportAttachment(r.id).then(fetchedUrl => {
+        if (urlInput && fetchedUrl) urlInput.value = fetchedUrl;
+      }).catch(err => console.warn('Lazy fetch for edit modal notice:', err));
+    }
+
     if (preview) {
       if (r.spmFileName) {
         preview.innerHTML = `
@@ -1261,7 +1269,7 @@ window.DapurYayasanModule = {
     const notes = document.getElementById('kr-notes').value.trim();
 
     if (!kitchenSelectVal || !date) {
-      App.showToast('Mohon pilih dapur program dan tanggal pelaporan!', 'warn');
+      App.showToast('Mohon lengkapi pilihan dapur dan tanggal pelaporan!', 'warn');
       return;
     }
 
@@ -1318,34 +1326,37 @@ window.DapurYayasanModule = {
     const carCost = Number(r.carRentalCost) || 0;
     const totExpense = Number(r.totalDailyExpense) || (rawCost + opsCost + carCost);
 
-    const targetBudg = Number(r.targetBudget) || ((pBesar * 10000) + (pKecil * 8000));
-    const eff = targetBudg > 0 ? Math.round((rawCost / targetBudg) * 100) : 100;
-    const costPerPortionAllIn = (r.beneficiariesCount || (pBesar + pKecil)) > 0 ? Math.round(totExpense / (r.beneficiariesCount || (pBesar + pKecil))) : 0;
+    const costPerPortionAllIn = Number(r.costPerPortionAllIn) || 0;
+    const eff = (r.beneficiariesCount > 0 && r.targetBudget > 0) ? Math.round((totExpense / r.targetBudget) * 100) : 100;
 
-    if (titleEl) titleEl.textContent = `Laporan Transaksi: ${r.id}`;
+    if (titleEl) titleEl.textContent = `${r.id} · ${r.kitchenName}`;
     if (bodyEl) {
       bodyEl.innerHTML = `
-        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-card); border-radius: var(--radius-md); padding: 18px; margin-bottom: 16px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <span style="font-size: 14px; font-weight: 700; color: #60A5FA;">${r.kitchenName}</span>
-            <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">Tanggal: ${r.date}</span>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px;">
+          <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 10.5px; color: var(--text-muted);">Tanggal:</div>
+            <div style="font-size: 13px; font-weight: 600; color: #fff;">${r.date}</div>
           </div>
-
-          <!-- Rincian Biaya Grid -->
-          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 14px;">
-            <div style="font-size: 11px; font-weight: 700; color: #FCA5A5; text-transform: uppercase; margin-bottom: 8px;">
-              Rincian Biaya Pengeluaran Harian:
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px;">
-              <div>1. Belanja Bahan Baku: <strong style="color: #FCA5A5;">Rp ${rawCost.toLocaleString('id-ID')}</strong></div>
-              <div>2. Biaya Operasional: <strong style="color: #FCD34D;">Rp ${opsCost.toLocaleString('id-ID')}</strong></div>
-              <div>3. Sewa Mobil (Distribusi): <strong style="color: #93C5FD;">Rp ${carCost.toLocaleString('id-ID')}</strong></div>
-              <div>Total Pengeluaran: <strong style="color: #FF8A4C; font-size: 13px;">Rp ${totExpense.toLocaleString('id-ID')}</strong></div>
-            </div>
+          <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 10.5px; color: var(--text-muted);">Belanja Bahan:</div>
+            <div style="font-size: 13px; font-weight: 600; color: #FCD34D;">Rp ${rawCost.toLocaleString('id-ID')}</div>
           </div>
+          <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 10.5px; color: var(--text-muted);">Operasional:</div>
+            <div style="font-size: 13px; font-weight: 600; color: #60A5FA;">Rp ${opsCost.toLocaleString('id-ID')}</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 10.5px; color: var(--text-muted);">Sewa Mobil:</div>
+            <div style="font-size: 13px; font-weight: 600; color: #A78BFA;">Rp ${carCost.toLocaleString('id-ID')}</div>
+          </div>
+          <div style="background: rgba(16, 185, 129, 0.08); padding: 10px; border-radius: var(--radius-sm); border: 1px solid rgba(16, 185, 129, 0.25);">
+            <div style="font-size: 10.5px; color: #34D399; font-weight: 600;">TOTAL BELANJA:</div>
+            <div style="font-size: 14px; font-weight: 700; color: #6EE7B7;">Rp ${totExpense.toLocaleString('id-ID')}</div>
+          </div>
+        </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 12px;">
-            <div>Target Anggaran Bahan: <strong style="color: #FCD34D;">Rp ${targetBudg.toLocaleString('id-ID')}</strong></div>
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 14px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 10px;">
             <div>Porsi Besar (@Rp10.000): <strong style="color: #FCD34D;">${pBesar} Porsi</strong></div>
             <div>Porsi Kecil (@Rp8.000): <strong style="color: #60A5FA;">${pKecil} Porsi</strong></div>
             <div>Total Penerima Manfaat: <strong style="color: #6EE7B7;">${(r.beneficiariesCount !== undefined ? r.beneficiariesCount : (pBesar + pKecil))} Porsi</strong></div>
@@ -1414,7 +1425,7 @@ window.DapurYayasanModule = {
     App.openModal('modal-kitchen-detail-view');
   },
 
-  openSPMLightbox: function(reportIdOrUrl, titleParam, reportIdParam) {
+  openSPMLightbox: async function(reportIdOrUrl, titleParam, reportIdParam) {
     let url = '';
     let title = 'Dokumen SPM';
     let reportId = '';
@@ -1426,8 +1437,12 @@ window.DapurYayasanModule = {
       const foundReport = reports.find(item => item.id === reportIdOrUrl);
       if (foundReport) {
         reportId = foundReport.id;
-        url = foundReport.spmAttachmentUrl || '';
         title = foundReport.spmFileName || titleParam || 'Dokumen SPM';
+        url = foundReport.spmAttachmentUrl || '';
+        if (!url && foundReport.spmFileName) {
+          App.showToast('Memuat dokumen SPM dari database cloud...', 'info');
+          url = await DB.fetchKitchenReportAttachment(foundReport.id);
+        }
       } else {
         url = reportIdOrUrl;
         title = titleParam || 'Dokumen SPM';
@@ -1507,7 +1522,7 @@ window.DapurYayasanModule = {
     `;
   },
 
-  downloadSPMDocument: function(reportIdOrUrl, customFileName) {
+  downloadSPMDocument: async function(reportIdOrUrl, customFileName) {
     let url = '';
     let fileName = customFileName || '';
 
@@ -1517,8 +1532,12 @@ window.DapurYayasanModule = {
     if (typeof reportIdOrUrl === 'string' && reportIdOrUrl.length < 100) {
       const r = reports.find(item => item.id === reportIdOrUrl);
       if (r) {
-        url = r.spmAttachmentUrl || '';
         fileName = fileName || r.spmFileName || 'Dokumen-SPM';
+        url = r.spmAttachmentUrl || '';
+        if (!url && r.spmFileName) {
+          App.showToast('Mengambil data berkas asli dari database cloud...', 'info');
+          url = await DB.fetchKitchenReportAttachment(r.id);
+        }
       } else {
         url = reportIdOrUrl;
       }
