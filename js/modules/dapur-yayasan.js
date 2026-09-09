@@ -569,7 +569,7 @@ window.DapurYayasanModule = {
                           </div>
                         </td>
                         <td style="white-space: nowrap;">
-                          ${(r.spmFileName && r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('data:') || r.spmAttachmentUrl.startsWith('http') || r.spmAttachmentUrl.startsWith('blob:'))) ? `
+                          ${r.spmFileName ? `
                             <div style="display: flex; align-items: center; gap: 4px;">
                               <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
                                       onclick="DapurYayasanModule.openSPMLightbox('${r.id}')" title="Pratinjau Dokumen SPM">
@@ -580,16 +580,11 @@ window.DapurYayasanModule = {
                                 ⬇️
                               </button>
                             </div>
-                          ` : (r.spmFileName ? `
-                            <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #94A3B8; border-color: rgba(148, 163, 184, 0.3);"
-                                    onclick="DapurYayasanModule.openSPMLightbox('${r.id}')" title="Berkas Belum Diunggah - Klik untuk Info">
-                              📑 ${r.spmFileName.length > 13 ? r.spmFileName.slice(0, 11) + '...' : r.spmFileName}
-                            </button>
                           ` : `
                             <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
-                              - Tidak Ada File -
+                              📄 SPM Terlampir
                             </span>
-                          `)}
+                          `}
                         </td>
                         <td style="min-width: 165px;">
                           <div style="font-weight: 500; color: #fff; font-size: 12px;">${r.reporterName}</div>
@@ -1258,8 +1253,8 @@ window.DapurYayasanModule = {
     const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (Number(document.getElementById('kr-beneficiaries').value) || 0);
 
     const spmUrl = document.getElementById('kr-spm-url')?.value || '';
-    const uploadedName = document.getElementById('kr-spm-filename')?.value || '';
-    const spmFileName = spmUrl ? (uploadedName || `SPM-${kitchenSelectVal.split(' — ')[0]}-${date.replace(/-/g, '')}.pdf`) : '';
+    const defaultSpmFileName = (totalDailyExpense > 0) ? `SPM-${kitchenSelectVal.split(' — ')[0]}-${date.replace(/-/g, '')}.pdf` : '';
+    const spmFileName = document.getElementById('kr-spm-filename')?.value || defaultSpmFileName;
 
     const vaBankName = document.getElementById('kr-va-bank').value.trim() || 'Bank Mandiri VA - Dapur Yayasan';
     const vaBalance = Number(document.getElementById('kr-va-balance').value) || 0;
@@ -1377,29 +1372,18 @@ window.DapurYayasanModule = {
           <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">DOKUMEN LAMPIRAN SPM (SURAT PERINTAH MEMBAYAR):</div>
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 20px;">${r.spmAttachmentUrl ? '📄' : '📑'}</span>
-              <span style="font-size: 12.5px; font-weight: 600; color: ${r.spmAttachmentUrl ? '#fff' : '#94A3B8'};">${r.spmFileName || (r.spmAttachmentUrl ? 'Berkas-SPM-Terlampir.pdf' : 'Belum Ada Berkas Terlampir')}</span>
+              <span style="font-size: 20px;">📄</span>
+              <span style="font-size: 12.5px; font-weight: 600; color: #fff;">${r.spmFileName || 'Berkas-SPM-Terlampir.pdf'}</span>
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
-              ${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('data:') || r.spmAttachmentUrl.startsWith('http') || r.spmAttachmentUrl.startsWith('blob:'))) ? `
-                <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
-                        onclick="DapurYayasanModule.openSPMLightbox('${r.id}')">
-                  👁️ Pratinjau Dokumen ↗
-                </button>
-                <button type="button" class="btn-nalar-primary" style="padding: 5px 14px; font-size: 11.5px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; font-weight: 600; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
-                        onclick="DapurYayasanModule.downloadSPMDocument('${r.id}')">
-                  ⬇️ Unduh Berkas
-                </button>
-              ` : `
-                <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
-                        onclick="DapurYayasanModule.openSPMLightbox('${r.id}')">
-                  ℹ️ Info Lampiran
-                </button>
-                <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; color: #60A5FA; border-color: rgba(96, 165, 250, 0.4);"
-                        onclick="DapurYayasanModule.openEditReportModal('${r.id}')">
-                  ✏️ Unggah Berkas
-                </button>
-              `}
+              <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
+                      onclick="DapurYayasanModule.openSPMLightbox('${r.id}')">
+                👁️ Pratinjau Dokumen ↗
+              </button>
+              <button type="button" class="btn-nalar-primary" style="padding: 5px 14px; font-size: 11.5px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; font-weight: 600; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
+                      onclick="DapurYayasanModule.downloadSPMDocument('${r.id}')">
+                ⬇️ Unduh Berkas
+              </button>
             </div>
           </div>
         </div>
@@ -1430,7 +1414,7 @@ window.DapurYayasanModule = {
     App.openModal('modal-kitchen-detail-view');
   },
 
-  openSPMLightbox: async function(reportIdOrUrl, titleParam, reportIdParam) {
+  openSPMLightbox: function(reportIdOrUrl, titleParam, reportIdParam) {
     let url = '';
     let title = 'Dokumen SPM';
     let reportId = '';
@@ -1438,7 +1422,7 @@ window.DapurYayasanModule = {
     const reports = DB.getKitchenReports() || [];
 
     // If passed a report ID
-    if (typeof reportIdOrUrl === 'string' && reportIdOrUrl.length < 100 && !reportIdOrUrl.startsWith('data:') && !reportIdOrUrl.startsWith('http')) {
+    if (typeof reportIdOrUrl === 'string' && reportIdOrUrl.length < 100) {
       const foundReport = reports.find(item => item.id === reportIdOrUrl);
       if (foundReport) {
         reportId = foundReport.id;
@@ -1461,89 +1445,37 @@ window.DapurYayasanModule = {
 
     if (titleEl) titleEl.textContent = `Dokumen: ${title}`;
 
-    // On-demand fetch if file content isn't in memory yet but reportId exists
-    if (!url && reportId) {
-      if (contentEl) {
-        contentEl.innerHTML = `
-          <div style="padding: 50px 20px; text-align: center; color: var(--text-muted);">
-            <div style="font-size: 28px; margin-bottom: 12px;">⏳</div>
-            <div style="font-size: 13.5px; font-weight: 600; color: #fff; margin-bottom: 6px;">Mengambil Berkas SPM dari Database...</div>
-            <div style="font-size: 11px; color: var(--text-dim);">Pemuatan berkas on-demand untuk menghemat bandwidth</div>
-          </div>
-        `;
-      }
-      App.openModal('modal-spm-lightbox');
-      url = await DB.getKitchenReportAttachment(reportId);
-    }
-
-    const isValidAttachment = url && (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:'));
-
     if (dlBtn) {
-      if (isValidAttachment) {
-        dlBtn.style.display = 'inline-flex';
-        dlBtn.onclick = () => {
-          DapurYayasanModule.downloadSPMDocument(reportId || url, title);
-        };
-      } else {
-        dlBtn.style.display = 'none';
-      }
+      dlBtn.onclick = () => {
+        DapurYayasanModule.downloadSPMDocument(reportId || url, title);
+      };
     }
 
     if (contentEl) {
-      if (!isValidAttachment) {
-        // No valid physical document was uploaded for this report
-        this.renderFallbackSPMPreview(contentEl, title, reportId);
-      } else {
-        const isPdf = (title && title.toLowerCase().endsWith('.pdf')) || url.startsWith('data:application/pdf');
-        const isImage = url.startsWith('data:image') || (title && (title.toLowerCase().endsWith('.jpg') || title.toLowerCase().endsWith('.jpeg') || title.toLowerCase().endsWith('.png') || title.toLowerCase().endsWith('.webp')));
+      const isPdf = (title && title.toLowerCase().endsWith('.pdf')) || (url && url.startsWith('data:application/pdf'));
+      const isImage = (url && url.startsWith('data:image')) || (title && (title.toLowerCase().endsWith('.jpg') || title.toLowerCase().endsWith('.jpeg') || title.toLowerCase().endsWith('.png') || title.toLowerCase().endsWith('.webp')));
 
-        if (isPdf) {
-          let displayUrl = url;
-          try {
-            if (url.startsWith('data:')) {
-              const base64Data = url.split(',')[1];
-              const byteCharacters = atob(base64Data);
-              const byteNumbers = new Array(byteCharacters.length);
-              for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-              }
-              const byteArray = new Uint8Array(byteNumbers);
-              const blob = new Blob([byteArray], { type: 'application/pdf' });
-              displayUrl = window.URL.createObjectURL(blob);
-            }
-
-            contentEl.innerHTML = `
-              <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;">
-                <iframe src="${displayUrl}" style="width: 100%; height: 460px; border: 1px solid var(--border-card); border-radius: var(--radius-sm); background: #ffffff;"></iframe>
-                <div style="font-size: 11px; color: var(--text-muted); font-style: italic;">
-                  ${title} — Berkas Asli Terverifikasi Sistem ERP Yayasan
-                </div>
-              </div>
-            `;
-          } catch (pdfErr) {
-            console.warn('PDF blob render error:', pdfErr);
-            contentEl.innerHTML = `
-              <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;">
-                <iframe src="${url}" style="width: 100%; height: 460px; border: 1px solid var(--border-card); border-radius: var(--radius-sm); background: #ffffff;"></iframe>
-                <div style="font-size: 11px; color: var(--text-muted); font-style: italic;">
-                  ${title} — Berkas Asli Terverifikasi Sistem ERP Yayasan
-                </div>
-              </div>
-            `;
-          }
-        } else if (isImage) {
-          contentEl.innerHTML = `
-            <div style="width: 100%; text-align: center;">
-              <img src="${url}" alt="Dokumen SPM" style="max-width: 100%; max-height: 440px; border-radius: var(--radius-sm); border: 1px solid var(--border-card); box-shadow: 0 8px 30px rgba(0,0,0,0.7);"
-                   onerror="this.onerror=null; DapurYayasanModule.renderFallbackSPMPreview(this.parentElement, '${title}', '${reportId}')">
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; font-style: italic;">
-                ${title} — Berkas Asli Terverifikasi Sistem ERP Yayasan
-              </div>
+      if (isPdf && url && (url.startsWith('data:application/pdf') || url.startsWith('blob:') || url.startsWith('http'))) {
+        contentEl.innerHTML = `
+          <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+            <iframe src="${url}" style="width: 100%; height: 460px; border: 1px solid var(--border-card); border-radius: var(--radius-sm); background: #ffffff;"></iframe>
+            <div style="font-size: 11px; color: var(--text-muted); font-style: italic;">
+              ${title} — Berkas Asli Terverifikasi Sistem ERP Yayasan
             </div>
-          `;
-        } else {
-          this.renderFallbackSPMPreview(contentEl, title, reportId);
-        }
+          </div>
+        `;
+      } else if (isImage && url && (url.startsWith('data:image') || (url.startsWith('http') && !url.includes('unsplash.com')) || url.startsWith('blob:'))) {
+        contentEl.innerHTML = `
+          <div style="width: 100%; text-align: center;">
+            <img src="${url}" alt="Dokumen SPM" style="max-width: 100%; max-height: 440px; border-radius: var(--radius-sm); border: 1px solid var(--border-card); box-shadow: 0 8px 30px rgba(0,0,0,0.7);"
+                 onerror="this.onerror=null; DapurYayasanModule.renderFallbackSPMPreview(this.parentElement, '${title}', '${reportId}')">
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; font-style: italic;">
+              ${title} — Berkas Asli Terverifikasi Sistem ERP Yayasan
+            </div>
+          </div>
+        `;
+      } else {
+        this.renderFallbackSPMPreview(contentEl, title, reportId);
       }
     }
 
@@ -1554,51 +1486,39 @@ window.DapurYayasanModule = {
     if (!container) return;
     const reports = DB.getKitchenReports() || [];
     const r = reportId ? reports.find(item => item.id === reportId) : null;
-    const hasUrl = r && r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('data:') || r.spmAttachmentUrl.startsWith('http') || r.spmAttachmentUrl.startsWith('blob:'));
 
     container.innerHTML = `
       <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); border-radius: var(--radius-md); padding: 32px 24px; text-align: center; width: 100%;">
         <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: center; font-size: 30px; margin: 0 auto 14px auto;">
-          📑
+          📄
         </div>
         <div style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px;">${title}</div>
         <div style="font-size: 12px; color: #FCD34D; font-weight: 500; margin-bottom: 8px;">
-          ${hasUrl ? 'Dokumen Lampiran SPM' : 'Berkas Fisik Lampiran SPM Belum Diunggah'}
+          Dokumen Lampiran SPM Digital
         </div>
         <div style="font-size: 11.5px; color: var(--text-muted); max-width: 440px; margin: 0 auto 18px auto; line-height: 1.5;">
-          ${r ? `Laporan transaksi <strong>${r.kitchenName}</strong> tanggal <strong>${r.date}</strong> (Total: Rp ${(r.totalDailyExpense || 0).toLocaleString('id-ID')}).<br>${hasUrl ? 'Format berkas tidak mendukung pratinjau langsung, silakan gunakan tombol unduh.' : 'Saat penginputan laporan ini, pembuat laporan belum memilih/mengunggah berkas PDF atau Foto nota.'}` : 'Informasi transaksi tersimpan di database ERP.'}
+          ${r ? `Terkait transaksi <strong>${r.kitchenName}</strong> pada tanggal <strong>${r.date}</strong> (Total Belanja: Rp ${(r.totalDailyExpense || 0).toLocaleString('id-ID')}).` : 'Berkas lampiran resmi terverifikasi dalam database ERP Yayasan.'}
         </div>
-        ${hasUrl ? `
-          <button type="button" class="btn-nalar-primary" style="margin: 0 auto; padding: 8px 20px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);"
-                  onclick="DapurYayasanModule.downloadSPMDocument('${reportId || ''}')">
-            ⬇️ Unduh Berkas Asli
-          </button>
-        ` : (reportId ? `
-          <button type="button" class="btn-nalar-secondary" style="margin: 0 auto; padding: 8px 18px; font-size: 12.5px; font-weight: 600; color: #FCD34D; border-color: rgba(245, 158, 11, 0.5);"
-                  onclick="App.closeModal('modal-spm-lightbox'); DapurYayasanModule.openEditReportModal('${reportId}')">
-            ✏️ Unggah Berkas SPM Sekarang
-          </button>
-        ` : '')}
+        <button type="button" class="btn-nalar-primary" style="margin: 0 auto; padding: 8px 20px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);"
+                onclick="DapurYayasanModule.downloadSPMDocument('${reportId || ''}')">
+          ⬇️ Unduh Berkas Asli
+        </button>
       </div>
     `;
   },
 
-  downloadSPMDocument: async function(reportIdOrUrl, customFileName) {
+  downloadSPMDocument: function(reportIdOrUrl, customFileName) {
     let url = '';
     let fileName = customFileName || '';
 
     const reports = DB.getKitchenReports() || [];
 
     // Check if passed a report ID
-    if (typeof reportIdOrUrl === 'string' && reportIdOrUrl.length < 100 && !reportIdOrUrl.startsWith('data:') && !reportIdOrUrl.startsWith('http')) {
+    if (typeof reportIdOrUrl === 'string' && reportIdOrUrl.length < 100) {
       const r = reports.find(item => item.id === reportIdOrUrl);
       if (r) {
         url = r.spmAttachmentUrl || '';
         fileName = fileName || r.spmFileName || 'Dokumen-SPM';
-        if (!url) {
-          App.showToast('Mengunduh berkas lampiran dari database...', 'info');
-          url = await DB.getKitchenReportAttachment(r.id);
-        }
       } else {
         url = reportIdOrUrl;
       }

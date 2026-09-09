@@ -63,7 +63,7 @@ window.DashboardModule = {
     const pendingApprovals = DB.getPendingApprovalsCount() || 0;
     const userActiveSubmissions = userPendingPrCount + userLeaves.filter(l => l.status === 'PENDING').length + userTimesheets.filter(t => t.status === 'PENDING').length;
 
-    const isSenior = (typeof hasWorkedOneYear === 'function') ? hasWorkedOneYear(user.joinDate) : false;
+    const isSenior = hasWorkedOneYear(user.joinDate);
     const displayLeaveRemaining = isSenior ? (user.remainingAnnualLeave !== undefined ? user.remainingAnnualLeave : 12) : (user.remainingPersonalLeave !== undefined ? user.remainingPersonalLeave : 3);
     const displayLeaveQuota = isSenior ? (user.quotaAnnualLeave || 12) : (user.quotaPersonalLeave || 3);
 
@@ -142,7 +142,7 @@ window.DashboardModule = {
             <div style="display: flex; align-items: center; gap: 14px;">
               <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
                 ${!isSenior ? `
-                  Status Cuti: <strong style="color: #FCD34D;">${displayLeaveRemaining} Hari Pribadi (Q3)</strong> · Masa Kerja: <strong style="color: #34D399;">${(typeof calculateTenure === 'function') ? calculateTenure(user.joinDate) : '-'}</strong>
+                  Status Cuti: <strong style="color: #FCD34D;">${displayLeaveRemaining} Hari Pribadi (Q3)</strong> · Masa Kerja: <strong style="color: #34D399;">${calculateTenure(user.joinDate)}</strong>
                 ` : `
                   Status Cuti: <strong style="color: #A78BFA;">${displayLeaveRemaining} Hari Tahunan</strong> · Jam TS Hari Ini: <strong style="color: #60A5FA;">${todayHours.toFixed(1)} Jam</strong>
                 `}
@@ -444,9 +444,8 @@ window.DashboardModule = {
                 ` : `
                   <div style="display: flex; flex-direction: column; gap: 10px;">
                     ${filteredIssues.map(issue => {
-                      const pts = Array.isArray(issue.points) ? issue.points : [];
-                      const totalPoints = pts.length;
-                      const donePoints = pts.filter(p => (typeof p === 'object' ? p.status === 'SUDAH_SELESAI' : issue.status === 'FOLLOWED_UP')).length;
+                      const totalPoints = issue.points.length;
+                      const donePoints = issue.points.filter(p => (typeof p === 'object' ? p.status === 'SUDAH_SELESAI' : issue.status === 'FOLLOWED_UP')).length;
 
                       return `
                         <div style="background: rgba(14, 18, 28, 0.95); border: 1px solid ${issue.status === 'FOLLOWED_UP' ? 'rgba(52, 211, 153, 0.3)' : issue.status === 'IN_PROGRESS' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(245, 158, 11, 0.3)'}; border-radius: var(--radius-sm); padding: 10px 14px;">
@@ -475,7 +474,7 @@ window.DashboardModule = {
 
                           <!-- Compact Points List -->
                           <div style="display: flex; flex-direction: column; gap: 6px;">
-                            ${pts.map((pt, pIdx) => {
+                            ${issue.points.map((pt, pIdx) => {
                               const pId = typeof pt === 'object' ? pt.id : `PT-${pIdx + 1}`;
                               const pText = typeof pt === 'object' ? pt.text : pt;
                               const pStatus = typeof pt === 'object' ? (pt.status || 'BELUM_DIRESPON') : (issue.status === 'FOLLOWED_UP' ? 'SUDAH_SELESAI' : 'BELUM_DIRESPON');

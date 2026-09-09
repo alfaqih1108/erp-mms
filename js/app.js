@@ -45,12 +45,8 @@ window.App = {
         console.warn('Real-time sync on start notice:', e);
       });
 
-      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif (Debounced 30s)
-      let lastFocusSync = 0;
+      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif
       window.addEventListener('focus', async () => {
-        const now = Date.now();
-        if (now - lastFocusSync < 30000) return; // Debounce 30s
-        lastFocusSync = now;
         try {
           await window.DB.pullLatestFromSupabase();
           this.updateSidebarBadges();
@@ -61,18 +57,16 @@ window.App = {
         }
       });
 
-      // 2. Multi-Device Periodic Background Polling setiap 90 detik (hanya jika tab aktif)
+      // 2. Multi-Device Periodic Background Polling setiap 30 detik
       setInterval(async () => {
-        if (document.hidden) return; // Hemat bandwidth jika browser tidak sedang dilihat
         try {
           await window.DB.pullLatestFromSupabase();
           this.updateSidebarBadges();
           this.updateCloudBadge();
-          this.refreshCurrentTab();
         } catch (err) {
           console.warn('Periodic sync notice:', err);
         }
-      }, 90000);
+      }, 30000);
     }
   },
 
