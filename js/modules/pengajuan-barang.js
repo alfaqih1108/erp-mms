@@ -177,8 +177,8 @@ window.PengajuanBarangModule = {
                             </div>
                           ` : ''}
                           <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">${p.reason}</div>
-                          ${p.attachmentUrl ? `
-                            <button class="btn-preview-link" style="padding: 3px 8px; font-size: 10px;" onclick="event.stopPropagation(); PengajuanBarangModule.openLightbox('${p.attachmentUrl}', '${p.itemName}')">
+                          ${(p.attachmentName || p.attachmentUrl) ? `
+                            <button class="btn-preview-link" style="padding: 3px 8px; font-size: 10px;" onclick="event.stopPropagation(); PengajuanBarangModule.openLightbox('${p.attachmentUrl || p.id}', '${p.itemName}')">
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                               <span>Lihat Foto Barang yang Diajukan ↗</span>
                             </button>
@@ -399,10 +399,15 @@ window.PengajuanBarangModule = {
     if (catEl) catEl.value = category;
   },
 
-  openLightbox: function(imgUrl, title) {
+  openLightbox: async function(imgUrlOrId, title) {
+    let imgUrl = imgUrlOrId;
+    if (imgUrl && !imgUrl.startsWith('data:') && !imgUrl.startsWith('http') && !imgUrl.startsWith('blob:')) {
+      App.showToast('Memuat foto lampiran barang...', 'info');
+      imgUrl = await DB.getItemRequestAttachment(imgUrlOrId);
+    }
     const lightboxImg = document.getElementById('lightbox-img');
     const lightboxTitle = document.getElementById('lightbox-title');
-    if (lightboxImg) lightboxImg.src = imgUrl;
+    if (lightboxImg) lightboxImg.src = imgUrl || '';
     if (lightboxTitle) lightboxTitle.textContent = title ? `Foto Spesifikasi: ${title}` : 'Foto Barang';
     App.openModal('modal-image-preview');
   },

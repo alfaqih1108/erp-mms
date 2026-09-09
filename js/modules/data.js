@@ -5450,6 +5450,102 @@ class DatabaseManager {
     return false;
   }
 
+  async getKitchenReportAttachment(reportId) {
+    const r = (this.data.kitchenReports || []).find(item => item.id === reportId);
+    if (r && r.spmAttachmentUrl) return r.spmAttachmentUrl;
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return '';
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/kitchen_reports?id=eq.${reportId}&select=spm_attachment_url`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        if (rows && rows[0] && rows[0].spm_attachment_url) {
+          if (r) r.spmAttachmentUrl = rows[0].spm_attachment_url;
+          return rows[0].spm_attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('On-demand kitchen attachment fetch error:', e);
+    }
+    return '';
+  },
+
+  async getLeaveAttachment(leaveId) {
+    const l = (this.data.leaves || []).find(item => item.id === leaveId);
+    if (l && l.attachmentUrl) return l.attachmentUrl;
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return '';
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/leaves?id=eq.${leaveId}&select=attachment_url`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        if (rows && rows[0] && rows[0].attachment_url) {
+          if (l) l.attachmentUrl = rows[0].attachment_url;
+          return rows[0].attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('On-demand leave attachment fetch error:', e);
+    }
+    return '';
+  },
+
+  async getItemRequestAttachment(requestId) {
+    const p = (this.data.itemRequests || []).find(item => item.id === requestId);
+    if (p && p.attachmentUrl) return p.attachmentUrl;
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return '';
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/item_requests?id=eq.${requestId}&select=attachment_url`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        if (rows && rows[0] && rows[0].attachment_url) {
+          if (p) p.attachmentUrl = rows[0].attachment_url;
+          return rows[0].attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('On-demand item request attachment fetch error:', e);
+    }
+    return '';
+  },
+
+  async getCashAdvanceAttachment(advanceId, field = 'attachment_url') {
+    const ca = (this.data.cashAdvances || []).find(item => item.id === advanceId);
+    if (ca && ca[field]) return ca[field];
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return '';
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/cash_advances?id=eq.${advanceId}&select=attachment_url,disbursement_proof_url,settlement_proof_url`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        if (rows && rows[0]) {
+          if (ca) {
+            if (rows[0].attachment_url) ca.attachmentUrl = rows[0].attachment_url;
+            if (rows[0].disbursement_proof_url) ca.disbursementProofUrl = rows[0].disbursement_proof_url;
+            if (rows[0].settlement_proof_url) ca.settlementProofUrl = rows[0].settlement_proof_url;
+          }
+          return rows[0][field] || '';
+        }
+      }
+    } catch (e) {
+      console.warn('On-demand cash advance attachment fetch error:', e);
+    }
+    return '';
+  },
+
   async pullLatestFromSupabase() {
     if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
     const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
@@ -5457,18 +5553,17 @@ class DatabaseManager {
     const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
 
     try {
-      console.log('⚡ [Supabase Pull] Memuat data real-time dengan Smart Merge...');
+      console.log('⚡ [Supabase Pull] Memuat data real-time dengan Selective Lightweight Projection...');
 
-      // Jalankan seluruh 9 endpoint secara PARALEL untuk kecepatan instan (<300ms)
-      // Guideline documents hanya menarik metadata tanpa binary data berat
+      // Optimasi Egress: Proyeksikan kolom metadata dan omit kolom binary berat (Base64 fileData/spm_attachment_url)
       const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes] = await Promise.allSettled([
         fetch(`${url}/rest/v1/users?select=*`, { headers }),
         fetch(`${url}/rest/v1/kitchens?select=*`, { headers }),
-        fetch(`${url}/rest/v1/item_requests?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/leaves?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/kitchen_reports?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,va_bank_name,va_balance,notes,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/cash_advances?select=id,purpose,employee_id,employee_name,role,department,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,stage,status,settlement,approval_history,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers })
       ]);
@@ -5591,95 +5686,104 @@ class DatabaseManager {
         }
       }
 
-      // 3. Process Item Requests (Smart Merge)
+      // 3. Process Item Requests (Smart Merge without heavy binary attachments)
       if (prRes.status === 'fulfilled' && prRes.value.ok) {
         const prs = await prRes.value.json();
         if (Array.isArray(prs)) {
-          const remotePRs = prs.map(p => ({
-            id: p.id,
-            employeeId: p.employee_id,
-            employeeName: p.employee_name,
-            role: p.role,
-            department: p.department,
-            itemName: p.item_name,
-            category: p.category,
-            quantity: p.quantity,
-            unitPrice: Number(p.unit_price) || 0,
-            totalPrice: Number(p.total_price) || 0,
-            urgency: p.urgency,
-            reason: p.reason,
-            targetKitchen: p.target_kitchen,
-            attachmentUrl: p.attachment_url,
-            attachmentName: p.attachment_name,
-            stage: p.stage,
-            status: p.status,
-            rejectionReason: p.rejection_reason,
-            approvalHistory: p.approval_history || [],
-            createdAt: p.created_at
-          }));
+          const remotePRs = prs.map(p => {
+            const existing = (this.data.itemRequests || []).find(x => x.id === p.id);
+            return {
+              id: p.id,
+              employeeId: p.employee_id,
+              employeeName: p.employee_name,
+              role: p.role,
+              department: p.department,
+              itemName: p.item_name,
+              category: p.category,
+              quantity: p.quantity,
+              unitPrice: Number(p.unit_price) || 0,
+              totalPrice: Number(p.total_price) || 0,
+              urgency: p.urgency,
+              reason: p.reason,
+              targetKitchen: p.target_kitchen,
+              attachmentUrl: existing ? existing.attachmentUrl : null,
+              attachmentName: p.attachment_name,
+              stage: p.stage,
+              status: p.status,
+              rejectionReason: p.rejection_reason,
+              approvalHistory: p.approval_history || [],
+              createdAt: p.created_at
+            };
+          });
 
           this.data.itemRequests = remotePRs;
         }
       }
 
-      // 4. Process Leaves (Authoritative Cloud Sync)
+      // 4. Process Leaves (Smart Merge without heavy binary attachments)
       if (leaveRes.status === 'fulfilled' && leaveRes.value.ok) {
         const leaves = await leaveRes.value.json();
         if (Array.isArray(leaves)) {
-          const remoteLeaves = leaves.map(l => ({
-            id: l.id,
-            employeeId: l.employee_id,
-            employeeName: l.employee_name,
-            role: l.role,
-            department: l.department,
-            leaveType: l.leave_type,
-            type: l.leave_type,
-            startDate: l.start_date,
-            endDate: l.end_date,
-            duration: l.duration,
-            reason: l.reason,
-            emergencyContact: l.emergency_contact,
-            attachmentUrl: l.attachment_url,
-            attachmentName: l.attachment_name,
-            stage: l.stage,
-            status: l.status,
-            rejectionReason: l.rejection_reason,
-            approvalHistory: l.approval_history || [],
-            createdAt: l.created_at
-          }));
+          const remoteLeaves = leaves.map(l => {
+            const existing = (this.data.leaves || []).find(x => x.id === l.id);
+            return {
+              id: l.id,
+              employeeId: l.employee_id,
+              employeeName: l.employee_name,
+              role: l.role,
+              department: l.department,
+              leaveType: l.leave_type,
+              type: l.leave_type,
+              startDate: l.start_date,
+              endDate: l.end_date,
+              duration: l.duration,
+              reason: l.reason,
+              emergencyContact: l.emergency_contact,
+              attachmentUrl: existing ? existing.attachmentUrl : null,
+              attachmentName: l.attachment_name,
+              stage: l.stage,
+              status: l.status,
+              rejectionReason: l.rejection_reason,
+              approvalHistory: l.approval_history || [],
+              createdAt: l.created_at
+            };
+          });
 
           this.data.leaves = remoteLeaves;
         }
       }
 
-      // 5. Process Kitchen Reports (Authoritative Cloud Sync)
+      // 5. Process Kitchen Reports (Smart Merge without heavy Base64 PDFs)
       if (krRes.status === 'fulfilled' && krRes.value.ok) {
         const krs = await krRes.value.json();
         if (Array.isArray(krs)) {
-          this.data.kitchenReports = krs.map(kr => ({
-            id: kr.id,
-            kitchenId: kr.kitchen_id,
-            kitchenName: kr.kitchen_name,
-            date: kr.date,
-            reporterId: kr.reporter_id,
-            reporterName: kr.reporter_name,
-            rawMaterialCost: Number(kr.raw_material_cost) || 0,
-            operationalCost: Number(kr.operational_cost) || 0,
-            carRentalCost: Number(kr.car_rental_cost) || 0,
-            totalDailyExpense: Number(kr.total_daily_expense) || 0,
-            porsiBesar: Number(kr.porsi_besar) || 0,
-            porsiKecil: Number(kr.porsi_kecil) || 0,
-            beneficiariesCount: Number(kr.beneficiaries_count) || 0,
-            targetBudget: Number(kr.target_budget) || 0,
-            costPerPortion: Number(kr.cost_per_portion) || 0,
-            costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
-            spmFileName: kr.spm_file_name,
-            spmAttachmentUrl: kr.spm_attachment_url,
-            vaBankName: kr.va_bank_name,
-            vaBalance: Number(kr.va_balance) || 0,
-            notes: kr.notes,
-            createdAt: kr.created_at
-          }));
+          this.data.kitchenReports = krs.map(kr => {
+            const existing = (this.data.kitchenReports || []).find(x => x.id === kr.id);
+            return {
+              id: kr.id,
+              kitchenId: kr.kitchen_id,
+              kitchenName: kr.kitchen_name,
+              date: kr.date,
+              reporterId: kr.reporter_id,
+              reporterName: kr.reporter_name,
+              rawMaterialCost: Number(kr.raw_material_cost) || 0,
+              operationalCost: Number(kr.operational_cost) || 0,
+              carRentalCost: Number(kr.car_rental_cost) || 0,
+              totalDailyExpense: Number(kr.total_daily_expense) || 0,
+              porsiBesar: Number(kr.porsi_besar) || 0,
+              porsiKecil: Number(kr.porsi_kecil) || 0,
+              beneficiariesCount: Number(kr.beneficiaries_count) || 0,
+              targetBudget: Number(kr.target_budget) || 0,
+              costPerPortion: Number(kr.cost_per_portion) || 0,
+              costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
+              spmFileName: kr.spm_file_name,
+              spmAttachmentUrl: existing ? existing.spmAttachmentUrl : null,
+              vaBankName: kr.va_bank_name,
+              vaBalance: Number(kr.va_balance) || 0,
+              notes: kr.notes,
+              createdAt: kr.created_at
+            };
+          });
         }
       }
 
@@ -5716,31 +5820,37 @@ class DatabaseManager {
         }
       }
 
-      // 7. Process Cash Advances (Authoritative Cloud Sync)
+      // 7. Process Cash Advances (Smart Merge without heavy binary receipts)
       if (caRes.status === 'fulfilled' && caRes.value.ok) {
         const cas = await caRes.value.json();
         if (Array.isArray(cas)) {
-          const remoteCAs = cas.map(ca => ({
-            id: ca.id,
-            title: ca.purpose,
-            employeeId: ca.employee_id,
-            employeeName: ca.employee_name,
-            employeeRole: ca.role,
-            department: ca.department,
-            targetLocation: ca.target_kitchen,
-            amountRequested: Number(ca.amount_requested) || 0,
-            amountApproved: Number(ca.amount_approved) || 0,
-            amountDisbursed: Number(ca.amount_disbursed) || 0,
-            bankName: ca.bank_name,
-            bankAccountNo: ca.rekening_no,
-            bankAccountName: ca.rekening_name,
-            reason: ca.purpose,
-            stage: ca.stage,
-            status: ca.status,
-            settlement: ca.settlement,
-            approvalHistory: ca.approval_history || [],
-            createdAt: ca.created_at
-          }));
+          const remoteCAs = cas.map(ca => {
+            const existing = (this.data.cashAdvances || []).find(x => x.id === ca.id);
+            return {
+              id: ca.id,
+              title: ca.purpose,
+              employeeId: ca.employee_id,
+              employeeName: ca.employee_name,
+              employeeRole: ca.role,
+              department: ca.department,
+              targetLocation: ca.target_kitchen,
+              amountRequested: Number(ca.amount_requested) || 0,
+              amountApproved: Number(ca.amount_approved) || 0,
+              amountDisbursed: Number(ca.amount_disbursed) || 0,
+              bankName: ca.bank_name,
+              bankAccountNo: ca.rekening_no,
+              bankAccountName: ca.rekening_name,
+              reason: ca.purpose,
+              stage: ca.stage,
+              status: ca.status,
+              settlement: ca.settlement,
+              attachmentUrl: existing ? existing.attachmentUrl : null,
+              disbursementProofUrl: existing ? existing.disbursementProofUrl : null,
+              settlementProofUrl: existing ? existing.settlementProofUrl : null,
+              approvalHistory: ca.approval_history || [],
+              createdAt: ca.created_at
+            };
+          });
 
           this.data.cashAdvances = remoteCAs;
         }
