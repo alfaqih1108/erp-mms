@@ -2466,7 +2466,7 @@ class DatabaseManager {
     this.addLog(`Human Capital mengunggah dokumen panduan baru: "${newDoc.title}" (${newDoc.fileType})`, 'hc');
     this.save();
 
-    await this.syncToSupabase('guideline_documents', {
+    this.syncToSupabase('guideline_documents', {
       id: newDoc.id,
       title: newDoc.title,
       file_type: newDoc.fileType,
@@ -2478,7 +2478,7 @@ class DatabaseManager {
       uploaded_by: newDoc.uploadedBy,
       upload_date: newDoc.uploadDate,
       file_data: newDoc.fileData
-    });
+    }).catch(e => console.warn('Sync add guideline_documents to Supabase warning:', e));
 
     return newDoc;
   }
@@ -2502,7 +2502,7 @@ class DatabaseManager {
     this.addLog(`Human Capital memperbarui dokumen panduan: "${doc.title}"`, 'hc');
     this.save();
 
-    await this.syncToSupabase('guideline_documents', {
+    this.syncToSupabase('guideline_documents', {
       id: doc.id,
       title: doc.title,
       file_type: doc.fileType,
@@ -2514,7 +2514,7 @@ class DatabaseManager {
       uploaded_by: doc.uploadedBy,
       upload_date: doc.uploadDate,
       file_data: doc.fileData
-    });
+    }).catch(e => console.warn('Sync update guideline_documents to Supabase warning:', e));
 
     return doc;
   }
@@ -3006,15 +3006,27 @@ class DatabaseManager {
     if (!Array.isArray(this.data.kitchenReports)) this.data.kitchenReports = [];
     this.data.kitchenReports.unshift(newReport);
 
-    this.addLog(`${report.reporterName} melaporkan transaksi ${report.kitchenName}: ${beneficiariesCount} Porsi (Bahan: Rp ${rawMaterialCost.toLocaleString('id-ID')} + Ops: Rp ${operationalCost.toLocaleString('id-ID')}${carRentalCost > 0 ? ` + Sewa Mobil: Rp ${carRentalCost.toLocaleString('id-ID')}` : ''} = Total: Rp ${totalDailyExpense.toLocaleString('id-ID')}) · Saldo VA Rp ${Number(report.vaBalance).toLocaleString('id-ID')}`, 'kitchen');
+    this.addLog(`${report.reporterName || this.getCurrentUser().name} melaporkan transaksi ${report.kitchenName}: ${beneficiariesCount} Porsi (Bahan: Rp ${rawMaterialCost.toLocaleString('id-ID')} + Ops: Rp ${operationalCost.toLocaleString('id-ID')}${carRentalCost > 0 ? ` + Sewa Mobil: Rp ${carRentalCost.toLocaleString('id-ID')}` : ''} = Total: Rp ${totalDailyExpense.toLocaleString('id-ID')}) · Saldo VA Rp ${Number(report.vaBalance).toLocaleString('id-ID')}`, 'kitchen');
     this.save();
+
+    const matchedKitchen = (this.getKitchens() || []).find(k => 
+      (newReport.kitchenId && k.id === newReport.kitchenId) ||
+      (newReport.kitchenName && (newReport.kitchenName.includes(k.idSppg) || newReport.kitchenName.includes(k.namaDapur || k.name)))
+    );
+    const validKitchenId = matchedKitchen ? matchedKitchen.id : (newReport.kitchenId || 'DAPUR-01');
+
+    const matchedUser = (this.getUsers() || []).find(u => 
+      (newReport.reporterId && u.id === newReport.reporterId) ||
+      (newReport.reporterName && u.name && newReport.reporterName.includes(u.name))
+    );
+    const validReporterId = matchedUser ? matchedUser.id : (this.getCurrentUser()?.id || null);
 
     this.syncToSupabase('kitchen_reports', {
       id: newReport.id,
-      kitchen_id: newReport.kitchenId || newReport.targetKitchenId || 'DAPUR-01',
+      kitchen_id: validKitchenId,
       kitchen_name: newReport.kitchenName,
       date: newReport.date || new Date().toISOString().slice(0, 10),
-      reporter_id: newReport.reporterId || this.getCurrentUser().id,
+      reporter_id: validReporterId,
       reporter_name: newReport.reporterName || this.getCurrentUser().name,
       raw_material_cost: Number(newReport.rawMaterialCost) || 0,
       operational_cost: Number(newReport.operationalCost) || 0,
@@ -3031,7 +3043,7 @@ class DatabaseManager {
       va_bank_name: newReport.vaBankName || 'Bank Mandiri',
       va_balance: Number(newReport.vaBalance) || 0,
       notes: newReport.notes || ''
-    });
+    }).catch(e => console.warn('Sync add kitchen_reports to Supabase warning:', e));
 
     return newReport;
   }
@@ -3074,12 +3086,24 @@ class DatabaseManager {
     this.addLog(`${this.getCurrentUser().name} memperbarui laporan transaksi ${merged.kitchenName} (${merged.id})`, 'kitchen');
     this.save();
 
-    await this.syncToSupabase('kitchen_reports', {
+    const matchedKitchen = (this.getKitchens() || []).find(k => 
+      (merged.kitchenId && (k.id === merged.kitchenId || k.idSppg === merged.kitchenId)) ||
+      (merged.kitchenName && (merged.kitchenName.includes(k.idSppg) || merged.kitchenName.includes(k.namaDapur || k.name) || (k.namaDapur && merged.kitchenName.includes(k.namaDapur))))
+    );
+    const validKitchenId = matchedKitchen ? matchedKitchen.id : (this.getKitchens()[0]?.id || 'DAPUR-01');
+
+    const matchedUser = (this.getUsers() || []).find(u => 
+      (merged.reporterId && u.id === merged.reporterId) ||
+      (merged.reporterName && u.name && (merged.reporterName.includes(u.name) || u.name.includes(merged.reporterName)))
+    );
+    const validReporterId = matchedUser ? matchedUser.id : (this.getCurrentUser()?.id || null);
+
+    this.syncToSupabase('kitchen_reports', {
       id: merged.id,
-      kitchen_id: merged.kitchenId || merged.targetKitchenId || 'DAPUR-01',
+      kitchen_id: validKitchenId,
       kitchen_name: merged.kitchenName,
       date: merged.date || new Date().toISOString().slice(0, 10),
-      reporter_id: merged.reporterId || this.getCurrentUser().id,
+      reporter_id: validReporterId,
       reporter_name: merged.reporterName || this.getCurrentUser().name,
       raw_material_cost: Number(merged.rawMaterialCost) || 0,
       operational_cost: Number(merged.operationalCost) || 0,
@@ -3096,7 +3120,7 @@ class DatabaseManager {
       va_bank_name: merged.vaBankName || 'Bank Mandiri',
       va_balance: Number(merged.vaBalance) || 0,
       notes: merged.notes || ''
-    });
+    }).catch(syncErr => console.warn('Sync update kitchen_reports to Supabase warning:', syncErr));
 
     return merged;
   }

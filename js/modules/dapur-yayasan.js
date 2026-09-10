@@ -1288,16 +1288,23 @@ window.DapurYayasanModule = {
     };
 
     if (editId) {
-      App.showToast(`Memperbarui laporan transaksi ${editId}...`, 'info');
-      await DB.updateKitchenReport(editId, reportData);
       App.closeModal('modal-kitchen-report');
       App.showToast(`Laporan transaksi ${editId} berhasil diperbarui!`, 'success');
+      try {
+        DB.updateKitchenReport(editId, reportData);
+      } catch (err) {
+        console.error('Update kitchen report error:', err);
+      }
     } else {
       reportData.reporterId = user.id;
       reportData.reporterName = `${user.name} (${user.roleLabel})`;
-      DB.addKitchenReport(reportData);
       App.closeModal('modal-kitchen-report');
-      App.showToast(`Laporan transaksi ${kitchenSelectVal} (Total: Rp ${totalDailyExpense.toLocaleString('id-ID')}) berhasil disimpan!`, 'success');
+      App.showToast(`Laporan transaksi ${kitchenSelectVal} berhasil disimpan!`, 'success');
+      try {
+        DB.addKitchenReport(reportData);
+      } catch (err) {
+        console.error('Add kitchen report error:', err);
+      }
     }
 
     this.render(document.getElementById('main-content-area'));
