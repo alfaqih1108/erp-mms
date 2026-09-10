@@ -1146,13 +1146,26 @@ window.DapurYayasanModule = {
         <option value="${k.idSppg} — ${k.namaDapur || k.name}">${k.idSppg} — ${k.namaDapur || k.name}</option>
       `).join('');
 
-      if (r.kitchenName && !Array.from(select.options).some(opt => opt.value === r.kitchenName)) {
+      // Match kitchen by SPPG code or name
+      const sppgMatch = (r.kitchenName || '').match(/^([A-Z0-9]+)\s*[-—]/i);
+      const sppgCode = sppgMatch ? sppgMatch[1].trim() : (r.kitchenId || '');
+      
+      const foundOption = Array.from(select.options).find(opt => 
+        (sppgCode && opt.value.startsWith(sppgCode)) ||
+        opt.value === r.kitchenName ||
+        opt.value.includes(r.kitchenName) ||
+        (r.kitchenName && r.kitchenName.includes(opt.value))
+      );
+
+      if (foundOption) {
+        select.value = foundOption.value;
+      } else if (r.kitchenName) {
         const newOpt = document.createElement('option');
         newOpt.value = r.kitchenName;
         newOpt.textContent = r.kitchenName;
         select.appendChild(newOpt);
+        select.value = r.kitchenName;
       }
-      select.value = r.kitchenName;
     }
 
     const dateEl = document.getElementById('kr-date');
@@ -1296,21 +1309,25 @@ window.DapurYayasanModule = {
 
     if (editId) {
       App.closeModal('modal-kitchen-report');
-      App.showToast(`Laporan transaksi ${editId} berhasil diperbarui!`, 'success');
+      App.showToast(`Memperbarui laporan transaksi ${editId}...`, 'info');
       try {
-        DB.updateKitchenReport(editId, reportData);
+        await DB.updateKitchenReport(editId, reportData);
+        App.showToast(`Laporan transaksi ${editId} berhasil diperbarui!`, 'success');
       } catch (err) {
         console.error('Update kitchen report error:', err);
+        App.showToast(`Gagal memperbarui laporan: ${err.message || err}`, 'error');
       }
     } else {
       reportData.reporterId = user.id;
       reportData.reporterName = `${user.name} (${user.roleLabel})`;
       App.closeModal('modal-kitchen-report');
-      App.showToast(`Laporan transaksi ${kitchenSelectVal} berhasil disimpan!`, 'success');
+      App.showToast(`Menyimpan laporan transaksi ${kitchenSelectVal}...`, 'info');
       try {
-        DB.addKitchenReport(reportData);
+        await DB.addKitchenReport(reportData);
+        App.showToast(`Laporan transaksi ${kitchenSelectVal} berhasil disimpan!`, 'success');
       } catch (err) {
         console.error('Add kitchen report error:', err);
+        App.showToast(`Gagal menyimpan laporan: ${err.message || err}`, 'error');
       }
     }
 

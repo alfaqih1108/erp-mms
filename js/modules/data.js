@@ -3027,19 +3027,46 @@ class DatabaseManager {
     this.addLog(`${report.reporterName || this.getCurrentUser().name} melaporkan transaksi ${report.kitchenName}: ${beneficiariesCount} Porsi (Bahan: Rp ${rawMaterialCost.toLocaleString('id-ID')} + Ops: Rp ${operationalCost.toLocaleString('id-ID')}${carRentalCost > 0 ? ` + Sewa Mobil: Rp ${carRentalCost.toLocaleString('id-ID')}` : ''} = Total: Rp ${totalDailyExpense.toLocaleString('id-ID')}) · Saldo VA Rp ${Number(report.vaBalance).toLocaleString('id-ID')}`, 'kitchen');
     this.save();
 
-    const matchedKitchen = (this.getKitchens() || []).find(k => 
-      (newReport.kitchenId && k.id === newReport.kitchenId) ||
-      (newReport.kitchenName && (newReport.kitchenName.includes(k.idSppg) || newReport.kitchenName.includes(k.namaDapur || k.name)))
-    );
+    // 1. Resolve Kitchen ID by matching SPPG code, ID, or name from newReport.kitchenName FIRST
+    let matchedKitchen = null;
+    if (newReport.kitchenName) {
+      const sppgMatch = newReport.kitchenName.match(/^([A-Z0-9]+)\s*[-—]/i);
+      const sppgCode = sppgMatch ? sppgMatch[1].trim() : null;
+      matchedKitchen = (this.getKitchens() || []).find(k => 
+        (sppgCode && (k.idSppg === sppgCode || k.id === sppgCode)) ||
+        (k.idSppg && newReport.kitchenName.includes(k.idSppg)) ||
+        (k.namaDapur && newReport.kitchenName.includes(k.namaDapur)) ||
+        (k.name && newReport.kitchenName.includes(k.name))
+      );
+    }
+    if (!matchedKitchen && newReport.kitchenId) {
+      matchedKitchen = (this.getKitchens() || []).find(k => k.id === newReport.kitchenId || k.idSppg === newReport.kitchenId);
+    }
     const validKitchenId = matchedKitchen ? matchedKitchen.id : (newReport.kitchenId || 'DAPUR-01');
+    newReport.kitchenId = validKitchenId;
 
-    const matchedUser = (this.getUsers() || []).find(u => 
-      (newReport.reporterId && u.id === newReport.reporterId) ||
-      (newReport.reporterName && u.name && newReport.reporterName.includes(u.name))
-    );
-    const validReporterId = matchedUser ? matchedUser.id : (this.getCurrentUser()?.id || null);
+    // 2. Resolve Reporter ID (Must match a valid user ID or be null)
+    let validReporterId = null;
+    const allUsers = this.getUsers() || [];
+    if (newReport.reporterId && allUsers.some(u => u.id === newReport.reporterId)) {
+      validReporterId = newReport.reporterId;
+    } else if (newReport.reporterName) {
+      const matchedUser = allUsers.find(u => u.name && (newReport.reporterName.includes(u.name) || u.name.includes(newReport.reporterName)));
+      if (matchedUser) validReporterId = matchedUser.id;
+    }
+    if (!validReporterId && this.getCurrentUser() && allUsers.some(u => u.id === this.getCurrentUser().id)) {
+      validReporterId = this.getCurrentUser().id;
+    }
 
-    this.syncToSupabase('kitchen_reports', {
+    const cleanSpmUrl = (newReport.spmAttachmentUrl && !newReport.spmAttachmentUrl.includes('unsplash.com')) ? newReport.spmAttachmentUrl : null;
+    const cleanSpmFileName = (cleanSpmUrl && (cleanSpmUrl.startsWith('http://') || cleanSpmUrl.startsWith('https://'))) 
+      ? 'Link Google Drive SPM' 
+      : (newReport.spmFileName || 'Link Google Drive SPM');
+
+    newReport.spmAttachmentUrl = cleanSpmUrl;
+    newReport.spmFileName = cleanSpmFileName;
+
+    await this.syncToSupabase('kitchen_reports', {
       id: newReport.id,
       kitchen_id: validKitchenId,
       kitchen_name: newReport.kitchenName,
@@ -3056,8 +3083,8 @@ class DatabaseManager {
       target_budget: Number(newReport.targetBudget) || 0,
       cost_per_portion: Number(newReport.costPerPortion) || 0,
       cost_per_portion_all_in: Number(newReport.costPerPortionAllIn) || 0,
-      spm_file_name: newReport.spmFileName || null,
-      spm_attachment_url: newReport.spmAttachmentUrl || null,
+      spm_file_name: cleanSpmFileName,
+      spm_attachment_url: cleanSpmUrl,
       va_bank_name: newReport.vaBankName || 'Bank Mandiri',
       va_balance: Number(newReport.vaBalance) || 0,
       notes: newReport.notes || ''
@@ -3084,6 +3111,14 @@ class DatabaseManager {
     const costPerPortion = beneficiariesCount > 0 ? Math.round(rawMaterialCost / beneficiariesCount) : 0;
     const costPerPortionAllIn = beneficiariesCount > 0 ? Math.round(totalDailyExpense / beneficiariesCount) : 0;
 
+    const cleanSpmUrl = (updatedData.spmAttachmentUrl !== undefined) 
+      ? ((updatedData.spmAttachmentUrl && !updatedData.spmAttachmentUrl.includes('unsplash.com')) ? updatedData.spmAttachmentUrl : null)
+      : ((existing.spmAttachmentUrl && !existing.spmAttachmentUrl.includes('unsplash.com')) ? existing.spmAttachmentUrl : null);
+    
+    const cleanSpmFileName = (cleanSpmUrl && (cleanSpmUrl.startsWith('http://') || cleanSpmUrl.startsWith('https://')))
+      ? 'Link Google Drive SPM'
+      : (updatedData.spmFileName || existing.spmFileName || 'Link Google Drive SPM');
+
     const merged = {
       ...existing,
       ...updatedData,
@@ -3097,26 +3132,47 @@ class DatabaseManager {
       targetBudget,
       costPerPortion,
       costPerPortionAllIn,
+      spmAttachmentUrl: cleanSpmUrl,
+      spmFileName: cleanSpmFileName,
       updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
     };
+
+    // 1. Resolve Kitchen ID by matching SPPG code, ID, or name from merged.kitchenName FIRST
+    let matchedKitchen = null;
+    if (merged.kitchenName) {
+      const sppgMatch = merged.kitchenName.match(/^([A-Z0-9]+)\s*[-—]/i);
+      const sppgCode = sppgMatch ? sppgMatch[1].trim() : null;
+      matchedKitchen = (this.getKitchens() || []).find(k => 
+        (sppgCode && (k.idSppg === sppgCode || k.id === sppgCode)) ||
+        (k.idSppg && merged.kitchenName.includes(k.idSppg)) ||
+        (k.namaDapur && merged.kitchenName.includes(k.namaDapur)) ||
+        (k.name && merged.kitchenName.includes(k.name))
+      );
+    }
+    if (!matchedKitchen && merged.kitchenId) {
+      matchedKitchen = (this.getKitchens() || []).find(k => k.id === merged.kitchenId || k.idSppg === merged.kitchenId);
+    }
+    const validKitchenId = matchedKitchen ? matchedKitchen.id : (merged.kitchenId || 'DAPUR-01');
+    merged.kitchenId = validKitchenId;
+
+    // 2. Resolve Reporter ID (Must match a valid user ID or be null)
+    let validReporterId = null;
+    const allUsers = this.getUsers() || [];
+    if (merged.reporterId && allUsers.some(u => u.id === merged.reporterId)) {
+      validReporterId = merged.reporterId;
+    } else if (merged.reporterName) {
+      const matchedUser = allUsers.find(u => u.name && (merged.reporterName.includes(u.name) || u.name.includes(merged.reporterName)));
+      if (matchedUser) validReporterId = matchedUser.id;
+    }
+    if (!validReporterId && this.getCurrentUser() && allUsers.some(u => u.id === this.getCurrentUser().id)) {
+      validReporterId = this.getCurrentUser().id;
+    }
 
     this.data.kitchenReports[idx] = merged;
     this.addLog(`${this.getCurrentUser().name} memperbarui laporan transaksi ${merged.kitchenName} (${merged.id})`, 'kitchen');
     this.save();
 
-    const matchedKitchen = (this.getKitchens() || []).find(k => 
-      (merged.kitchenId && (k.id === merged.kitchenId || k.idSppg === merged.kitchenId)) ||
-      (merged.kitchenName && (merged.kitchenName.includes(k.idSppg) || merged.kitchenName.includes(k.namaDapur || k.name) || (k.namaDapur && merged.kitchenName.includes(k.namaDapur))))
-    );
-    const validKitchenId = matchedKitchen ? matchedKitchen.id : (this.getKitchens()[0]?.id || 'DAPUR-01');
-
-    const matchedUser = (this.getUsers() || []).find(u => 
-      (merged.reporterId && u.id === merged.reporterId) ||
-      (merged.reporterName && u.name && (merged.reporterName.includes(u.name) || u.name.includes(merged.reporterName)))
-    );
-    const validReporterId = matchedUser ? matchedUser.id : (this.getCurrentUser()?.id || null);
-
-    this.syncToSupabase('kitchen_reports', {
+    await this.syncToSupabase('kitchen_reports', {
       id: merged.id,
       kitchen_id: validKitchenId,
       kitchen_name: merged.kitchenName,
@@ -3133,8 +3189,8 @@ class DatabaseManager {
       target_budget: Number(merged.targetBudget) || 0,
       cost_per_portion: Number(merged.costPerPortion) || 0,
       cost_per_portion_all_in: Number(merged.costPerPortionAllIn) || 0,
-      spm_file_name: merged.spmFileName || null,
-      spm_attachment_url: merged.spmAttachmentUrl || null,
+      spm_file_name: cleanSpmFileName,
+      spm_attachment_url: cleanSpmUrl,
       va_bank_name: merged.vaBankName || 'Bank Mandiri',
       va_balance: Number(merged.vaBalance) || 0,
       notes: merged.notes || ''
@@ -5066,10 +5122,10 @@ class DatabaseManager {
     try {
       console.log(`[Supabase Sync] Mengirim data ke tabel "${table}"...`, idVal || '');
 
-      // 1. Jika data memiliki ID spesifik, gunakan PATCH terlebih dahulu untuk memperbarui sebagian kolom (misal: password, status, stage, saldo VA) tanpa melanggar constraint NOT NULL
+      // 1. Jika data memiliki ID spesifik, gunakan PATCH terlebih dahulu untuk memperbarui sebagian kolom tanpa melanggar constraint NOT NULL
       if (idVal) {
         try {
-          const patchRes = await fetch(`${url}/rest/v1/${table}?id=eq.${idVal}`, {
+          const patchRes = await fetch(`${url}/rest/v1/${table}?id=eq.${encodeURIComponent(idVal)}`, {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
@@ -5085,6 +5141,32 @@ class DatabaseManager {
             if (Array.isArray(patched) && patched.length > 0) {
               console.log(`✅ [Supabase PATCH] Berhasil memperbarui data di tabel "${table}" (ID: ${idVal})`);
               return { success: true, data: patched };
+            }
+          } else {
+            const patchErrText = await patchRes.text();
+            console.warn(`[Supabase PATCH Non-OK] HTTP ${patchRes.status} pada tabel "${table}":`, patchErrText);
+            
+            // Retry PATCH with fallback foreign keys if constraint failed
+            if (table === 'kitchen_reports' && patchErrText.includes('foreign key constraint')) {
+              console.log(`[Supabase PATCH Retry] Mencoba fallback foreign key untuk "${table}"...`);
+              const retryData = { ...data, reporter_id: null, kitchen_id: 'DAPUR-01' };
+              const retryRes = await fetch(`${url}/rest/v1/${table}?id=eq.${encodeURIComponent(idVal)}`, {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'apikey': key,
+                  'Authorization': `Bearer ${key}`,
+                  'Prefer': 'return=representation'
+                },
+                body: JSON.stringify(retryData)
+              });
+              if (retryRes.ok) {
+                const retriedPatched = await retryRes.json();
+                if (Array.isArray(retriedPatched) && retriedPatched.length > 0) {
+                  console.log(`✅ [Supabase PATCH Retry] Berhasil dengan fallback foreign key!`);
+                  return { success: true, data: retriedPatched };
+                }
+              }
             }
           }
         } catch (patchErr) {
@@ -5113,11 +5195,68 @@ class DatabaseManager {
       } else {
         const errText = await response.text();
         console.error(`❌ [Supabase Sync REST Error] HTTP ${response.status} pada tabel ${table}:`, errText);
+
+        // Retry POST with fallback foreign keys if constraint failed
+        if (table === 'kitchen_reports' && errText.includes('foreign key constraint')) {
+          console.log(`[Supabase POST Retry] Mencoba fallback POST foreign key untuk "${table}"...`);
+          const retryData = { ...data, reporter_id: null, kitchen_id: 'DAPUR-01' };
+          const retryRes = await fetch(endpoint, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(retryData)
+          });
+          if (retryRes.ok) {
+            console.log(`✅ [Supabase POST Retry] Berhasil dengan fallback foreign key!`);
+            return { success: true };
+          }
+        }
+
         return { error: errText };
       }
     } catch (e) {
       console.error(`❌ [Supabase Sync Exception] pada tabel ${table}:`, e);
       return null;
+    }
+  }
+
+  // Sinkronkan Master Dapur ke Supabase agar foreign key valid dan nama dapur terupdate
+  async syncMasterKitchensToSupabase() {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+
+      const kitchensData = this.getKitchens().map(k => ({
+        id: k.id,
+        id_sppg: k.idSppg || k.id,
+        nama_dapur: k.namaDapur || k.name || 'Dapur SPPG',
+        nama_yayasan: k.namaYayasan || 'Yayasan Mitra Mandiri Sejahtera',
+        provinsi: k.provinsi || 'DKI Jakarta',
+        kota_kabupaten: k.kotaKabupaten || '-',
+        kecamatan: k.kecamatan || '-',
+        kelurahan: k.kelurahan || '-',
+        alamat_lengkap: k.alamatLengkap || '-',
+        location: k.location || `${k.kotaKabupaten || '-'}, ${k.provinsi || '-'}`,
+        maker_yayasan: k.makerYayasan || 'Belum Ditetapkan',
+        perwakilan_yayasan: k.perwakilanYayasan || 'Belum Ditetapkan',
+        manager_area: k.managerArea || 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+        status: k.status || 'AKTIF',
+        kapasitas_porsi: Number(k.kapasitasPorsi) || 500
+      }));
+
+      await fetch(`${url}/rest/v1/kitchens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': key,
+          'Authorization': `Bearer ${key}`,
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify(kitchensData)
+      });
+      console.log('✅ [Supabase Seed] Seluruh Master Dapur berhasil disinkronkan ke Supabase.');
+    } catch (e) {
+      console.warn('⚠️ Gagal sinkronisasi master kitchens ke Supabase:', e);
     }
   }
 
@@ -5755,29 +5894,34 @@ class DatabaseManager {
               ? 'Link Google Drive SPM' 
               : (kr.spm_file_name || (local && local.spmFileName ? local.spmFileName : null));
 
+            // If local was edited with an updated kitchen name or newer timestamp, preserve the updated local values
+            const finalKitchenName = (local && local.updatedAt && local.kitchenName) ? local.kitchenName : (kr.kitchen_name || (local ? local.kitchenName : ''));
+            const finalKitchenId = (local && local.updatedAt && local.kitchenId) ? local.kitchenId : (kr.kitchen_id || (local ? local.kitchenId : 'DAPUR-01'));
+
             return {
               id: kr.id,
-              kitchenId: kr.kitchen_id,
-              kitchenName: kr.kitchen_name,
+              kitchenId: finalKitchenId,
+              kitchenName: finalKitchenName,
               date: kr.date,
-              reporterId: kr.reporter_id,
-              reporterName: kr.reporter_name,
-              rawMaterialCost: Number(kr.raw_material_cost) || 0,
-              operationalCost: Number(kr.operational_cost) || 0,
-              carRentalCost: Number(kr.car_rental_cost) || 0,
-              totalDailyExpense: Number(kr.total_daily_expense) || 0,
-              porsiBesar: Number(kr.porsi_besar) || 0,
-              porsiKecil: Number(kr.porsi_kecil) || 0,
-              beneficiariesCount: Number(kr.beneficiaries_count) || 0,
-              targetBudget: Number(kr.target_budget) || 0,
-              costPerPortion: Number(kr.cost_per_portion) || 0,
-              costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
+              reporterId: kr.reporter_id || (local ? local.reporterId : null),
+              reporterName: kr.reporter_name || (local ? local.reporterName : ''),
+              rawMaterialCost: Number(kr.raw_material_cost) || (local ? local.rawMaterialCost : 0),
+              operationalCost: Number(kr.operational_cost) || (local ? local.operationalCost : 0),
+              carRentalCost: Number(kr.car_rental_cost) || (local ? local.carRentalCost : 0),
+              totalDailyExpense: Number(kr.total_daily_expense) || (local ? local.totalDailyExpense : 0),
+              porsiBesar: Number(kr.porsi_besar) || (local ? local.porsiBesar : 0),
+              porsiKecil: Number(kr.porsi_kecil) || (local ? local.porsiKecil : 0),
+              beneficiariesCount: Number(kr.beneficiaries_count) || (local ? local.beneficiariesCount : 0),
+              targetBudget: Number(kr.target_budget) || (local ? local.targetBudget : 0),
+              costPerPortion: Number(kr.cost_per_portion) || (local ? local.costPerPortion : 0),
+              costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || (local ? local.costPerPortionAllIn : 0),
               spmFileName: finalFileName,
               spmAttachmentUrl: finalUrl,
-              vaBankName: kr.va_bank_name,
-              vaBalance: Number(kr.va_balance) || 0,
-              notes: kr.notes,
-              createdAt: kr.created_at
+              vaBankName: kr.va_bank_name || (local ? local.vaBankName : 'Bank Mandiri VA'),
+              vaBalance: Number(kr.va_balance) || (local ? local.vaBalance : 0),
+              notes: kr.notes || (local ? local.notes : ''),
+              updatedAt: local ? local.updatedAt : undefined,
+              createdAt: kr.created_at || (local ? local.createdAt : '')
             };
           });
         }
