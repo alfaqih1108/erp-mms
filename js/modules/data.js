@@ -2483,6 +2483,42 @@ class DatabaseManager {
     return newDoc;
   }
 
+  async updateGuidelineDocument(docId, updatedFields) {
+    if (!Array.isArray(this.data.guidelineDocuments)) return false;
+    const doc = this.data.guidelineDocuments.find(d => d.id === docId);
+    if (!doc) return false;
+
+    if (updatedFields.title !== undefined) doc.title = updatedFields.title;
+    if (updatedFields.fileType !== undefined) doc.fileType = updatedFields.fileType;
+    if (updatedFields.category !== undefined) doc.category = updatedFields.category;
+    if (updatedFields.targetRole !== undefined) {
+      doc.targetRole = updatedFields.targetRole;
+      doc.targetLabel = updatedFields.targetRole === 'PERWAKILAN_YAYASAN' ? 'Khusus Perwakilan Yayasan' : updatedFields.targetRole === 'MAKER_YAYASAN' ? 'Khusus Maker Yayasan' : updatedFields.targetRole === 'STAFF_OPERASIONAL' ? 'Khusus Staff Operasional' : 'Seluruh Tim Yayasan';
+    }
+    if (updatedFields.fileSize !== undefined) doc.fileSize = updatedFields.fileSize;
+    if (updatedFields.description !== undefined) doc.description = updatedFields.description;
+    if (updatedFields.fileData !== undefined) doc.fileData = updatedFields.fileData;
+
+    this.addLog(`Human Capital memperbarui dokumen panduan: "${doc.title}"`, 'hc');
+    this.save();
+
+    await this.syncToSupabase('guideline_documents', {
+      id: doc.id,
+      title: doc.title,
+      file_type: doc.fileType,
+      category: doc.category,
+      target_role: doc.targetRole,
+      target_label: doc.targetLabel,
+      file_size: doc.fileSize,
+      description: doc.description,
+      uploaded_by: doc.uploadedBy,
+      upload_date: doc.uploadDate,
+      file_data: doc.fileData
+    });
+
+    return doc;
+  }
+
   async deleteGuidelineDocument(docId) {
     if (!Array.isArray(this.data.guidelineDocuments)) return false;
     const idx = this.data.guidelineDocuments.findIndex(d => d.id === docId);
@@ -5466,10 +5502,10 @@ class DatabaseManager {
         fetch(`${url}/rest/v1/kitchens?select=*`, { headers }),
         fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,va_bank_name,va_balance,notes,created_at&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,spm_attachment_url,va_bank_name,va_balance,notes,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,purpose,stage,status,settlement,approval_history,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,file_data,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers })
       ]);
 
@@ -5685,7 +5721,7 @@ class DatabaseManager {
               costPerPortion: Number(kr.cost_per_portion) || 0,
               costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
               spmFileName: kr.spm_file_name,
-              spmAttachmentUrl: (local && local.spmAttachmentUrl) ? local.spmAttachmentUrl : null,
+              spmAttachmentUrl: kr.spm_attachment_url || (local && local.spmAttachmentUrl ? local.spmAttachmentUrl : null),
               vaBankName: kr.va_bank_name,
               vaBalance: Number(kr.va_balance) || 0,
               notes: kr.notes,

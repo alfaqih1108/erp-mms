@@ -297,38 +297,39 @@ window.HCHubModule = {
         </div>
       </div>
 
-      <!-- Modal 3: Upload Dokumen Baru (PDF / PPT) -->
+      <!-- Modal 3: Upload / Tambah Dokumen Baru (Link Google Drive) -->
       <div id="modal-add-doc" class="modal-backdrop">
         <div class="modal-box" style="max-width: 620px;">
           <div class="modal-header">
-            <h3 class="modal-title">Upload Dokumen Sosialisasi & Panduan Yayasan</h3>
+            <div>
+              <span class="text-mono-badge" style="color: #A78BFA;">Pusat Sumber Daya & SOP</span>
+              <h3 id="modal-add-doc-title" class="modal-title" style="margin-top: 2px;">Upload Dokumen Sosialisasi & Panduan Yayasan</h3>
+            </div>
             <button class="modal-close-btn" onclick="App.closeModal('modal-add-doc')">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
           <form onsubmit="HCHubModule.handleAddDocumentSubmit(event)">
+            <input type="hidden" id="nd-doc-id" value="">
             <div class="modal-body">
               
-              <!-- File Upload Dropzone -->
+              <!-- Link Google Drive Dokumen (Hemat Egress & Storage) -->
               <div class="form-group">
-                <label class="form-label">Pilih File Attachment Dokumen / Slide PPT</label>
-                <div style="border: 2px dashed rgba(139, 92, 246, 0.45); border-radius: var(--radius-md); padding: 20px 16px; text-align: center; background: rgba(139, 92, 246, 0.06); cursor: pointer; transition: all 0.2s ease;"
-                     onclick="document.getElementById('nd-file-input').click()"
-                     onmouseover="this.style.borderColor='#A78BFA'; this.style.background='rgba(139, 92, 246, 0.12)'"
-                     onmouseout="this.style.borderColor='rgba(139, 92, 246, 0.45)'; this.style.background='rgba(139, 92, 246, 0.06)'">
-                  <input type="file" id="nd-file-input" accept=".pdf,.ppt,.pptx,.doc,.docx" style="display: none;" onchange="HCHubModule.handleFileSelect(event)">
-                  <div id="nd-file-label">
-                    <div style="font-size: 28px; margin-bottom: 6px;">📂</div>
-                    <div style="font-size: 13.5px; font-weight: 600; color: #fff;">Klik di sini untuk Browse & Upload File</div>
-                    <div style="font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 4px;">
-                      Mendukung PDF, PPT, PPTX (Otomatis dapat diunduh di dashboard tim yayasan)
-                    </div>
-                  </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label class="form-label" style="margin-bottom: 0;">Link Google Drive Dokumen / Materi SOP <span style="color: #F87171;">*</span></label>
+                  <span style="font-size: 10px; color: #34D399; font-weight: 700; background: rgba(16,185,129,0.15); padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.3);">HEMAT EGRESS</span>
+                </div>
+                <div style="position: relative;">
+                  <input type="url" id="nd-drive-link" class="form-control" placeholder="https://drive.google.com/file/d/... atau tautan Google Docs/Drive" style="font-family: var(--font-mono); font-size: 12.5px; padding-left: 36px;" required>
+                  <div style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; pointer-events: none;">🔗</div>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">
+                  *Salin & tempel tautan Google Drive dokumen PDF atau Slide di sini (pastikan izin akses: <em>Siapa saja yang memiliki link dapat melihat</em>).
                 </div>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Judul Dokumen / Nama File</label>
+                <label class="form-label">Judul Dokumen / Nama File <span style="color: #F87171;">*</span></label>
                 <input type="text" id="nd-title" class="form-control" placeholder="Contoh: SOP Standar Kebersihan Dapur Program 2026.pdf" required>
               </div>
 
@@ -338,10 +339,12 @@ window.HCHubModule = {
                   <select id="nd-filetype" class="form-control" required>
                     <option value="PDF">📄 PDF (Dokumen / SOP / Buku Panduan)</option>
                     <option value="PPT">📊 PPT / PPTX (Slide Sosialisasi & Presentasi)</option>
+                    <option value="DOCX">📝 Word / Google Docs</option>
+                    <option value="SHEET">📈 Excel / Google Sheets</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Target Penerima / Ditampilkan Pada Dashboard Role</label>
+                  <label class="form-label">Target Ditampilkan Pada Dashboard Role</label>
                   <select id="nd-targetrole" class="form-control" required>
                     <option value="ALL_YAYASAN">🌐 Seluruh Tim Yayasan & Operasional</option>
                     <option value="PERWAKILAN_YAYASAN">🔴 Khusus Perwakilan Yayasan (Pemohon Pengadaan)</option>
@@ -364,21 +367,21 @@ window.HCHubModule = {
                   </select>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Perkiraan Ukuran File</label>
-                  <input type="text" id="nd-filesize" class="form-control" placeholder="Contoh: 4.2 MB" value="3.5 MB" required>
+                  <label class="form-label">Perkiraan Ukuran File / Keterangan</label>
+                  <input type="text" id="nd-filesize" class="form-control" placeholder="Contoh: Google Drive" value="Google Drive" required>
                 </div>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Deskripsi / Ringkasan Isi Dokumen</label>
-                <textarea id="nd-desc" class="form-control" rows="2" placeholder="Tuliskan gambaran umum materi dan instruksi pelaksanaan..."></textarea>
+                <label class="form-label">Deskripsi / Ringkasan Isi Dokumen <span style="color: #F87171;">*</span></label>
+                <textarea id="nd-desc" class="form-control" rows="2" placeholder="Tuliskan gambaran umum materi dan instruksi pelaksanaan..." required></textarea>
               </div>
 
             </div>
             <div class="modal-footer">
               <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-add-doc')">Batal</button>
-              <button type="submit" class="btn-nalar-primary" style="background: linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%);">
-                Upload & Terbitkan Dokumen
+              <button type="submit" id="nd-submit-btn" class="btn-nalar-primary" style="background: linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%);">
+                Terbitkan Dokumen Panduan
               </button>
             </div>
           </form>
@@ -1986,14 +1989,14 @@ window.HCHubModule = {
                   <td style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary);">${d.fileSize}</td>
                   <td style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted);">${d.uploadDate}</td>
                   <td>
-                    <div style="display: flex; gap: 8px;">
-                      <button class="btn-preview-link" style="padding: 4px 8px; font-size: 10px; background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.35); color: #60A5FA;" onclick="HCHubModule.downloadDocument('${d.id}')">
-                        📥 Unduh
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                      <button class="btn-preview-link" style="padding: 4px 10px; font-size: 11px; background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.35); color: #60A5FA; font-weight: 600;" onclick="DashboardModule.openDocPreview('${d.id}', '${d.title.replace(/'/g, "\\'")}', '${d.fileType}', '${d.description.replace(/'/g, "\\'")}')" title="Buka Dokumen / Link Google Drive">
+                        🔗 Buka Dokumen ↗
                       </button>
-                      <button class="btn-preview-link" style="padding: 4px 8px; font-size: 10px;" onclick="DashboardModule.openDocPreview('${d.id}', '${d.title.replace(/'/g, "\\'")}', '${d.fileType}', '${d.description.replace(/'/g, "\\'")}')">
-                        👁️ Preview
+                      <button class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; color: #FCD34D; border-color: rgba(245,158,11,0.4);" onclick="HCHubModule.openEditDocModal('${d.id}')" title="Edit Link & Informasi Dokumen">
+                        ✏️ Edit
                       </button>
-                      <button class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 10px; border-color: rgba(248,113,113,0.4); color: #F87171;" onclick="HCHubModule.handleDeleteDoc('${d.id}', '${d.title.replace(/'/g, "\\'")}')">
+                      <button class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; border-color: rgba(248,113,113,0.4); color: #F87171;" onclick="HCHubModule.handleDeleteDoc('${d.id}', '${d.title.replace(/'/g, "\\'")}')" title="Hapus Dokumen">
                         🗑️
                       </button>
                     </div>
@@ -2961,23 +2964,56 @@ window.HCHubModule = {
 
   openAddDocModal: function() {
     this.currentUploadedFile = null;
+    const docIdEl = document.getElementById('nd-doc-id');
+    if (docIdEl) docIdEl.value = '';
+    const titleModal = document.getElementById('modal-add-doc-title') || document.querySelector('#modal-add-doc .modal-title');
+    if (titleModal) titleModal.textContent = 'Upload Dokumen Sosialisasi & Panduan Yayasan';
+    const submitBtn = document.getElementById('nd-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Terbitkan Dokumen Panduan';
+    
+    const driveLinkEl = document.getElementById('nd-drive-link');
+    if (driveLinkEl) driveLinkEl.value = '';
+    const titleEl = document.getElementById('nd-title');
+    if (titleEl) titleEl.value = '';
+    const descEl = document.getElementById('nd-desc') || document.getElementById('nd-description');
+    if (descEl) descEl.value = '';
+    const sizeEl = document.getElementById('nd-filesize');
+    if (sizeEl) sizeEl.value = 'Google Drive';
+
     App.openModal('modal-add-doc');
-    setTimeout(() => {
-      const labelEl = document.getElementById('nd-file-label');
-      if (labelEl) {
-        labelEl.innerHTML = `
-          <div style="font-size: 28px; margin-bottom: 6px;">📂</div>
-          <div style="font-size: 13.5px; font-weight: 600; color: #fff;">Klik di sini untuk Browse & Upload File</div>
-          <div style="font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 4px;">
-            Mendukung PDF, PPT, PPTX (Otomatis dapat diunduh di dashboard tim yayasan)
-          </div>
-        `;
-      }
-      const titleEl = document.getElementById('nd-title');
-      if (titleEl) titleEl.value = '';
-      const descEl = document.getElementById('nd-description');
-      if (descEl) descEl.value = '';
-    }, 50);
+  },
+
+  openEditDocModal: function(docId) {
+    const docs = DB.getGuidelineDocuments() || [];
+    const doc = docs.find(d => d.id === docId);
+    if (!doc) {
+      App.showToast('Dokumen tidak ditemukan!', 'error');
+      return;
+    }
+
+    const docIdEl = document.getElementById('nd-doc-id');
+    if (docIdEl) docIdEl.value = doc.id;
+    const titleModal = document.getElementById('modal-add-doc-title') || document.querySelector('#modal-add-doc .modal-title');
+    if (titleModal) titleModal.textContent = `Edit Dokumen Panduan (${doc.id})`;
+    const submitBtn = document.getElementById('nd-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Simpan Perubahan Dokumen';
+
+    const driveLinkEl = document.getElementById('nd-drive-link');
+    if (driveLinkEl) driveLinkEl.value = (doc.fileData && (doc.fileData.startsWith('http://') || doc.fileData.startsWith('https://'))) ? doc.fileData : '';
+    const titleEl = document.getElementById('nd-title');
+    if (titleEl) titleEl.value = doc.title || '';
+    const typeEl = document.getElementById('nd-filetype');
+    if (typeEl && doc.fileType) typeEl.value = doc.fileType;
+    const targetEl = document.getElementById('nd-targetrole');
+    if (targetEl && doc.targetRole) targetEl.value = doc.targetRole;
+    const catEl = document.getElementById('nd-category');
+    if (catEl && doc.category) catEl.value = doc.category;
+    const sizeEl = document.getElementById('nd-filesize');
+    if (sizeEl) sizeEl.value = doc.fileSize || 'Google Drive';
+    const descEl = document.getElementById('nd-desc') || document.getElementById('nd-description');
+    if (descEl) descEl.value = doc.description || '';
+
+    App.openModal('modal-add-doc');
   },
 
   togglePasswordVisibility: function(userId, password) {
@@ -3041,33 +3077,47 @@ window.HCHubModule = {
 
   handleAddDocumentSubmit: async function(e) {
     if (e && e.preventDefault) e.preventDefault();
+    const docId = document.getElementById('nd-doc-id')?.value;
+    const driveLink = (document.getElementById('nd-drive-link')?.value || '').trim();
     const title = (document.getElementById('nd-title')?.value || '').trim();
     const fileType = document.getElementById('nd-filetype')?.value || 'PDF';
     const targetRole = document.getElementById('nd-targetrole')?.value || 'ALL_YAYASAN';
     const category = document.getElementById('nd-category')?.value || 'Pedoman Operasional Umum';
-    const fileSize = (document.getElementById('nd-filesize')?.value || (this.currentUploadedFile ? this.currentUploadedFile.size : '3.5 MB')).trim();
+    const fileSize = (document.getElementById('nd-filesize')?.value || 'Google Drive').trim();
     const description = (document.getElementById('nd-desc')?.value || document.getElementById('nd-description')?.value || 'Dokumen resmi panduan & materi sosialisasi yayasan.').trim();
 
-    if (!title || !description) {
-      App.showToast('Mohon lengkapi Judul Dokumen dan Deskripsi!', 'warn');
+    if (!title || !description || !driveLink) {
+      App.showToast('Mohon lengkapi Judul, Link Google Drive, dan Deskripsi Dokumen!', 'warn');
       return;
     }
 
-    await DB.addGuidelineDocument({
-      title,
-      fileType,
-      targetRole,
-      category,
-      fileSize,
-      description,
-      fileData: this.currentUploadedFile ? this.currentUploadedFile.data : null
-    });
+    if (docId) {
+      App.showToast(`Memperbarui dokumen ${docId}...`, 'info');
+      await DB.updateGuidelineDocument(docId, {
+        title,
+        fileType,
+        targetRole,
+        category,
+        fileSize,
+        description,
+        fileData: driveLink
+      });
+      App.showToast(`Dokumen "${title}" berhasil diperbarui!`, 'success');
+    } else {
+      App.showToast('Menerbitkan dokumen panduan baru...', 'info');
+      await DB.addGuidelineDocument({
+        title,
+        fileType,
+        targetRole,
+        category,
+        fileSize,
+        description,
+        fileData: driveLink
+      });
+      App.showToast(`Dokumen "${title}" berhasil diterbitkan ke dashboard tim yayasan!`, 'success');
+    }
 
-    this.currentUploadedFile = null;
     App.closeModal('modal-add-doc');
-    App.showToast(`Dokumen "${title}" berhasil diunggah & diterbitkan ke dashboard tim yayasan!`, 'success');
-    
-    // Refresh sub-view aktif
     this.switchSubTab('dokumen');
   },
 

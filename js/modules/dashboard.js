@@ -337,11 +337,11 @@ window.DashboardModule = {
                           Oleh: ${d.uploadedBy ? d.uploadedBy.split(' ')[0] : 'HC'} · ${d.uploadDate}
                         </span>
                         <div style="display: flex; gap: 8px;">
-                          <button class="btn-preview-link" style="padding: 4px 10px; font-size: 11px; background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.35); color: #60A5FA;" onclick="DashboardModule.downloadDocument('${d.id}')">
-                            📥 Unduh ${d.fileType}
+                          <button class="btn-preview-link" style="padding: 5px 14px; font-size: 11.5px; background: linear-gradient(135deg, rgba(37,99,235,0.2) 0%, rgba(59,130,246,0.2) 100%); border-color: rgba(59,130,246,0.45); color: #93C5FD; font-weight: 600;" onclick="DashboardModule.openDocPreview('${d.id}', '${d.title.replace(/'/g, "\\'")}', '${d.fileType}', '${d.description.replace(/'/g, "\\'")}')">
+                            🔗 Buka Dokumen ↗
                           </button>
-                          <button class="btn-preview-link" style="padding: 4px 10px; font-size: 11px;" onclick="DashboardModule.openDocPreview('${d.id}', '${d.title.replace(/'/g, "\\'")}', '${d.fileType}', '${d.description.replace(/'/g, "\\'")}')">
-                            👁️ Preview
+                          <button class="btn-nalar-secondary" style="padding: 5px 10px; font-size: 11px;" onclick="DashboardModule.downloadDocument('${d.id}')" title="Unduh Berkas / Buka Link">
+                            📥 Unduh
                           </button>
                         </div>
                       </div>
@@ -1153,10 +1153,17 @@ window.DashboardModule = {
   },
 
   openDocPreview: async function(docId, title, fileType, description) {
-    App.showToast('Mempersiapkan pratinjau dokumen...', 'info');
-    const fileData = await DB.fetchGuidelineDocumentFile(docId);
+    const doc = (DB.getGuidelineDocuments() || []).find(d => d.id === docId);
+    let fileData = doc ? doc.fileData : null;
+    if (!fileData) {
+      fileData = await DB.fetchGuidelineDocumentFile(docId);
+    }
     
     if (fileData) {
+      if (fileData.startsWith('http://') || fileData.startsWith('https://')) {
+        window.open(fileData, '_blank');
+        return;
+      }
       if (fileData.startsWith('data:application/pdf') || (fileType === 'PDF' && fileData.startsWith('data:'))) {
         try {
           const matches = fileData.match(/^data:([^;]+);base64,(.+)$/);
@@ -1175,14 +1182,10 @@ window.DashboardModule = {
         } catch (e) {
           console.warn('Gagal render inline PDF preview:', e);
         }
-      } else if (fileData.startsWith('http://') || fileData.startsWith('https://')) {
-        window.open(fileData, '_blank');
-        return;
       }
     }
 
-    // Default info preview modal / alert
-    alert(`📄 [PANDUAN & SOSIALISASI YAYASAN]\n\nJudul File: ${title}\nFormat: ${fileType}\n\nRingkasan / Abstrak:\n${description}\n\n*Silakan gunakan tombol "Unduh ${fileType}" untuk membaca berkas lengkap.`);
+    alert(`📄 [PANDUAN & SOSIALISASI YAYASAN]\n\nJudul File: ${title}\nFormat: ${fileType}\n\nRingkasan / Abstrak:\n${description}\n\n*Dokumen ini belum memiliki link Google Drive atau berkas fisik di cloud.`);
   },
 
   downloadDocument: async function(docId) {

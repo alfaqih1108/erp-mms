@@ -569,9 +569,13 @@ window.DapurYayasanModule = {
                           </div>
                         </td>
                         <td style="white-space: nowrap;">
-                          ${r.spmFileName ? `
+                          ${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://'))) ? `
+                            <a href="${r.spmAttachmentUrl}" target="_blank" rel="noopener noreferrer" class="btn-preview-link" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 11px; background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.35); color: #60A5FA; text-decoration: none; font-weight: 600;" title="Buka Link Google Drive SPM">
+                              🔗 Link SPM ↗
+                            </a>
+                          ` : r.spmFileName ? `
                             <div style="display: flex; align-items: center; gap: 4px;">
-                              <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
+                              <button type="button" class="btn-preview-link" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
                                       onclick="DapurYayasanModule.openSPMLightbox('${r.id}')" title="Pratinjau Dokumen SPM">
                                 📄 ${r.spmFileName.length > 13 ? r.spmFileName.slice(0, 11) + '...' : r.spmFileName}
                               </button>
@@ -581,8 +585,8 @@ window.DapurYayasanModule = {
                               </button>
                             </div>
                           ` : `
-                            <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
-                              📄 SPM Terlampir
+                            <span style="font-size: 11px; color: var(--text-dim); font-style: italic;">
+                              -
                             </span>
                           `}
                         </td>
@@ -782,27 +786,23 @@ window.DapurYayasanModule = {
                 </div>
               </div>
 
-              <!-- Lampiran Dokumen SPM (Surat Perintah Membayar / Nota Pembelian) -->
+              <!-- Lampiran Dokumen SPM / Link Google Drive (Surat Perintah Membayar / Nota Belanja) -->
               <div class="form-group" style="margin-bottom: 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                  <label class="form-label" style="margin-bottom: 0;">Lampiran Dokumen SPM (Surat Perintah Membayar / Nota Belanja)</label>
-                  <span style="font-size: 10px; color: #60A5FA; font-weight: 700; background: rgba(59,130,246,0.15); padding: 1px 5px; border-radius: 3px;">OPSIONAL</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label class="form-label" style="margin-bottom: 0;">Link Google Drive Dokumen SPM / Bukti Nota</label>
+                  <span style="font-size: 10px; color: #34D399; font-weight: 700; background: rgba(16,185,129,0.15); padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.3);">HEMAT EGRESS & CLOUD</span>
                 </div>
                 
-                <div style="background: rgba(255,255,255,0.02); border: 2px dashed rgba(245, 158, 11, 0.4); border-radius: var(--radius-md); padding: 18px; text-align: center; position: relative;">
-                  <input type="file" id="kr-spm-file" accept="image/*,.pdf,.doc,.docx" 
-                         style="position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; z-index:2;"
-                         onchange="DapurYayasanModule.handleSPMFileUpload(event)">
-                  
-                  <div id="kr-spm-upload-preview">
-                    <div style="font-size: 26px; margin-bottom: 4px;">📑</div>
-                    <div style="font-weight: 600; color: #fff; font-size: 13px;">
-                      Klik atau Seret Berkas Dokumen SPM di Sini
-                    </div>
-                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                      Format: File Dokumen SPM / Nota Belanja (JPG, PNG, PDF maks 10MB) — Opsional jika tidak ada pengeluaran
-                    </div>
+                <div style="position: relative;">
+                  <input type="url" id="kr-spm-drive-url" class="form-control" 
+                         placeholder="https://drive.google.com/file/d/... atau tautan folder Google Drive"
+                         style="font-family: var(--font-mono); font-size: 12.5px; padding-left: 36px;">
+                  <div style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; pointer-events: none;">
+                    🔗
                   </div>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">
+                  *Salin & tempel tautan Google Drive dokumen SPM atau foto nota belanja di sini (pastikan izin akses: <em>Siapa saja yang memiliki link dapat melihat</em>).
                 </div>
 
                 <input type="hidden" id="kr-spm-url" value="">
@@ -1104,14 +1104,11 @@ window.DapurYayasanModule = {
 
       if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
       if (bEl) bEl.value = '0';
-      if (pbEl) pbEl.value = '0';
-      if (pkEl) pkEl.value = '0';
-      if (rawEl) rawEl.value = '0';
-      if (opsEl) opsEl.value = '0';
-      if (carEl) carEl.value = '0';
       if (notesEl) notesEl.value = '';
       if (bankEl && !bankEl.value) bankEl.value = 'Bank Mandiri VA - Dapur Yayasan';
       if (balEl) balEl.value = '0';
+      const driveUrlEl = document.getElementById('kr-spm-drive-url');
+      if (driveUrlEl) driveUrlEl.value = '';
       this.removeSPMUpload();
       this.updateTargetBudgetDisplay();
       this.recalculateLiveTotals();
@@ -1168,6 +1165,7 @@ window.DapurYayasanModule = {
     const bankEl = document.getElementById('kr-va-bank');
     const balEl = document.getElementById('kr-va-balance');
     const notesEl = document.getElementById('kr-notes');
+    const driveUrlEl = document.getElementById('kr-spm-drive-url');
     const urlInput = document.getElementById('kr-spm-url');
     const nameInput = document.getElementById('kr-spm-filename');
     const preview = document.getElementById('kr-spm-upload-preview');
@@ -1187,28 +1185,21 @@ window.DapurYayasanModule = {
     if (balEl) balEl.value = (r.vaBalance !== undefined ? r.vaBalance : 0);
     if (notesEl) notesEl.value = r.notes || '';
 
-    if (urlInput) urlInput.value = r.spmAttachmentUrl || '';
+    if (driveUrlEl) {
+      driveUrlEl.value = (r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://'))) ? r.spmAttachmentUrl : '';
+    }
+    if (urlInput) urlInput.value = (r.spmAttachmentUrl && !r.spmAttachmentUrl.startsWith('http')) ? r.spmAttachmentUrl : '';
     if (nameInput) nameInput.value = r.spmFileName || '';
 
-    if (!r.spmAttachmentUrl && r.spmFileName) {
-      // Lazy fetch in background for edit modal
-      DB.fetchKitchenReportAttachment(r.id).then(fetchedUrl => {
-        if (urlInput && fetchedUrl) urlInput.value = fetchedUrl;
-      }).catch(err => console.warn('Lazy fetch for edit modal notice:', err));
-    }
-
     if (preview) {
-      if (r.spmFileName) {
+      if (r.spmFileName && !r.spmAttachmentUrl?.startsWith('http')) {
         preview.innerHTML = `
           <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
             <span style="font-size: 24px;">📄</span>
             <div style="text-align: left;">
               <div style="font-size: 13px; font-weight: 600; color: #6EE7B7;">${r.spmFileName}</div>
-              <div style="font-size: 10.5px; color: var(--text-muted);">Berkas Dokumen SPM Terlampir</div>
+              <div style="font-size: 10.5px; color: var(--text-muted);">Berkas Dokumen SPM Fisik Lama</div>
             </div>
-            <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10.5px; margin-left: 10px;" onclick="DapurYayasanModule.removeSPMUpload(event)">
-              ✕ Ganti
-            </button>
           </div>
         `;
       } else {
@@ -1260,9 +1251,10 @@ window.DapurYayasanModule = {
     const porsiKecil = Number(document.getElementById('kr-porsi-kecil').value) || 0;
     const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (Number(document.getElementById('kr-beneficiaries').value) || 0);
 
-    const spmUrl = document.getElementById('kr-spm-url')?.value || '';
-    const defaultSpmFileName = (totalDailyExpense > 0) ? `SPM-${kitchenSelectVal.split(' — ')[0]}-${date.replace(/-/g, '')}.pdf` : '';
-    const spmFileName = document.getElementById('kr-spm-filename')?.value || defaultSpmFileName;
+    const driveUrl = (document.getElementById('kr-spm-drive-url')?.value || '').trim();
+    const spmUrl = driveUrl || document.getElementById('kr-spm-url')?.value || '';
+    const defaultSpmFileName = driveUrl ? 'Link Google Drive SPM' : ((totalDailyExpense > 0) ? `SPM-${kitchenSelectVal.split(' — ')[0]}-${date.replace(/-/g, '')}.pdf` : '');
+    const spmFileName = driveUrl ? 'Link Google Drive SPM' : (document.getElementById('kr-spm-filename')?.value || defaultSpmFileName);
 
     const vaBankName = document.getElementById('kr-va-bank').value.trim() || 'Bank Mandiri VA - Dapur Yayasan';
     const vaBalance = Number(document.getElementById('kr-va-balance').value) || 0;
@@ -1378,33 +1370,41 @@ window.DapurYayasanModule = {
           </div>
         </div>
 
-        <!-- Lampiran SPM -->
         <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 14px;">
           <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">DOKUMEN LAMPIRAN SPM (SURAT PERINTAH MEMBAYAR):</div>
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 20px;">📄</span>
-              <span style="font-size: 12.5px; font-weight: 600; color: #fff;">${r.spmFileName || 'Berkas-SPM-Terlampir.pdf'}</span>
+              <span style="font-size: 12.5px; font-weight: 600; color: #fff;">${r.spmFileName || 'Dokumen SPM'}</span>
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
-              <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
-                      onclick="DapurYayasanModule.openSPMLightbox('${r.id}')">
-                👁️ Pratinjau Dokumen ↗
-              </button>
-              <button type="button" class="btn-nalar-primary" style="padding: 5px 14px; font-size: 11.5px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; font-weight: 600; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
-                      onclick="DapurYayasanModule.downloadSPMDocument('${r.id}')">
-                ⬇️ Unduh Berkas
-              </button>
+              ${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://'))) ? `
+                <a href="${r.spmAttachmentUrl}" target="_blank" rel="noopener noreferrer" class="btn-nalar-primary" style="padding: 6px 16px; font-size: 12px; background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(37,99,235,0.35);">
+                  🔗 Buka Link Google Drive SPM ↗
+                </a>
+              ` : `
+                <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
+                        onclick="DapurYayasanModule.openSPMLightbox('${r.id}')">
+                  👁️ Pratinjau Dokumen ↗
+                </button>
+                <button type="button" class="btn-nalar-primary" style="padding: 5px 14px; font-size: 11.5px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; font-weight: 600; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
+                        onclick="DapurYayasanModule.downloadSPMDocument('${r.id}')">
+                  ⬇️ Unduh Berkas
+                </button>
+              `}
             </div>
           </div>
         </div>
 
-        <div style="font-size: 12px; color: var(--text-secondary); background: rgba(255,255,255,0.03); padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 2px;">Catatan Operasional:</div>
-          <div>${r.notes || 'Tidak ada catatan tambahan.'}</div>
-          <div style="font-size: 10.5px; color: var(--text-dim); margin-top: 8px; font-style: italic;">
-            Dilaporkan oleh: ${r.reporterName} (${r.createdAt || '-'})
+        ${r.notes ? `
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px;">
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Catatan Pelaporan Dapur:</div>
+            <div style="font-size: 12.5px; color: #CBD5E1; font-style: italic;">"${r.notes}"</div>
           </div>
+        ` : ''}
+
+        <div style="font-size: 10.5px; color: var(--text-dim); margin-top: 12px; font-style: italic; text-align: right;">
+          Dilaporkan oleh: ${r.reporterName} (${r.createdAt || '-'})
         </div>
       `;
     }
@@ -1452,6 +1452,11 @@ window.DapurYayasanModule = {
       url = reportIdOrUrl || '';
       title = titleParam || 'Dokumen SPM';
       reportId = reportIdParam || '';
+    }
+
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+      window.open(url, '_blank');
+      return;
     }
 
     const titleEl = document.getElementById('spm-lightbox-title');
