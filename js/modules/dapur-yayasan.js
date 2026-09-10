@@ -569,11 +569,11 @@ window.DapurYayasanModule = {
                           </div>
                         </td>
                         <td style="white-space: nowrap;">
-                          ${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://'))) ? `
+                          ${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://')) && !r.spmAttachmentUrl.includes('unsplash.com')) ? `
                             <a href="${r.spmAttachmentUrl}" target="_blank" rel="noopener noreferrer" class="btn-preview-link" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 11px; background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.35); color: #60A5FA; text-decoration: none; font-weight: 600;" title="Buka Link Google Drive SPM">
                               🔗 Link SPM ↗
                             </a>
-                          ` : r.spmFileName ? `
+                          ` : (r.spmFileName && !r.spmFileName.includes('unsplash')) ? `
                             <div style="display: flex; align-items: center; gap: 4px;">
                               <button type="button" class="btn-preview-link" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
                                       onclick="DapurYayasanModule.openSPMLightbox('${r.id}')" title="Pratinjau Dokumen SPM">
@@ -1185,14 +1185,15 @@ window.DapurYayasanModule = {
     if (balEl) balEl.value = (r.vaBalance !== undefined ? r.vaBalance : 0);
     if (notesEl) notesEl.value = r.notes || '';
 
+    const cleanUrl = (r.spmAttachmentUrl && !r.spmAttachmentUrl.includes('unsplash.com')) ? r.spmAttachmentUrl : '';
     if (driveUrlEl) {
-      driveUrlEl.value = (r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://'))) ? r.spmAttachmentUrl : '';
+      driveUrlEl.value = (cleanUrl && (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://'))) ? cleanUrl : '';
     }
-    if (urlInput) urlInput.value = (r.spmAttachmentUrl && !r.spmAttachmentUrl.startsWith('http')) ? r.spmAttachmentUrl : '';
-    if (nameInput) nameInput.value = r.spmFileName || '';
+    if (urlInput) urlInput.value = (cleanUrl && !cleanUrl.startsWith('http')) ? cleanUrl : '';
+    if (nameInput) nameInput.value = cleanUrl ? (r.spmFileName || '') : '';
 
     if (preview) {
-      if (r.spmFileName && !r.spmAttachmentUrl?.startsWith('http')) {
+      if (r.spmFileName && cleanUrl && !cleanUrl.startsWith('http')) {
         preview.innerHTML = `
           <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
             <span style="font-size: 24px;">📄</span>
@@ -1251,10 +1252,16 @@ window.DapurYayasanModule = {
     const porsiKecil = Number(document.getElementById('kr-porsi-kecil').value) || 0;
     const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (Number(document.getElementById('kr-beneficiaries').value) || 0);
 
-    const driveUrl = (document.getElementById('kr-spm-drive-url')?.value || '').trim();
-    const spmUrl = driveUrl || document.getElementById('kr-spm-url')?.value || '';
-    const defaultSpmFileName = driveUrl ? 'Link Google Drive SPM' : ((totalDailyExpense > 0) ? `SPM-${kitchenSelectVal.split(' — ')[0]}-${date.replace(/-/g, '')}.pdf` : '');
-    const spmFileName = driveUrl ? 'Link Google Drive SPM' : (document.getElementById('kr-spm-filename')?.value || defaultSpmFileName);
+    const rawDrive = (document.getElementById('kr-spm-drive-url')?.value || '').trim();
+    const rawUpload = (document.getElementById('kr-spm-url')?.value || '').trim();
+    let spmUrl = '';
+    if (rawDrive && !rawDrive.includes('unsplash.com')) {
+      spmUrl = rawDrive;
+    } else if (rawUpload && !rawUpload.includes('unsplash.com')) {
+      spmUrl = rawUpload;
+    }
+    const defaultSpmFileName = spmUrl.startsWith('http') ? 'Link Google Drive SPM' : ((totalDailyExpense > 0) ? `SPM-${kitchenSelectVal.split(' — ')[0]}-${date.replace(/-/g, '')}.pdf` : '');
+    const spmFileName = spmUrl.startsWith('http') ? 'Link Google Drive SPM' : ((document.getElementById('kr-spm-filename')?.value || '').trim() || defaultSpmFileName);
 
     const vaBankName = document.getElementById('kr-va-bank').value.trim() || 'Bank Mandiri VA - Dapur Yayasan';
     const vaBalance = Number(document.getElementById('kr-va-balance').value) || 0;
@@ -1382,14 +1389,14 @@ window.DapurYayasanModule = {
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 20px;">📄</span>
-              <span style="font-size: 12.5px; font-weight: 600; color: #fff;">${r.spmFileName || 'Dokumen SPM'}</span>
+              <span style="font-size: 12.5px; font-weight: 600; color: #fff;">${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://')) && !r.spmAttachmentUrl.includes('unsplash.com')) ? 'Link Google Drive SPM' : (r.spmFileName || 'Dokumen SPM')}</span>
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
-              ${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://'))) ? `
+              ${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://')) && !r.spmAttachmentUrl.includes('unsplash.com')) ? `
                 <a href="${r.spmAttachmentUrl}" target="_blank" rel="noopener noreferrer" class="btn-nalar-primary" style="padding: 6px 16px; font-size: 12px; background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(37,99,235,0.35);">
                   🔗 Buka Link Google Drive SPM ↗
                 </a>
-              ` : `
+              ` : (r.spmFileName && !r.spmFileName.includes('unsplash')) ? `
                 <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
                         onclick="DapurYayasanModule.openSPMLightbox('${r.id}')">
                   👁️ Pratinjau Dokumen ↗
@@ -1398,6 +1405,8 @@ window.DapurYayasanModule = {
                         onclick="DapurYayasanModule.downloadSPMDocument('${r.id}')">
                   ⬇️ Unduh Berkas
                 </button>
+              ` : `
+                <span style="font-size: 11.5px; color: var(--text-dim); font-style: italic;">Tidak ada lampiran dokumen</span>
               `}
             </div>
           </div>
@@ -1445,23 +1454,23 @@ window.DapurYayasanModule = {
       if (foundReport) {
         reportId = foundReport.id;
         title = foundReport.spmFileName || titleParam || 'Dokumen SPM';
-        url = foundReport.spmAttachmentUrl || '';
-        if (!url && foundReport.spmFileName) {
+        url = (foundReport.spmAttachmentUrl && !foundReport.spmAttachmentUrl.includes('unsplash.com')) ? foundReport.spmAttachmentUrl : '';
+        if (!url && foundReport.spmFileName && !foundReport.spmFileName.includes('unsplash')) {
           App.showToast('Memuat dokumen SPM dari database cloud...', 'info');
           url = await DB.fetchKitchenReportAttachment(foundReport.id);
         }
       } else {
-        url = reportIdOrUrl;
+        url = (reportIdOrUrl && !reportIdOrUrl.includes('unsplash.com')) ? reportIdOrUrl : '';
         title = titleParam || 'Dokumen SPM';
         reportId = reportIdParam || '';
       }
     } else {
-      url = reportIdOrUrl || '';
+      url = (reportIdOrUrl && !reportIdOrUrl.includes('unsplash.com')) ? reportIdOrUrl : '';
       title = titleParam || 'Dokumen SPM';
       reportId = reportIdParam || '';
     }
 
-    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+    if (url && (url.startsWith('http://') || url.startsWith('https://')) && !url.includes('unsplash.com')) {
       window.open(url, '_blank');
       return;
     }
@@ -1545,20 +1554,25 @@ window.DapurYayasanModule = {
       const r = reports.find(item => item.id === reportIdOrUrl);
       if (r) {
         fileName = fileName || r.spmFileName || 'Dokumen-SPM';
-        url = r.spmAttachmentUrl || '';
-        if (!url && r.spmFileName) {
+        url = (r.spmAttachmentUrl && !r.spmAttachmentUrl.includes('unsplash.com')) ? r.spmAttachmentUrl : '';
+        if (!url && r.spmFileName && !r.spmFileName.includes('unsplash')) {
           App.showToast('Mengambil data berkas asli dari database cloud...', 'info');
           url = await DB.fetchKitchenReportAttachment(r.id);
         }
       } else {
-        url = reportIdOrUrl;
+        url = (reportIdOrUrl && !reportIdOrUrl.includes('unsplash.com')) ? reportIdOrUrl : '';
       }
     } else {
-      url = reportIdOrUrl || '';
+      url = (reportIdOrUrl && !reportIdOrUrl.includes('unsplash.com')) ? reportIdOrUrl : '';
     }
 
-    if (!url) {
+    if (!url || url.includes('unsplash.com')) {
       App.showToast('Tidak ada berkas lampiran yang diunggah untuk transaksi ini.', 'warn');
+      return;
+    }
+
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      window.open(url, '_blank');
       return;
     }
 

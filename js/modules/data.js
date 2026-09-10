@@ -2339,7 +2339,25 @@ class DatabaseManager {
 
           // Ensure all array collections are properly initialized and persistent
           if (!Array.isArray(parsed.itemRequests)) parsed.itemRequests = [];
-          if (!Array.isArray(parsed.kitchenReports)) parsed.kitchenReports = [];
+          if (!Array.isArray(parsed.kitchenReports)) {
+            parsed.kitchenReports = [];
+          } else {
+            parsed.kitchenReports.forEach(kr => {
+              if (kr.spmAttachmentUrl && kr.spmAttachmentUrl.includes('unsplash.com')) {
+                kr.spmAttachmentUrl = null;
+              }
+              if (kr.spmFileName && kr.spmFileName.includes('unsplash')) {
+                kr.spmFileName = null;
+              }
+            });
+          }
+          if (Array.isArray(parsed.guidelineDocuments)) {
+            parsed.guidelineDocuments.forEach(gd => {
+              if (gd.fileData && gd.fileData.includes('unsplash.com')) {
+                gd.fileData = null;
+              }
+            });
+          }
           if (!Array.isArray(parsed.kitchens)) parsed.kitchens = INITIAL_DATABASE.kitchens || [];
           if (!Array.isArray(parsed.leaves)) parsed.leaves = [];
           if (!Array.isArray(parsed.timesheets)) parsed.timesheets = [];
@@ -5727,6 +5745,16 @@ class DatabaseManager {
           const existingKRs = this.data.kitchenReports || [];
           this.data.kitchenReports = krs.map(kr => {
             const local = existingKRs.find(item => item.id === kr.id);
+
+            // Clean legacy mock unsplash URLs
+            let cleanRemoteUrl = (kr.spm_attachment_url && !kr.spm_attachment_url.includes('unsplash.com')) ? kr.spm_attachment_url : null;
+            let cleanLocalUrl = (local && local.spmAttachmentUrl && !local.spmAttachmentUrl.includes('unsplash.com')) ? local.spmAttachmentUrl : null;
+
+            const finalUrl = cleanLocalUrl || cleanRemoteUrl || null;
+            const finalFileName = (finalUrl && (finalUrl.startsWith('http://') || finalUrl.startsWith('https://'))) 
+              ? 'Link Google Drive SPM' 
+              : (kr.spm_file_name || (local && local.spmFileName ? local.spmFileName : null));
+
             return {
               id: kr.id,
               kitchenId: kr.kitchen_id,
@@ -5744,8 +5772,8 @@ class DatabaseManager {
               targetBudget: Number(kr.target_budget) || 0,
               costPerPortion: Number(kr.cost_per_portion) || 0,
               costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
-              spmFileName: kr.spm_file_name,
-              spmAttachmentUrl: kr.spm_attachment_url || (local && local.spmAttachmentUrl ? local.spmAttachmentUrl : null),
+              spmFileName: finalFileName,
+              spmAttachmentUrl: finalUrl,
               vaBankName: kr.va_bank_name,
               vaBalance: Number(kr.va_balance) || 0,
               notes: kr.notes,
@@ -5879,21 +5907,21 @@ class DatabaseManager {
   async fetchKitchenReportAttachment(reportId) {
     const reports = this.getKitchenReports();
     const r = reports.find(item => item.id === reportId);
-    if (r && r.spmAttachmentUrl && r.spmAttachmentUrl.length > 50) {
+    if (r && r.spmAttachmentUrl && !r.spmAttachmentUrl.includes('unsplash.com')) {
       return r.spmAttachmentUrl;
     }
     if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
-      return r ? (r.spmAttachmentUrl || '') : '';
+      return (r && !r.spmAttachmentUrl?.includes('unsplash.com')) ? (r.spmAttachmentUrl || '') : '';
     }
     try {
       const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
       const key = window.SupabaseConfig.getAnonKey();
-      const res = await fetch(`${url}/rest/v1/kitchen_reports?select=id,spm_attachment_url,spm_file_name&id=eq.${reportId}`, {
+      const res = await fetch(`${url}/rest/v1/kitchen_reports?select=id,spm_attachment_url,spm_file_name&id=eq.${encodeURIComponent(reportId)}`, {
         headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0 && data[0].spm_attachment_url) {
+        if (Array.isArray(data) && data.length > 0 && data[0].spm_attachment_url && !data[0].spm_attachment_url.includes('unsplash.com')) {
           if (r) {
             r.spmAttachmentUrl = data[0].spm_attachment_url;
             if (data[0].spm_file_name) r.spmFileName = data[0].spm_file_name;
@@ -5904,7 +5932,7 @@ class DatabaseManager {
     } catch (e) {
       console.warn('Gagal memuat lampiran SPM on-demand dari Supabase:', e);
     }
-    return r ? (r.spmAttachmentUrl || '') : '';
+    return (r && !r.spmAttachmentUrl?.includes('unsplash.com')) ? (r.spmAttachmentUrl || '') : '';
   }
 
   async fetchLeaveAttachment(leaveId) {
