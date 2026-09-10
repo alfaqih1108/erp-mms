@@ -2991,7 +2991,7 @@ class DatabaseManager {
     return (this.data && Array.isArray(this.data.kitchenReports)) ? this.data.kitchenReports : INITIAL_DATABASE.kitchenReports;
   }
 
-  addKitchenReport(report) {
+  async addKitchenReport(report) {
     const id = `KR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-0${this.getKitchenReports().length + 1}`;
     const porsiBesar = Number(report.porsiBesar) || 0;
     const porsiKecil = Number(report.porsiKecil) || 0;
@@ -3001,7 +3001,7 @@ class DatabaseManager {
     const carRentalCost = Number(report.carRentalCost) || 0;
     const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost;
 
-    const targetBudget = (porsiBesar * 10000) + (pKecil * 8000);
+    const targetBudget = (porsiBesar * 10000) + (porsiKecil * 8000);
     const costPerPortion = beneficiariesCount > 0 ? Math.round(rawMaterialCost / beneficiariesCount) : 0;
     const costPerPortionAllIn = beneficiariesCount > 0 ? Math.round(totalDailyExpense / beneficiariesCount) : 0;
     
@@ -3107,7 +3107,7 @@ class DatabaseManager {
     const carRentalCost = updatedData.carRentalCost !== undefined ? Number(updatedData.carRentalCost) : (Number(existing.carRentalCost) || 0);
     const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost;
 
-    const targetBudget = (porsiBesar * 10000) + (pKecil * 8000);
+    const targetBudget = (porsiBesar * 10000) + (porsiKecil * 8000);
     const costPerPortion = beneficiariesCount > 0 ? Math.round(rawMaterialCost / beneficiariesCount) : 0;
     const costPerPortionAllIn = beneficiariesCount > 0 ? Math.round(totalDailyExpense / beneficiariesCount) : 0;
 

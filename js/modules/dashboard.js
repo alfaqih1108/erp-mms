@@ -1054,14 +1054,17 @@ window.DashboardModule = {
       DashboardModule.waveAnimationId = null;
     }
 
-    const ctx = canvas.getContext('2d', { alpha: true });
-    let width = (canvas.width = canvas.parentElement.offsetWidth || window.innerWidth);
-    let height = (canvas.height = canvas.parentElement.offsetHeight || 320);
+    const ctx = canvas.getContext ? canvas.getContext('2d', { alpha: true }) : null;
+    if (!ctx) return;
+
+    let parentEl = canvas.parentElement;
+    let width = (canvas.width = (parentEl ? parentEl.offsetWidth : 0) || window.innerWidth || 800);
+    let height = (canvas.height = (parentEl ? parentEl.offsetHeight : 0) || 320);
 
     const onResize = () => {
       if (!canvas || !canvas.parentElement) return;
-      width = canvas.width = canvas.parentElement.offsetWidth;
-      height = canvas.height = canvas.parentElement.offsetHeight;
+      width = canvas.width = canvas.parentElement.offsetWidth || window.innerWidth || 800;
+      height = canvas.height = canvas.parentElement.offsetHeight || 320;
     };
     window.addEventListener('resize', onResize);
 
