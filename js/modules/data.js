@@ -140,6 +140,28 @@ function calculateAge(birthDateStr) {
   return `${age} Tahun`;
 }
 
+// Utility: Resolusi Tipe Pemotongan Kuota Cuti secara Dinamis & Akurat
+function resolveLeaveDeductionType(leave, joinDateStr) {
+  if (leave && leave.quotaDeductionType && ['ANNUAL', 'PERSONAL', 'NONE'].includes(leave.quotaDeductionType)) {
+    return leave.quotaDeductionType;
+  }
+  const typeStr = (leave ? (leave.leaveType || leave.type || '') : '').toLowerCase();
+  if (typeStr.includes('pribadi') || typeStr.includes('personal')) {
+    return 'PERSONAL';
+  }
+  if (typeStr.includes('tahunan') || typeStr.includes('annual')) {
+    return 'ANNUAL';
+  }
+  // Cek jika cuti reguler (Pasal 14)
+  if (typeStr.includes('cuti') && !typeStr.includes('istirahat') && !typeStr.includes('izin')) {
+    if (joinDateStr && !hasWorkedOneYear(joinDateStr)) {
+      return 'PERSONAL';
+    }
+    return 'ANNUAL';
+  }
+  return 'NONE';
+}
+
 /// Seed Database
 const INITIAL_DATABASE = {
   currentUser: {
@@ -2322,6 +2344,7 @@ const INITIAL_DATABASE = {
 class DatabaseManager {
   constructor() {
     this.data = this.load();
+    this.recalculateUserLeaveBalances();
   }
 
   load() {
@@ -2359,7 +2382,15 @@ class DatabaseManager {
             });
           }
           if (!Array.isArray(parsed.kitchens)) parsed.kitchens = INITIAL_DATABASE.kitchens || [];
-          if (!Array.isArray(parsed.leaves)) parsed.leaves = [];
+          if (!Array.isArray(parsed.leaves)) {
+            parsed.leaves = [];
+          } else {
+            parsed.leaves.forEach(l => {
+              const u = parsed.users.find(usr => usr.id === l.employeeId || usr.name === l.employeeName);
+              l.quotaDeductionType = resolveLeaveDeductionType(l, u ? u.joinDate : null);
+              l.quotaDeducted = (l.quotaDeductionType === 'NONE') ? 0 : (Number(l.duration) || 1);
+            });
+          }
           if (!Array.isArray(parsed.timesheets)) parsed.timesheets = [];
           if (!Array.isArray(parsed.cashAdvances)) parsed.cashAdvances = [];
           if (!Array.isArray(parsed.fieldIssues)) parsed.fieldIssues = [];
@@ -2372,6 +2403,63 @@ class DatabaseManager {
     }
     this.save(INITIAL_DATABASE);
     return JSON.parse(JSON.stringify(INITIAL_DATABASE));
+  }
+
+  // Hitung ulang saldo cuti setiap karyawan secara dinamis berdasarkan seluruh cuti yang berstatus APPROVED
+  recalculateUserLeaveBalances(targetUserId = null) {
+    if (!this.data || !Array.isArray(this.data.users)) return;
+    const leaves = (this.data && Array.isArray(this.data.leaves)) ? this.data.leaves : (INITIAL_DATABASE.leaves || []);
+    const usersToProcess = targetUserId ? this.data.users.filter(u => u.id === targetUserId) : this.data.users;
+
+    usersToProcess.forEach(u => {
+      const isSenior = hasWorkedOneYear(u.joinDate);
+      const userApprovedLeaves = leaves.filter(l => 
+        (l.employeeId === u.id || l.employeeName === u.name) && 
+        l.status === 'APPROVED'
+      );
+
+      let usedPersonal = 0;
+      let usedAnnual = 0;
+
+      userApprovedLeaves.forEach(l => {
+        const deductType = resolveLeaveDeductionType(l, u.joinDate);
+        l.quotaDeductionType = deductType;
+        l.quotaDeducted = (deductType === 'NONE') ? 0 : (Number(l.duration) || 1);
+        
+        const dur = Number(l.duration) || 1;
+        if (deductType === 'PERSONAL') {
+          usedPersonal += dur;
+        } else if (deductType === 'ANNUAL') {
+          usedAnnual += dur;
+        }
+      });
+
+      const quotaPersonal = (u.quotaPersonalLeave !== undefined) ? Number(u.quotaPersonalLeave) : 3;
+      const quotaAnnual = (u.quotaAnnualLeave !== undefined) ? Number(u.quotaAnnualLeave) : 12;
+
+      const newRemainingPersonal = Math.max(0, Math.round((quotaPersonal - usedPersonal) * 10) / 10);
+      const newRemainingAnnual = Math.max(0, Math.round((quotaAnnual - usedAnnual) * 10) / 10);
+
+      const changed = (u.remainingPersonalLeave !== newRemainingPersonal || u.remainingAnnualLeave !== newRemainingAnnual);
+      
+      u.remainingPersonalLeave = newRemainingPersonal;
+      u.remainingAnnualLeave = newRemainingAnnual;
+
+      if (this.data.currentUser && this.data.currentUser.id === u.id) {
+        this.data.currentUser.remainingPersonalLeave = newRemainingPersonal;
+        this.data.currentUser.remainingAnnualLeave = newRemainingAnnual;
+      }
+
+      if (changed && window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        this.syncToSupabase('users', {
+          id: u.id,
+          remaining_personal_leave: newRemainingPersonal,
+          remaining_annual_leave: newRemainingAnnual
+        }).catch(err => console.warn('Sync leave balance update notice:', err));
+      }
+    });
+
+    this.save();
   }
 
   save(data) {
@@ -2434,8 +2522,9 @@ class DatabaseManager {
       try {
         localStorage.setItem('erpmms_auth_user_id', user.id);
       } catch (e) {}
+      this.recalculateUserLeaveBalances(user.id);
       this.save();
-      return user;
+      return this.getCurrentUser();
     }
     return this.getCurrentUser();
   }
@@ -3279,6 +3368,7 @@ class DatabaseManager {
 
     const realTimestamp = getRealtimeTimestamp();
 
+    const deductType = resolveLeaveDeductionType(leaveData, user.joinDate);
     const newLeave = {
       id,
       employeeId: user.id,
@@ -3290,6 +3380,8 @@ class DatabaseManager {
       status: 'PENDING',
       approver,
       createdAt: realTimestamp,
+      quotaDeductionType: deductType,
+      quotaDeducted: deductType === 'NONE' ? 0 : (Number(leaveData.duration) || 1),
       approvalHistory: [
         {
           stage: 'SUBMISSION',
@@ -3373,6 +3465,10 @@ class DatabaseManager {
     const realTimestamp = getRealtimeTimestamp();
     if (!Array.isArray(leave.approvalHistory)) leave.approvalHistory = [];
 
+    const applicantUser = this.getUsers().find(usr => usr.id === leave.employeeId || usr.name === leave.employeeName);
+    leave.quotaDeductionType = resolveLeaveDeductionType(leave, applicantUser ? applicantUser.joinDate : null);
+    leave.quotaDeducted = (leave.quotaDeductionType === 'NONE') ? 0 : (Number(leave.duration) || 1);
+
     // Pastikan Level 1 ada di riwayat
     if (leave.approvalHistory.length === 0) {
       leave.approvalHistory.push({
@@ -3382,7 +3478,7 @@ class DatabaseManager {
         actorName: leave.employeeName,
         actorRole: leave.role ? leave.role.replace(/_/g, ' ') : 'Karyawan',
         timestamp: leave.createdAt || realTimestamp,
-        notes: `Permohonan ${leave.type} (${leave.duration} hari: ${leave.startDate} s.d ${leave.endDate}). Alasan: "${leave.reason || '-'}"`
+        notes: `Permohonan ${leave.type || leave.leaveType} (${leave.duration} hari: ${leave.startDate} s.d ${leave.endDate}). Alasan: "${leave.reason || '-'}"`
       });
     }
 
@@ -3439,27 +3535,9 @@ class DatabaseManager {
       leave.approver = 'Tazkia Aulia (Human Capital)';
     } else if (status === 'APPROVED') {
       leave.approver = `Disetujui Penuh (${user.name} - ${user.roleLabel})`;
-      
-      const u = this.getUsers().find(usr => usr.id === leave.employeeId);
-      const isCurrent = (this.data.currentUser.id === leave.employeeId);
-
-      if (leave.quotaDeductionType === 'ANNUAL') {
-        const deduct = Number(leave.duration) || 1;
-        if (u) u.remainingAnnualLeave = Math.max(0, Math.round(((Number(u.remainingAnnualLeave) || 12) - deduct) * 10) / 10);
-        if (isCurrent) this.data.currentUser.remainingAnnualLeave = Math.max(0, Math.round(((Number(this.data.currentUser.remainingAnnualLeave) || 12) - deduct) * 10) / 10);
-      } else if (leave.quotaDeductionType === 'PERSONAL') {
-        const deduct = Number(leave.duration) || 1;
-        if (u) u.remainingPersonalLeave = Math.max(0, Math.round(((Number(u.remainingPersonalLeave) || 3) - deduct) * 10) / 10);
-        if (isCurrent) this.data.currentUser.remainingPersonalLeave = Math.max(0, Math.round(((Number(this.data.currentUser.remainingPersonalLeave) || 3) - deduct) * 10) / 10);
-      }
-
-      if (u) {
-        this.syncToSupabase('users', {
-          id: u.id,
-          remaining_annual_leave: u.remainingAnnualLeave,
-          remaining_personal_leave: u.remainingPersonalLeave
-        });
-      }
+      this.recalculateUserLeaveBalances(leave.employeeId);
+    } else if (status === 'REJECTED') {
+      this.recalculateUserLeaveBalances(leave.employeeId);
     }
 
     this.addLog(`${user.name} (${user.roleLabel}) memproses Cuti ${id} [${status}] pada ${realTimestamp}`, 'leave');
@@ -3517,6 +3595,7 @@ class DatabaseManager {
     const idx = this.data.leaves.findIndex(l => l.id === id);
     if (idx !== -1) {
       const deleted = this.data.leaves.splice(idx, 1)[0];
+      this.recalculateUserLeaveBalances(deleted.employeeId);
       const user = this.getCurrentUser();
       const realTimestamp = getRealtimeTimestamp();
       this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus permohonan Cuti ${deleted.id} (${deleted.type || deleted.leaveType} · ${deleted.duration} hari) pada ${realTimestamp}`, 'leave');
@@ -5657,6 +5736,7 @@ class DatabaseManager {
               });
             }
           }
+          this.recalculateUserLeaveBalances();
           this.save();
           return true;
         }
@@ -5850,6 +5930,17 @@ class DatabaseManager {
           const existingLeaves = this.data.leaves || [];
           const remoteLeaves = leaves.map(l => {
             const local = existingLeaves.find(item => item.id === l.id);
+            const userMatch = (this.data.users || []).find(u => u.id === l.employee_id || u.name === l.employee_name);
+            const deductType = resolveLeaveDeductionType({
+              leaveType: l.leave_type,
+              type: l.leave_type,
+              quotaDeductionType: (local && local.quotaDeductionType) ? local.quotaDeductionType : undefined
+            }, userMatch ? userMatch.joinDate : null);
+
+            const isHalf = (local && local.isHalfDay !== undefined) 
+              ? local.isHalfDay 
+              : (Number(l.duration) === 0.5 || (l.leave_type && l.leave_type.includes('0.5')));
+
             return {
               id: l.id,
               employeeId: l.employee_id,
@@ -5860,7 +5951,10 @@ class DatabaseManager {
               type: l.leave_type,
               startDate: l.start_date,
               endDate: l.end_date,
-              duration: l.duration,
+              duration: Number(l.duration) || 1,
+              isHalfDay: isHalf,
+              quotaDeductionType: deductType,
+              quotaDeducted: deductType === 'NONE' ? 0 : (Number(l.duration) || 1),
               reason: l.reason,
               emergencyContact: l.emergency_contact,
               attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : null,
@@ -5874,6 +5968,7 @@ class DatabaseManager {
           });
 
           this.data.leaves = remoteLeaves;
+          this.recalculateUserLeaveBalances();
         }
       }
 
@@ -6238,6 +6333,7 @@ window.DB = new DatabaseManager();
 window.calculateTenure = calculateTenure;
 window.calculateAge = calculateAge;
 window.hasWorkedOneYear = hasWorkedOneYear;
+window.resolveLeaveDeductionType = resolveLeaveDeductionType;
 
 // Auto-sync: Tarik seluruh data terbaru dari Supabase Cloud sebagai Single Source of Truth
 setTimeout(async () => {

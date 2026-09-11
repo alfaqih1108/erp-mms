@@ -279,13 +279,18 @@ window.CutiModule = {
                       </div>
                     </td>
                     <td>
-                      ${l.quotaDeductionType === 'PERSONAL' ? `
-                        <span class="badge-status badge-pending" style="font-size: 10px;">- ${l.duration} Hari Pribadi (Q3)</span>
-                      ` : l.quotaDeductionType === 'ANNUAL' ? `
-                        <span class="badge-status badge-rejected" style="font-size: 10px;">- ${l.duration} Hari Tahunan</span>
-                      ` : `
-                        <span class="badge-status badge-approved" style="font-size: 10px;">0 Hari (Upah Penuh)</span>
-                      `}
+                      ${(() => {
+                        const dType = (typeof resolveLeaveDeductionType === 'function') 
+                          ? resolveLeaveDeductionType(l, user.joinDate) 
+                          : (l.quotaDeductionType || 'NONE');
+                        if (dType === 'PERSONAL') {
+                          return `<span class="badge-status badge-pending" style="font-size: 10px;">- ${l.duration} Hari Pribadi (Q3)</span>`;
+                        } else if (dType === 'ANNUAL') {
+                          return `<span class="badge-status badge-rejected" style="font-size: 10px;">- ${l.duration} Hari Tahunan</span>`;
+                        } else {
+                          return `<span class="badge-status badge-approved" style="font-size: 10px;">0 Hari (Upah Penuh)</span>`;
+                        }
+                      })()}
                     </td>
                     <td style="text-align: center;">
                       <span class="badge-status ${l.status === 'APPROVED' ? 'badge-approved' : l.status === 'REJECTED' ? 'badge-rejected' : 'badge-pending'}">
