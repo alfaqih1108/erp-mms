@@ -244,8 +244,8 @@ window.DapurYayasanModule = {
           </div>
         </div>
 
-        <!-- KPI HUD Chips Dapur & VA (Belanja Bahan, Ops, Sewa Mobil, Insentif Yayasan, Total, Porsi, Saldo VA, Biaya/Porsi) -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 28px;">
+        <!-- KPI HUD Chips Dapur & VA (4 Di Atas & 4 Di Bawah: Belanja Bahan, Ops, Sewa Mobil, Insentif Yayasan | Total, Porsi, Saldo VA, Biaya/Porsi) -->
+        <div class="kpi-stat-grid dapur-kpi-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px;">
           
           <!-- Chip 1: Total Belanja Bahan Baku -->
           <div class="kpi-chip hud-corner-box">
