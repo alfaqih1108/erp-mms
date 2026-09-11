@@ -3088,7 +3088,9 @@ class DatabaseManager {
     const rawMaterialCost = Number(report.rawMaterialCost) || 0;
     const operationalCost = Number(report.operationalCost) || 0;
     const carRentalCost = Number(report.carRentalCost) || 0;
-    const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost;
+    const foundationIncentive = Number(report.foundationIncentive) || 0;
+    const incentiveNotes = (report.incentiveNotes || '').trim();
+    const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost + foundationIncentive;
 
     const targetBudget = (porsiBesar * 10000) + (porsiKecil * 8000);
     const costPerPortion = beneficiariesCount > 0 ? Math.round(rawMaterialCost / beneficiariesCount) : 0;
@@ -3100,6 +3102,8 @@ class DatabaseManager {
       rawMaterialCost,
       operationalCost,
       carRentalCost,
+      foundationIncentive,
+      incentiveNotes,
       totalDailyExpense,
       porsiBesar,
       porsiKecil,
@@ -3113,7 +3117,7 @@ class DatabaseManager {
     if (!Array.isArray(this.data.kitchenReports)) this.data.kitchenReports = [];
     this.data.kitchenReports.unshift(newReport);
 
-    this.addLog(`${report.reporterName || this.getCurrentUser().name} melaporkan transaksi ${report.kitchenName}: ${beneficiariesCount} Porsi (Bahan: Rp ${rawMaterialCost.toLocaleString('id-ID')} + Ops: Rp ${operationalCost.toLocaleString('id-ID')}${carRentalCost > 0 ? ` + Sewa Mobil: Rp ${carRentalCost.toLocaleString('id-ID')}` : ''} = Total: Rp ${totalDailyExpense.toLocaleString('id-ID')}) · Saldo VA Rp ${Number(report.vaBalance).toLocaleString('id-ID')}`, 'kitchen');
+    this.addLog(`${report.reporterName || this.getCurrentUser().name} melaporkan transaksi ${report.kitchenName}: ${beneficiariesCount} Porsi (Bahan: Rp ${rawMaterialCost.toLocaleString('id-ID')} + Ops: Rp ${operationalCost.toLocaleString('id-ID')}${carRentalCost > 0 ? ` + Sewa: Rp ${carRentalCost.toLocaleString('id-ID')}` : ''}${foundationIncentive > 0 ? ` + Insentif: Rp ${foundationIncentive.toLocaleString('id-ID')}` : ''} = Total: Rp ${totalDailyExpense.toLocaleString('id-ID')}) · Saldo VA Rp ${Number(report.vaBalance).toLocaleString('id-ID')}`, 'kitchen');
     this.save();
 
     // 1. Resolve Kitchen ID by matching SPPG code, ID, or name from newReport.kitchenName FIRST
@@ -3165,6 +3169,8 @@ class DatabaseManager {
       raw_material_cost: Number(newReport.rawMaterialCost) || 0,
       operational_cost: Number(newReport.operationalCost) || 0,
       car_rental_cost: Number(newReport.carRentalCost) || 0,
+      foundation_incentive: Number(newReport.foundationIncentive) || 0,
+      incentive_notes: newReport.incentiveNotes || '',
       total_daily_expense: Number(newReport.totalDailyExpense) || 0,
       porsi_besar: Number(newReport.porsiBesar) || 0,
       porsi_kecil: Number(newReport.porsiKecil) || 0,
@@ -3194,7 +3200,9 @@ class DatabaseManager {
     const rawMaterialCost = updatedData.rawMaterialCost !== undefined ? Number(updatedData.rawMaterialCost) : (Number(existing.rawMaterialCost) || 0);
     const operationalCost = updatedData.operationalCost !== undefined ? Number(updatedData.operationalCost) : (Number(existing.operationalCost) || 0);
     const carRentalCost = updatedData.carRentalCost !== undefined ? Number(updatedData.carRentalCost) : (Number(existing.carRentalCost) || 0);
-    const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost;
+    const foundationIncentive = updatedData.foundationIncentive !== undefined ? Number(updatedData.foundationIncentive) : (Number(existing.foundationIncentive) || 0);
+    const incentiveNotes = updatedData.incentiveNotes !== undefined ? (updatedData.incentiveNotes || '').trim() : (existing.incentiveNotes || '');
+    const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost + foundationIncentive;
 
     const targetBudget = (porsiBesar * 10000) + (porsiKecil * 8000);
     const costPerPortion = beneficiariesCount > 0 ? Math.round(rawMaterialCost / beneficiariesCount) : 0;
@@ -3214,6 +3222,8 @@ class DatabaseManager {
       rawMaterialCost,
       operationalCost,
       carRentalCost,
+      foundationIncentive,
+      incentiveNotes,
       totalDailyExpense,
       porsiBesar,
       porsiKecil,
@@ -3271,6 +3281,8 @@ class DatabaseManager {
       raw_material_cost: Number(merged.rawMaterialCost) || 0,
       operational_cost: Number(merged.operationalCost) || 0,
       car_rental_cost: Number(merged.carRentalCost) || 0,
+      foundation_incentive: Number(merged.foundationIncentive) || 0,
+      incentive_notes: merged.incentiveNotes || '',
       total_daily_expense: Number(merged.totalDailyExpense) || 0,
       porsi_besar: Number(merged.porsiBesar) || 0,
       porsi_kecil: Number(merged.porsiKecil) || 0,
@@ -5763,7 +5775,7 @@ class DatabaseManager {
         fetch(`${url}/rest/v1/kitchens?select=*`, { headers }),
         fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,spm_attachment_url,va_bank_name,va_balance,notes,created_at&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,spm_attachment_url,va_bank_name,va_balance,notes,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,purpose,stage,status,settlement,approval_history,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,file_data,created_at&order=created_at.desc`, { headers }),
@@ -6003,6 +6015,8 @@ class DatabaseManager {
               rawMaterialCost: Number(kr.raw_material_cost) || (local ? local.rawMaterialCost : 0),
               operationalCost: Number(kr.operational_cost) || (local ? local.operationalCost : 0),
               carRentalCost: Number(kr.car_rental_cost) || (local ? local.carRentalCost : 0),
+              foundationIncentive: (kr.foundation_incentive !== undefined && kr.foundation_incentive !== null) ? Number(kr.foundation_incentive) : (local ? (Number(local.foundationIncentive) || 0) : 0),
+              incentiveNotes: (kr.incentive_notes !== undefined && kr.incentive_notes !== null) ? kr.incentive_notes : (local ? (local.incentiveNotes || '') : ''),
               totalDailyExpense: Number(kr.total_daily_expense) || (local ? local.totalDailyExpense : 0),
               porsiBesar: Number(kr.porsi_besar) || (local ? local.porsiBesar : 0),
               porsiKecil: Number(kr.porsi_kecil) || (local ? local.porsiKecil : 0),

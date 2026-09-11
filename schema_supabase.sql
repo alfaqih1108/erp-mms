@@ -180,6 +180,8 @@ CREATE TABLE IF NOT EXISTS kitchen_reports (
     raw_material_cost NUMERIC(15,2) DEFAULT 0,
     operational_cost NUMERIC(15,2) DEFAULT 0,
     car_rental_cost NUMERIC(15,2) DEFAULT 0,
+    foundation_incentive NUMERIC(15,2) DEFAULT 0,
+    incentive_notes TEXT,
     total_daily_expense NUMERIC(15,2) DEFAULT 0,
     porsi_besar INT DEFAULT 0,
     porsi_kecil INT DEFAULT 0,
@@ -355,4 +357,11 @@ VALUES
 ('PY-015', 'PY-2026-015', 'Titi Hardyati', 'PERWAKILAN_YAYASAN', 'Perwakilan Yayasan', 'WLKP-PY-15', 'Perwakilan Yayasan - Adil Berdaya Insani', 'Staff Mitra / Grade 1', 'Kemitraan Yayasan', 'linear-gradient(135deg, #0891B2 0%, #67E8F9 100%)', 12, 12, 3, 3, 'Q3 (Juli–September 2026)', '2026-07-13', 'Jakarta', '1994-05-24', 'Islam', 'Perempuan', '0812-9011-015', 'titi.hardyati@erpmms.co.id', 'titi.hardyati', 'password123', '3175016405940015', 'PKWT (Mitra Yayasan)', 'TK/0', 'Sarjana (S1)', 'Bank Mandiri', '157-00-6677889-6', 'Titi Hardyati', 'Perwakilan SPPG Utan Kayu Selatan.'),
 ('MAKER-003', 'MKR-2026-003', 'Fandru', 'MAKER_YAYASAN', 'Maker Yayasan', 'WLKP-MKR-03', 'Maker Pengelola Dapur Yayasan', 'Staff Pelaksana Dapur / Grade 1', 'Kemitraan Yayasan', 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)', 12, 12, 3, 3, 'Q3 (Juli–September 2026)', '2026-04-01', 'Pandeglang', '1995-03-12', 'Islam', 'Laki-laki', '0813-8899-7711', 'fandru@erpmms.co.id', 'fandru', 'password123', '3601051203950001', 'PKWT (Maker Dapur)', 'TK/0', 'SMA / SMK', 'BCA (Bank Central Asia)', '522-099-1234', 'Fandru', 'Maker Dapur SPPG Citaman.')
 ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- 4. MIGRATION COMMANDS (Jalankan di Supabase SQL Editor jika tabel sudah ada)
+-- ============================================================================
+ALTER TABLE kitchen_reports ADD COLUMN IF NOT EXISTS foundation_incentive NUMERIC(15,2) DEFAULT 0;
+ALTER TABLE kitchen_reports ADD COLUMN IF NOT EXISTS incentive_notes TEXT DEFAULT '';
+
 

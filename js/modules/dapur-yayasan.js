@@ -94,10 +94,11 @@ window.DapurYayasanModule = {
     const totalRawCost = filteredReports.reduce((acc, curr) => acc + (Number(curr.rawMaterialCost) || 0), 0);
     const totalOpsCost = filteredReports.reduce((acc, curr) => acc + (Number(curr.operationalCost) || 0), 0);
     const totalCarRentalCost = filteredReports.reduce((acc, curr) => acc + (Number(curr.carRentalCost) || 0), 0);
+    const totalIncentive = filteredReports.reduce((acc, curr) => acc + (Number(curr.foundationIncentive) || 0), 0);
     const totalDailyExpense = filteredReports.reduce((acc, curr) => {
       const explicit = Number(curr.totalDailyExpense);
       if (!isNaN(explicit) && explicit > 0) return acc + explicit;
-      return acc + (Number(curr.rawMaterialCost) || 0) + (Number(curr.operationalCost) || 0) + (Number(curr.carRentalCost) || 0);
+      return acc + (Number(curr.rawMaterialCost) || 0) + (Number(curr.operationalCost) || 0) + (Number(curr.carRentalCost) || 0) + (Number(curr.foundationIncentive) || 0);
     }, 0);
 
     const totalBeneficiaries = filteredReports.reduce((acc, curr) => acc + (Number(curr.beneficiariesCount) || 0), 0);
@@ -243,8 +244,8 @@ window.DapurYayasanModule = {
           </div>
         </div>
 
-        <!-- 6 KPI HUD Chips Dapur & VA (Belanja Bahan, Ops, Sewa Mobil, Total, Porsi, Saldo VA, Biaya/Porsi) -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 28px;">
+        <!-- KPI HUD Chips Dapur & VA (Belanja Bahan, Ops, Sewa Mobil, Insentif Yayasan, Total, Porsi, Saldo VA, Biaya/Porsi) -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 28px;">
           
           <!-- Chip 1: Total Belanja Bahan Baku -->
           <div class="kpi-chip hud-corner-box">
@@ -288,7 +289,21 @@ window.DapurYayasanModule = {
             </div>
           </div>
 
-          <!-- Chip 4: Total Akumulasi Pengeluaran Dapur -->
+          <!-- Chip 4: Insentif Yayasan (Opsional) -->
+          <div class="kpi-chip hud-corner-box">
+            <div class="kpi-chip-header">
+              <span class="kpi-chip-title">Insentif Yayasan</span>
+              <span style="font-size: 10px; color: #C084FC; font-weight: 700; background: rgba(192,132,252,0.12); padding: 1px 5px; border-radius: 3px;">MITRA YAYASAN</span>
+            </div>
+            <div class="kpi-chip-value" style="color: #E879F9; font-weight: 700; font-size: 20px;">
+              Rp ${totalIncentive.toLocaleString('id-ID')}
+            </div>
+            <div class="kpi-chip-footer" style="color: #E879F9;">
+              <span>● Insentif berkala & khusus yayasan</span>
+            </div>
+          </div>
+
+          <!-- Chip 5: Total Akumulasi Pengeluaran Dapur -->
           <div class="kpi-chip hud-corner-box" style="border-color: rgba(255, 75, 1, 0.4); background: linear-gradient(180deg, rgba(255,75,1,0.08) 0%, rgba(20,15,10,0.6) 100%);">
             <div class="kpi-chip-header">
               <span class="kpi-chip-title" style="color: var(--brand-orange); font-weight: 700;">Total Pengeluaran</span>
@@ -298,11 +313,11 @@ window.DapurYayasanModule = {
               Rp ${totalDailyExpense.toLocaleString('id-ID')}
             </div>
             <div class="kpi-chip-footer" style="color: #FF8A4C; font-weight: 500;">
-              <span>● Bahan + Operasional + Sewa Mobil</span>
+              <span>● Bahan + Ops + Sewa + Insentif</span>
             </div>
           </div>
 
-          <!-- Chip 5: Total Penerima Manfaat & Porsi -->
+          <!-- Chip 6: Total Penerima Manfaat & Porsi -->
           <div class="kpi-chip hud-corner-box">
             <div class="kpi-chip-header">
               <span class="kpi-chip-title">Penerima Manfaat</span>
@@ -444,7 +459,7 @@ window.DapurYayasanModule = {
 
           <!-- Table Container -->
           <div class="nalar-table-container" style="overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
-            <table class="nalar-table" style="min-width: 1850px; border-collapse: separate; border-spacing: 0;">
+            <table class="nalar-table" style="min-width: 2000px; border-collapse: separate; border-spacing: 0;">
               <thead>
                 <tr>
                   <th style="min-width: 150px; white-space: nowrap;">No. Laporan</th>
@@ -454,6 +469,7 @@ window.DapurYayasanModule = {
                   <th style="min-width: 160px; white-space: nowrap;">Belanja Bahan Baku</th>
                   <th style="min-width: 150px; white-space: nowrap;">Biaya Operasional</th>
                   <th style="min-width: 135px; white-space: nowrap;">Sewa Mobil</th>
+                  <th style="min-width: 170px; white-space: nowrap; color: #C084FC; background: rgba(192, 132, 252, 0.08);">Insentif Yayasan</th>
                   <th style="min-width: 170px; white-space: nowrap; background: rgba(255, 75, 1, 0.08); color: #FF8A4C;">Total Pengeluaran</th>
                   <th style="min-width: 160px; white-space: nowrap;">Rincian Porsi</th>
                   <th style="min-width: 175px; white-space: nowrap;">Biaya / Porsi</th>
@@ -477,7 +493,7 @@ window.DapurYayasanModule = {
                   if (pageReports.length === 0) {
                     return `
                       <tr>
-                        <td colspan="14" style="text-align: center; color: var(--text-muted); padding: 42px;">
+                        <td colspan="15" style="text-align: center; color: var(--text-muted); padding: 42px;">
                           Belum ada laporan transaksi dapur yang sesuai dengan kriteria filter saat ini.
                         </td>
                       </tr>
@@ -490,7 +506,9 @@ window.DapurYayasanModule = {
                     const rawCost = Number(r.rawMaterialCost) || 0;
                     const opsCost = Number(r.operationalCost) || 0;
                     const carCost = Number(r.carRentalCost) || 0;
-                    const totExpense = Number(r.totalDailyExpense) || (rawCost + opsCost + carCost);
+                    const incCost = Number(r.foundationIncentive) || 0;
+                    const incNotes = r.incentiveNotes || '';
+                    const totExpense = Number(r.totalDailyExpense) || (rawCost + opsCost + carCost + incCost);
 
                     // Auto generate perhitungan target budget: Porsi Besar (@Rp10.000) + Porsi Kecil (@Rp8.000)
                     const targetBudg = Number(r.targetBudget) || ((pBesar * 10000) + (pKecil * 8000));
@@ -528,6 +546,18 @@ window.DapurYayasanModule = {
                         </td>
                         <td style="color: ${carCost > 0 ? '#93C5FD' : 'var(--text-muted)'}; font-weight: 600; font-size: 12.5px; white-space: nowrap;">
                           ${carCost > 0 ? `Rp ${carCost.toLocaleString('id-ID')}` : '<span style="font-style: italic; font-weight: 400; font-size: 11px; color: var(--text-dim);">- (Tidak Ada)</span>'}
+                        </td>
+                        <td style="color: ${incCost > 0 ? '#C084FC' : 'var(--text-muted)'}; font-weight: 600; font-size: 12.5px; white-space: nowrap; background: rgba(192, 132, 252, 0.03);">
+                          ${incCost > 0 ? `
+                            <div style="color: #E879F9; font-weight: 700; font-size: 13px;">
+                              Rp ${incCost.toLocaleString('id-ID')}
+                            </div>
+                            ${incNotes ? `
+                              <div style="font-size: 10.5px; color: #D8B4FE; font-style: italic; margin-top: 2px; max-width: 165px; white-space: normal; line-height: 1.25;" title="${incNotes}">
+                                📝 ${incNotes}
+                              </div>
+                            ` : ''}
+                          ` : '<span style="font-style: italic; font-weight: 400; font-size: 11px; color: var(--text-dim);">- (Tidak Ada)</span>'}
                         </td>
                         <td style="color: #FF8A4C; font-weight: 800; font-size: 13.5px; background: rgba(255, 75, 1, 0.06); white-space: nowrap;">
                           Rp ${totExpense.toLocaleString('id-ID')}
@@ -781,6 +811,30 @@ window.DapurYayasanModule = {
                   </div>
                 </div>
 
+                <!-- 4. Insentif Yayasan & Catatan Khusus Insentif -->
+                <div style="background: rgba(192, 132, 252, 0.05); border: 1px solid rgba(192, 132, 252, 0.25); border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 10px; margin-bottom: 8px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span class="text-mono-badge" style="color: #C084FC; font-size: 11px;">4. Insentif Yayasan (Opsional)</span>
+                    <span style="font-size: 10px; color: #C084FC; font-style: italic;">Diisi jika ada pembayaran insentif untuk yayasan</span>
+                  </div>
+                  <div class="form-row" style="margin-bottom: 0;">
+                    <div class="form-group" style="margin-bottom: 4px; flex: 1;">
+                      <label class="form-label" style="font-size: 11.5px; color: #E9D5FF;">Nominal Insentif (Rp) <span style="font-size: 10px; color: var(--text-muted);">(Bisa 0)</span></label>
+                      <input type="number" id="kr-foundation-incentive" class="form-control" placeholder="0" min="0" value="0"
+                             oninput="DapurYayasanModule.recalculateLiveTotals()"
+                             style="font-weight: 600; color: #E879F9;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 4px; flex: 1.4;">
+                      <label class="form-label" style="font-size: 11.5px; color: #E9D5FF;">Catatan Khusus Insentif <span style="font-size: 10px; color: var(--text-muted);">(Periode / Keterangan)</span></label>
+                      <input type="text" id="kr-incentive-notes" class="form-control" placeholder="Misal: Insentif periode 1 s/d 15 Sept 2026"
+                             style="font-size: 12px; color: #fff;">
+                    </div>
+                  </div>
+                  <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px; font-style: italic;">
+                    *Tuliskan rentang tanggal periode insentif yang dibayarkan atau catatan khusus lainnya.
+                  </div>
+                </div>
+
                 <div id="kr-live-efficiency-badge" style="font-size: 11.5px; color: var(--text-muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
                   Masukkan rincian biaya untuk melihat kalkulasi biaya per porsi dan efisiensi.
                 </div>
@@ -963,10 +1017,11 @@ window.DapurYayasanModule = {
     const rawCost = Number(document.getElementById('kr-raw-cost')?.value) || 0;
     const opsCost = Number(document.getElementById('kr-operational-cost')?.value) || 0;
     const carRentalCost = Number(document.getElementById('kr-car-rental-cost')?.value) || 0;
+    const foundationIncentive = Number(document.getElementById('kr-foundation-incentive')?.value) || 0;
 
     const totalPorsi = pBesar + pKecil;
     const targetBudget = (pBesar * 10000) + (pKecil * 8000);
-    const totalDailyExpense = rawCost + opsCost + carRentalCost;
+    const totalDailyExpense = rawCost + opsCost + carRentalCost + foundationIncentive;
 
     const totalExpenseEl = document.getElementById('kr-live-total-expense');
     if (totalExpenseEl) {
@@ -1098,12 +1153,16 @@ window.DapurYayasanModule = {
       const rawEl = document.getElementById('kr-raw-cost');
       const opsEl = document.getElementById('kr-operational-cost');
       const carEl = document.getElementById('kr-car-rental-cost');
+      const incEl = document.getElementById('kr-foundation-incentive');
+      const incNotesEl = document.getElementById('kr-incentive-notes');
       const notesEl = document.getElementById('kr-notes');
       const bankEl = document.getElementById('kr-va-bank');
       const balEl = document.getElementById('kr-va-balance');
 
       if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
       if (bEl) bEl.value = '0';
+      if (incEl) incEl.value = '0';
+      if (incNotesEl) incNotesEl.value = '';
       if (notesEl) notesEl.value = '';
       if (bankEl && !bankEl.value) bankEl.value = 'Bank Mandiri VA - Dapur Yayasan';
       if (balEl) balEl.value = '0';
@@ -1175,6 +1234,8 @@ window.DapurYayasanModule = {
     const rawEl = document.getElementById('kr-raw-cost');
     const opsEl = document.getElementById('kr-operational-cost');
     const carEl = document.getElementById('kr-car-rental-cost');
+    const incEl = document.getElementById('kr-foundation-incentive');
+    const incNotesEl = document.getElementById('kr-incentive-notes');
     const bankEl = document.getElementById('kr-va-bank');
     const balEl = document.getElementById('kr-va-balance');
     const notesEl = document.getElementById('kr-notes');
@@ -1194,6 +1255,8 @@ window.DapurYayasanModule = {
     if (rawEl) rawEl.value = (r.rawMaterialCost !== undefined ? r.rawMaterialCost : 0);
     if (opsEl) opsEl.value = (r.operationalCost !== undefined ? r.operationalCost : 0);
     if (carEl) carEl.value = (r.carRentalCost !== undefined ? r.carRentalCost : 0);
+    if (incEl) incEl.value = (r.foundationIncentive !== undefined ? r.foundationIncentive : 0);
+    if (incNotesEl) incNotesEl.value = r.incentiveNotes || '';
     if (bankEl) bankEl.value = r.vaBankName || 'Bank Mandiri VA - Dapur Yayasan';
     if (balEl) balEl.value = (r.vaBalance !== undefined ? r.vaBalance : 0);
     if (notesEl) notesEl.value = r.notes || '';
@@ -1259,7 +1322,9 @@ window.DapurYayasanModule = {
     const rawMaterialCost = Number(document.getElementById('kr-raw-cost').value) || 0;
     const operationalCost = Number(document.getElementById('kr-operational-cost').value) || 0;
     const carRentalCost = Number(document.getElementById('kr-car-rental-cost').value) || 0;
-    const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost;
+    const foundationIncentive = Number(document.getElementById('kr-foundation-incentive')?.value) || 0;
+    const incentiveNotes = (document.getElementById('kr-incentive-notes')?.value || '').trim();
+    const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost + foundationIncentive;
 
     const porsiBesar = Number(document.getElementById('kr-porsi-besar').value) || 0;
     const porsiKecil = Number(document.getElementById('kr-porsi-kecil').value) || 0;
@@ -1285,7 +1350,7 @@ window.DapurYayasanModule = {
       return;
     }
 
-    if (rawMaterialCost < 0 || operationalCost < 0 || carRentalCost < 0 || beneficiariesCount < 0) {
+    if (rawMaterialCost < 0 || operationalCost < 0 || carRentalCost < 0 || foundationIncentive < 0 || beneficiariesCount < 0) {
       App.showToast('Nilai biaya dan porsi tidak boleh negatif!', 'warn');
       return;
     }
@@ -1296,6 +1361,8 @@ window.DapurYayasanModule = {
       rawMaterialCost,
       operationalCost,
       carRentalCost,
+      foundationIncentive,
+      incentiveNotes,
       totalDailyExpense,
       porsiBesar,
       porsiKecil,
@@ -1347,7 +1414,9 @@ window.DapurYayasanModule = {
     const rawCost = Number(r.rawMaterialCost) || 0;
     const opsCost = Number(r.operationalCost) || 0;
     const carCost = Number(r.carRentalCost) || 0;
-    const totExpense = Number(r.totalDailyExpense) || (rawCost + opsCost + carCost);
+    const incCost = Number(r.foundationIncentive) || 0;
+    const incNotes = r.incentiveNotes || '';
+    const totExpense = Number(r.totalDailyExpense) || (rawCost + opsCost + carCost + incCost);
 
     const costPerPortionAllIn = Number(r.costPerPortionAllIn) || 0;
     const eff = (r.beneficiariesCount > 0 && r.targetBudget > 0) ? Math.round((totExpense / r.targetBudget) * 100) : 100;
@@ -1372,11 +1441,22 @@ window.DapurYayasanModule = {
             <div style="font-size: 10.5px; color: var(--text-muted);">Sewa Mobil:</div>
             <div style="font-size: 13px; font-weight: 600; color: #A78BFA;">Rp ${carCost.toLocaleString('id-ID')}</div>
           </div>
+          <div style="background: rgba(192, 132, 252, 0.08); padding: 10px; border-radius: var(--radius-sm); border: 1px solid rgba(192, 132, 252, 0.25);">
+            <div style="font-size: 10.5px; color: #C084FC; font-weight: 600;">Insentif Yayasan:</div>
+            <div style="font-size: 13px; font-weight: 700; color: #E879F9;">Rp ${incCost.toLocaleString('id-ID')}</div>
+          </div>
           <div style="background: rgba(16, 185, 129, 0.08); padding: 10px; border-radius: var(--radius-sm); border: 1px solid rgba(16, 185, 129, 0.25);">
             <div style="font-size: 10.5px; color: #34D399; font-weight: 600;">TOTAL BELANJA:</div>
             <div style="font-size: 14px; font-weight: 700; color: #6EE7B7;">Rp ${totExpense.toLocaleString('id-ID')}</div>
           </div>
         </div>
+
+        ${incNotes ? `
+          <div style="background: rgba(192, 132, 252, 0.06); border: 1px solid rgba(192, 132, 252, 0.25); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 14px;">
+            <div style="font-size: 11px; color: #D8B4FE; font-weight: 600; margin-bottom: 3px;">Catatan Khusus Insentif Yayasan:</div>
+            <div style="font-size: 12.5px; color: #fff;">📝 ${incNotes}</div>
+          </div>
+        ` : ''}
 
         <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 14px;">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 10px;">
