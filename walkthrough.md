@@ -72,7 +72,7 @@ graph TD
 * **Istri Sah Melahirkan / Keguguran:** 2 hari kerja (khusus laki-laki)
 * **Duka Keluarga Inti (Istri/Suami/Ortu/Mertua/Anak/Saudara Kandung):** 2 hari kerja
 * **Duka Anggota Serumah:** 1 hari kerja
-* **Bencana Alam (Banjir / Kebakaran):** 2 hari kerja
+* **Musibah (Sakit, Kebakaran, Bencana Alam):** 2 hari kerja
 * **Ibadah Luar Negeri (Haji / Umroh / Lainnya):** Sesuai surat resmi Kemenag/Travel (diajukan 1 bulan sebelumnya).
 
 ### B. Timesheet & Presensi

@@ -161,7 +161,13 @@ window.DapurYayasanModule = {
             <h1 style="font-size: 26px; font-weight: 700; margin-top: 4px;">Pelaporan Transaksi Dapur & Saldo Virtual Account (VA)</h1>
           </div>
           
-          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+            ${this.canExportKitchenData(user) ? `
+              <button class="btn-nalar-secondary" onclick="DapurYayasanModule.openExportModal()" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.25) 100%); border: 1px solid rgba(52, 211, 153, 0.45); color: #34D399; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; transition: all 0.2s ease;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Export Laporan Excel (.xlsx)</span>
+              </button>
+            ` : ''}
             <button class="btn-nalar-primary" onclick="DapurYayasanModule.openReportModal()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               + Input Laporan Transaksi Dapur Baru
@@ -2463,6 +2469,773 @@ window.DapurYayasanModule = {
         saveBtn.innerHTML = '💾 Simpan Status Operasional';
       }
     }
+  },
+
+  // =========================================================================
+  // EXPORT EXCEL MULTI-SHEET ENGINE (DIREKTUR & STAFF AHLI KEUANGAN)
+  // =========================================================================
+
+  canExportKitchenData: function(user) {
+    if (!user) {
+      user = DB.getCurrentUser();
+    }
+    if (!user || !user.role) return false;
+    const allowedRoles = [
+      'SUPER_ADMIN',
+      'DIREKTUR_UTAMA',
+      'KETUA_PEMBINA',
+      'DIREKTUR_KEUANGAN',
+      'DIREKTUR_OPERASIONAL',
+      'STAFF_AHLI_KEUANGAN'
+    ];
+    return allowedRoles.includes(user.role);
+  },
+
+  openExportModal: function() {
+    const user = DB.getCurrentUser();
+    if (!this.canExportKitchenData(user)) {
+      App.showToast('Akses ditolak: Fitur export laporan ini khusus Direktur dan Staf Ahli Keuangan.', 'warn');
+      return;
+    }
+
+    let modalEl = document.getElementById('modal-export-dapur-excel');
+    if (!modalEl) {
+      modalEl = document.createElement('div');
+      modalEl.id = 'modal-export-dapur-excel';
+      modalEl.className = 'modal-backdrop';
+      document.body.appendChild(modalEl);
+    }
+
+    const allKitchens = DB.getKitchens() || [];
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    const firstDay = `${y}-${m}-01`;
+    const lastDay = `${y}-${m}-${d}`;
+
+    modalEl.innerHTML = `
+      <div class="modal-box" style="max-width: 640px;">
+        <div class="modal-header">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="text-mono-badge" style="color: #34D399; background: rgba(52, 211, 153, 0.12); padding: 2px 8px; border-radius: 4px; font-size: 11px;">
+                Export Rekapitulasi Terpadu
+              </span>
+              <span style="font-size: 11px; color: #FCD34D; font-style: italic;">
+                Khusus Direksi &amp; Staff Ahli Keuangan
+              </span>
+            </div>
+            <h3 class="modal-title" style="margin-top: 4px; font-size: 18px; font-weight: 700;">
+              Export Saldo VA &amp; Laporan Status Dapur (.xlsx)
+            </h3>
+          </div>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-export-dapur-excel')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <div class="modal-body" style="padding: 20px 24px;">
+          <!-- Multi-Sheet Preview Banner -->
+          <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(6, 95, 70, 0.12) 100%); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 20px;">
+            <div style="font-size: 13px; font-weight: 700; color: #34D399; display: flex; align-items: center; gap: 8px;">
+              <span>📑</span> Format Buku Kerja Excel Multi-Sheet:
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
+              <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px 12px;">
+                <div style="font-size: 12px; font-weight: 600; color: #fff;">📄 Sheet 1: Saldo VA &amp; Belanja</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.35;">
+                  Rekapitulasi saldo VA terkini, penerima manfaat, bahan baku, ops, sewa mobil, insentif yayasan, dan total all-in.
+                </div>
+              </div>
+              <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px 12px;">
+                <div style="font-size: 12px; font-weight: 600; color: #FCD34D;">📊 Sheet 2: Status Dapur Harian</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.35;">
+                  Log pemantauan operasional harian (Berjalan vs Libur/Kendala) beserta alasan khusus dan petugas konfirmasi.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filter 1: Cakupan Dapur SPPG -->
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" style="font-weight: 600; font-size: 12.5px;">1. Cakupan Dapur SPPG <span style="color: #F87171;">*</span></label>
+            <select id="export-dapur-kitchen" class="form-control" style="font-size: 12.5px;">
+              <option value="ALL" selected>🌐 Semua Dapur SPPG (Konsolidasi Seluruh Titik)</option>
+              ${allKitchens.map(k => `
+                <option value="${k.id || k.idSppg}">${k.idSppg || k.id} — ${k.namaDapur || k.name}</option>
+              `).join('')}
+            </select>
+          </div>
+
+          <!-- Filter 2: Cakupan Rentang Tanggal -->
+          <div class="form-group" style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+              <label class="form-label" style="margin-bottom: 0; font-weight: 600; font-size: 12.5px;">2. Rentang Tanggal Data</label>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                <button type="button" class="btn-preset-pill" onclick="DapurYayasanModule.setExportModalPreset('all')">Semua Data</button>
+                <button type="button" class="btn-preset-pill" onclick="DapurYayasanModule.setExportModalPreset('thisMonth')">Bulan Ini</button>
+                <button type="button" class="btn-preset-pill" onclick="DapurYayasanModule.setExportModalPreset('lastMonth')">Bulan Lalu</button>
+                <button type="button" class="btn-preset-pill" onclick="DapurYayasanModule.setExportModalPreset('today')">Hari Ini</button>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center;">
+              <div>
+                <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Mulai Tanggal:</span>
+                <input type="date" id="export-dapur-start-date" class="form-control" value="${firstDay}" style="font-size: 12px; font-family: var(--font-mono);">
+              </div>
+              <span style="color: var(--text-muted); font-size: 12px; align-self: flex-end; padding-bottom: 8px;">s/d</span>
+              <div>
+                <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Sampai Tanggal:</span>
+                <input type="date" id="export-dapur-end-date" class="form-control" value="${lastDay}" style="font-size: 12px; font-family: var(--font-mono);">
+              </div>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 6px;">
+              *Pilih rentang tanggal atau klik "Semua Data" untuk mengunduh seluruh data tanpa batas periode.
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 16px 24px;">
+          <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-export-dapur-excel')">Batal</button>
+          <button type="button" id="btn-do-export-dapur" class="btn-nalar-primary" style="background: linear-gradient(135deg, #059669 0%, #10B981 100%); border-color: #34D399; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;" onclick="DapurYayasanModule.executeExportExcel()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Unduh Laporan Excel (.xlsx)</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    App.openModal('modal-export-dapur-excel');
+  },
+
+  setExportModalPreset: function(preset) {
+    const startEl = document.getElementById('export-dapur-start-date');
+    const endEl = document.getElementById('export-dapur-end-date');
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+
+    if (preset === 'today') {
+      if (startEl) startEl.value = `${y}-${m}-${d}`;
+      if (endEl) endEl.value = `${y}-${m}-${d}`;
+    } else if (preset === 'thisMonth') {
+      const firstDay = `${y}-${m}-01`;
+      const lastDayNum = new Date(y, now.getMonth() + 1, 0).getDate();
+      if (startEl) startEl.value = firstDay;
+      if (endEl) endEl.value = `${y}-${m}-${String(lastDayNum).padStart(2, '0')}`;
+    } else if (preset === 'lastMonth') {
+      const prevDate = new Date(y, now.getMonth() - 1, 1);
+      const py = prevDate.getFullYear();
+      const pm = String(prevDate.getMonth() + 1).padStart(2, '0');
+      const pLastDay = new Date(py, prevDate.getMonth() + 1, 0).getDate();
+      if (startEl) startEl.value = `${py}-${pm}-01`;
+      if (endEl) endEl.value = `${py}-${pm}-${String(pLastDay).padStart(2, '0')}`;
+    } else if (preset === 'all') {
+      if (startEl) startEl.value = '';
+      if (endEl) endEl.value = '';
+    }
+  },
+
+  executeExportExcel: function() {
+    const user = DB.getCurrentUser();
+    if (!this.canExportKitchenData(user)) {
+      App.showToast('Akses ditolak: Fitur export ini hanya dapat diakses oleh Direktur dan Staf Ahli Keuangan.', 'warn');
+      return;
+    }
+
+    const kitchenFilterEl = document.getElementById('export-dapur-kitchen');
+    const startDateEl = document.getElementById('export-dapur-start-date');
+    const endDateEl = document.getElementById('export-dapur-end-date');
+
+    const kitchenFilter = kitchenFilterEl ? kitchenFilterEl.value : 'ALL';
+    const startDate = startDateEl ? startDateEl.value : '';
+    const endDate = endDateEl ? endDateEl.value : '';
+
+    const allKitchens = DB.getKitchens() || [];
+    const allReports = DB.getKitchenReports() || [];
+    const allStatuses = DB.getKitchenDailyStatuses() || [];
+
+    // 1. Filter Data Sheet 1 (Laporan Transaksi & Saldo VA)
+    let filteredReports = allReports.slice();
+    if (kitchenFilter !== 'ALL') {
+      const targetKitchen = allKitchens.find(k => k.id === kitchenFilter || k.idSppg === kitchenFilter);
+      const filterName = targetKitchen ? (targetKitchen.namaDapur || targetKitchen.name).toLowerCase() : '';
+      const filterId = (kitchenFilter || '').toLowerCase();
+      filteredReports = filteredReports.filter(r => {
+        const rId = (r.kitchenId || '').toLowerCase();
+        const rName = (r.kitchenName || '').toLowerCase();
+        return (rId === filterId || (filterName && rName.includes(filterName)) || (filterName && filterName.includes(rName)));
+      });
+    }
+    if (startDate) {
+      filteredReports = filteredReports.filter(r => r.date >= startDate);
+    }
+    if (endDate) {
+      filteredReports = filteredReports.filter(r => r.date <= endDate);
+    }
+    // Urutkan berdasarkan tanggal kronologis (Ascending)
+    filteredReports.sort((a, b) => (a.date > b.date ? 1 : -1));
+
+    // 2. Filter Data Sheet 2 (Laporan Status Dapur Harian)
+    let filteredStatuses = allStatuses.slice();
+    if (kitchenFilter !== 'ALL') {
+      const targetKitchen = allKitchens.find(k => k.id === kitchenFilter || k.idSppg === kitchenFilter);
+      const filterName = targetKitchen ? (targetKitchen.namaDapur || targetKitchen.name).toLowerCase() : '';
+      const filterId = (kitchenFilter || '').toLowerCase();
+      filteredStatuses = filteredStatuses.filter(s => {
+        const sId = (s.kitchenId || '').toLowerCase();
+        const sName = (s.kitchenName || '').toLowerCase();
+        return (sId === filterId || (filterName && sName.includes(filterName)) || (filterName && filterName.includes(sName)));
+      });
+    }
+    if (startDate) {
+      filteredStatuses = filteredStatuses.filter(s => s.date >= startDate);
+    }
+    if (endDate) {
+      filteredStatuses = filteredStatuses.filter(s => s.date <= endDate);
+    }
+    // Urutkan berdasarkan tanggal ascending, lalu nama dapur
+    filteredStatuses.sort((a, b) => {
+      if (a.date === b.date) {
+        return (a.kitchenName || '').localeCompare(b.kitchenName || '');
+      }
+      return a.date > b.date ? 1 : -1;
+    });
+
+    // Helper XML Escaping
+    const xmlEscape = (str) => {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+    };
+
+    const getIndoDay = (dateStr) => {
+      if (!dateStr) return '-';
+      const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const d = new Date(dateStr + 'T00:00:00');
+      if (isNaN(d.getTime())) return '-';
+      return days[d.getDay()];
+    };
+
+    const now = new Date();
+    const exportTimeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} WIB`;
+    const selectedKitchenObj = allKitchens.find(k => k.id === kitchenFilter || k.idSppg === kitchenFilter);
+    const kitchenScopeLabel = kitchenFilter === 'ALL' ? 'Semua Dapur SPPG (Konsolidasi Seluruh Titik)' : (selectedKitchenObj ? `${selectedKitchenObj.idSppg || selectedKitchenObj.id} — ${selectedKitchenObj.namaDapur || selectedKitchenObj.name}` : kitchenFilter);
+    const dateScopeLabel = (!startDate && !endDate) ? 'Semua Riwayat (Keseluruhan)' : `${startDate || 'Awal'} s/d ${endDate || 'Sekarang'}`;
+
+    // Kalkulasi Grand Total untuk Sheet 1
+    let sumPorsiBesar = 0;
+    let sumPorsiKecil = 0;
+    let sumTotalPorsi = 0;
+    let sumTargetBudget = 0;
+    let sumRawCost = 0;
+    let sumOperationalCost = 0;
+    let sumCarRentalCost = 0;
+    let sumFoundationIncentive = 0;
+    let sumTotalDailyExpense = 0;
+
+    filteredReports.forEach(r => {
+      const pBesar = Number(r.porsiBesar) || 0;
+      const pKecil = Number(r.porsiKecil) || 0;
+      const totP = Number(r.beneficiariesCount) || (pBesar + pKecil);
+      const raw = Number(r.rawMaterialCost) || 0;
+      const ops = Number(r.operationalCost) || 0;
+      const rent = Number(r.carRentalCost) || 0;
+      const inc = Number(r.foundationIncentive) || 0;
+      const explicitExp = Number(r.totalDailyExpense);
+      const totalExp = (!isNaN(explicitExp) && explicitExp > 0) ? explicitExp : (raw + ops + rent + inc);
+      const target = (pBesar * 10000) + (pKecil * 8000);
+
+      sumPorsiBesar += pBesar;
+      sumPorsiKecil += pKecil;
+      sumTotalPorsi += totP;
+      sumTargetBudget += target;
+      sumRawCost += raw;
+      sumOperationalCost += ops;
+      sumCarRentalCost += rent;
+      sumFoundationIncentive += inc;
+      sumTotalDailyExpense += totalExp;
+    });
+
+    const avgRawCostPerPortion = sumTotalPorsi > 0 ? Math.round(sumRawCost / sumTotalPorsi) : 0;
+    const avgAllInCostPerPortion = sumTotalPorsi > 0 ? Math.round(sumTotalDailyExpense / sumTotalPorsi) : 0;
+
+    // Kalkulasi Statistik untuk Sheet 2
+    const totalStatusCount = filteredStatuses.length;
+    const runningCount = filteredStatuses.filter(s => s.status === 'BERJALAN').length;
+    const stoppedCount = filteredStatuses.filter(s => s.status === 'BERHENTI').length;
+    const kelancaranPct = totalStatusCount > 0 ? Math.round((runningCount / totalStatusCount) * 100) : 100;
+
+    // ==========================================
+    // SHEET 1: ROWS GENERATION
+    // ==========================================
+    let sheet1RowsXml = `
+      <Row ss:Height="24">
+        <Cell ss:StyleID="DocTitle" ss:MergeAcross="20"><Data ss:Type="String">YAYASAN MERAH PUTIH SEJAHTERA (ERP MMS V3)</Data></Cell>
+      </Row>
+      <Row ss:Height="20">
+        <Cell ss:StyleID="DocSubtitle" ss:MergeAcross="20"><Data ss:Type="String">LAPORAN REKAPITULASI PELAPORAN TRANSAKSI DAPUR &amp; SALDO VIRTUAL ACCOUNT (VA)</Data></Cell>
+      </Row>
+      <Row ss:Height="12"><Cell ss:StyleID="Default"/></Row>
+      <Row ss:Height="18">
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Waktu Export:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="2"><Data ss:Type="String">${xmlEscape(exportTimeStr)}</Data></Cell>
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Diexport Oleh:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="3"><Data ss:Type="String">${xmlEscape(user.name)} (${xmlEscape(user.roleLabel)})</Data></Cell>
+      </Row>
+      <Row ss:Height="18">
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Cakupan Dapur:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="2"><Data ss:Type="String">${xmlEscape(kitchenScopeLabel)}</Data></Cell>
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Periode Tanggal:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="3"><Data ss:Type="String">${xmlEscape(dateScopeLabel)}</Data></Cell>
+      </Row>
+      <Row ss:Height="14"><Cell ss:StyleID="Default"/></Row>
+
+      <!-- Table Header -->
+      <Row ss:Height="28">
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">No</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Tanggal Transaksi</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">ID SPPG</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Nama Dapur SPPG</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Bank Rekening VA</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Saldo Terakhir VA (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Porsi Besar</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Porsi Kecil</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Total Porsi</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Target Anggaran (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Belanja Bahan Baku (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Biaya Operasional (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Biaya Sewa Mobil (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Insentif Yayasan (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Catatan Khusus Insentif</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Total Pengeluaran All-In (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Bahan / Porsi (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">All-In / Porsi (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Status Efisiensi</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Petugas Pelapor (Maker)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Catatan Operasional &amp; Belanja</Data></Cell>
+      </Row>
+    `;
+
+    if (filteredReports.length === 0) {
+      sheet1RowsXml += `
+        <Row ss:Height="22">
+          <Cell ss:StyleID="CellCenter" ss:MergeAcross="20">
+            <Data ss:Type="String">-- Tidak ada data transaksi dapur pada filter &amp; periode yang dipilih --</Data>
+          </Cell>
+        </Row>
+      `;
+    } else {
+      filteredReports.forEach((r, idx) => {
+        const pBesar = Number(r.porsiBesar) || 0;
+        const pKecil = Number(r.porsiKecil) || 0;
+        const totP = Number(r.beneficiariesCount) || (pBesar + pKecil);
+        const raw = Number(r.rawMaterialCost) || 0;
+        const ops = Number(r.operationalCost) || 0;
+        const rent = Number(r.carRentalCost) || 0;
+        const inc = Number(r.foundationIncentive) || 0;
+        const explicitExp = Number(r.totalDailyExpense);
+        const totalExp = (!isNaN(explicitExp) && explicitExp > 0) ? explicitExp : (raw + ops + rent + inc);
+        const target = (pBesar * 10000) + (pKecil * 8000);
+        const rawPerPorsi = totP > 0 ? Math.round(raw / totP) : 0;
+        const allInPerPorsi = totP > 0 ? Math.round(totalExp / totP) : 0;
+
+        let effStyle = "BadgeGreen";
+        let effLabel = "Efisien";
+        if (target > 0 && raw > target) {
+          effStyle = "BadgeRed";
+          effLabel = "Over Budget";
+        } else if (target === 0) {
+          effStyle = "CellCenter";
+          effLabel = "Normal";
+        }
+
+        const vaBal = Number(r.vaBalance) || 0;
+        const vaBank = r.vaBankName || 'Virtual Account Bank';
+
+        sheet1RowsXml += `
+          <Row ss:Height="20">
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${idx + 1}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(r.date)}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(r.kitchenId || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.kitchenName || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(vaBank)}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${vaBal}</Data></Cell>
+            <Cell ss:StyleID="CellNumber"><Data ss:Type="Number">${pBesar}</Data></Cell>
+            <Cell ss:StyleID="CellNumber"><Data ss:Type="Number">${pKecil}</Data></Cell>
+            <Cell ss:StyleID="CellNumber"><Data ss:Type="Number">${totP}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${target}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${raw}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${ops}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${rent}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${inc}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.incentiveNotes || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${totalExp}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${rawPerPorsi}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${allInPerPorsi}</Data></Cell>
+            <Cell ss:StyleID="${effStyle}"><Data ss:Type="String">${xmlEscape(effLabel)}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.reporterName || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.notes || '-')}</Data></Cell>
+          </Row>
+        `;
+      });
+
+      // Baris Grand Total
+      sheet1RowsXml += `
+        <Row ss:Height="24">
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="5"><Data ss:Type="String">GRAND TOTAL KONSOLIDASI (${filteredReports.length} LAPORAN)</Data></Cell>
+          <Cell ss:StyleID="FooterTotalNumber"><Data ss:Type="Number">${sumPorsiBesar}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalNumber"><Data ss:Type="Number">${sumPorsiKecil}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalNumber"><Data ss:Type="Number">${sumTotalPorsi}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumTargetBudget}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumRawCost}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumOperationalCost}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumCarRentalCost}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumFoundationIncentive}</Data></Cell>
+          <Cell ss:StyleID="FooterTotal"><Data ss:Type="String">-</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumTotalDailyExpense}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${avgRawCostPerPortion}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${avgAllInCostPerPortion}</Data></Cell>
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="2"><Data ss:Type="String">Rata-rata Bahan: Rp ${avgRawCostPerPortion.toLocaleString('id-ID')} / Porsi</Data></Cell>
+        </Row>
+      `;
+    }
+
+    // ==========================================
+    // SHEET 2: ROWS GENERATION
+    // ==========================================
+    let sheet2RowsXml = `
+      <Row ss:Height="24">
+        <Cell ss:StyleID="DocTitle" ss:MergeAcross="8"><Data ss:Type="String">YAYASAN MERAH PUTIH SEJAHTERA (ERP MMS V3)</Data></Cell>
+      </Row>
+      <Row ss:Height="20">
+        <Cell ss:StyleID="DocSubtitle" ss:MergeAcross="8"><Data ss:Type="String">LAPORAN REKAPITULASI STATUS OPERASIONAL HARIAN DAPUR SPPG</Data></Cell>
+      </Row>
+      <Row ss:Height="12"><Cell ss:StyleID="Default"/></Row>
+      <Row ss:Height="18">
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Waktu Export:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="2"><Data ss:Type="String">${xmlEscape(exportTimeStr)}</Data></Cell>
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Diexport Oleh:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="3"><Data ss:Type="String">${xmlEscape(user.name)} (${xmlEscape(user.roleLabel)})</Data></Cell>
+      </Row>
+      <Row ss:Height="18">
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Cakupan Dapur:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="2"><Data ss:Type="String">${xmlEscape(kitchenScopeLabel)}</Data></Cell>
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Periode Tanggal:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="3"><Data ss:Type="String">${xmlEscape(dateScopeLabel)}</Data></Cell>
+      </Row>
+      <Row ss:Height="18">
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Ringkasan Status:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="7">
+          <Data ss:Type="String">Total Log: ${totalStatusCount} | 🟢 Berjalan Normal: ${runningCount} | 🟡 Berhenti/Libur: ${stoppedCount} | Tingkat Kelancaran: ${kelancaranPct}%</Data>
+        </Cell>
+      </Row>
+      <Row ss:Height="14"><Cell ss:StyleID="Default"/></Row>
+
+      <!-- Table Header -->
+      <Row ss:Height="28">
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">No</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Tanggal Operasional</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Hari</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">ID SPPG</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Nama Titik Dapur SPPG</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Status Operasional</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Kategori Kendala / Alasan Khusus</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Dikonfirmasi Oleh</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Waktu Konfirmasi / Update</Data></Cell>
+      </Row>
+    `;
+
+    if (filteredStatuses.length === 0) {
+      sheet2RowsXml += `
+        <Row ss:Height="22">
+          <Cell ss:StyleID="CellCenter" ss:MergeAcross="8">
+            <Data ss:Type="String">-- Tidak ada data log status operasional dapur pada filter &amp; periode yang dipilih --</Data>
+          </Cell>
+        </Row>
+      `;
+    } else {
+      filteredStatuses.forEach((s, idx) => {
+        const isRunning = s.status === 'BERJALAN';
+        const badgeStyle = isRunning ? "BadgeGreen" : "BadgeAmber";
+        const statusLabel = isRunning ? "BERJALAN (NORMAL)" : "BERHENTI / LIBUR";
+        const dayName = getIndoDay(s.date);
+        const reasonText = !isRunning ? (s.reason || '-') : '-';
+
+        sheet2RowsXml += `
+          <Row ss:Height="20">
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${idx + 1}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(s.date)}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(dayName)}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(s.kitchenId || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(s.kitchenName || '-')}</Data></Cell>
+            <Cell ss:StyleID="${badgeStyle}"><Data ss:Type="String">${xmlEscape(statusLabel)}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(reasonText)}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(s.reportedByName || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(s.updatedAt || s.createdAt || '-')}</Data></Cell>
+          </Row>
+        `;
+      });
+
+      // Baris Summary Footer Sheet 2
+      sheet2RowsXml += `
+        <Row ss:Height="24">
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="4"><Data ss:Type="String">TOTAL STATUS HARIAN TERCATAT: ${filteredStatuses.length} LOG</Data></Cell>
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="1"><Data ss:Type="String">🟢 ${runningCount} Berjalan | 🟡 ${stoppedCount} Berhenti</Data></Cell>
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="1"><Data ss:Type="String">Kelancaran: ${kelancaranPct}%</Data></Cell>
+        </Row>
+      `;
+    }
+
+    // ==========================================
+    // COMPLETE WORKBOOK XML ASSEMBLY
+    // ==========================================
+    const workbookXml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Author>ERP Yayasan MMS</Author>
+  <LastAuthor>${xmlEscape(user.name)}</LastAuthor>
+  <Created>${now.toISOString()}</Created>
+  <Company>Yayasan Merah Putih Sejahtera</Company>
+ </DocumentProperties>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Center"/>
+   <Borders/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#000000"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="DocTitle">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#0F172A"/>
+  </Style>
+  <Style ss:ID="DocSubtitle">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#059669"/>
+  </Style>
+  <Style ss:ID="MetaLabel">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9.5" ss:Bold="1" ss:Color="#475569"/>
+  </Style>
+  <Style ss:ID="MetaVal">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9.5" ss:Color="#0F172A"/>
+  </Style>
+  <Style ss:ID="TableHeader">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#0F172A" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="TableHeaderTeal">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#047857"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#047857"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#047857"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#047857"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#065F46" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="CellText">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0F172A"/>
+  </Style>
+  <Style ss:ID="CellCenter">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0F172A"/>
+  </Style>
+  <Style ss:ID="CellNumber">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0F172A"/>
+   <NumberFormat ss:Format="#,##0"/>
+  </Style>
+  <Style ss:ID="CellCurrency">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0F172A"/>
+   <NumberFormat ss:Format="&quot;Rp&quot;\ #,##0"/>
+  </Style>
+  <Style ss:ID="BadgeGreen">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="9.5" ss:Bold="1" ss:Color="#065F46"/>
+   <Interior ss:Color="#D1FAE5" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="BadgeAmber">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FDE68A"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FDE68A"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FDE68A"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FDE68A"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="9.5" ss:Bold="1" ss:Color="#92400E"/>
+   <Interior ss:Color="#FEF3C7" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="BadgeRed">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FECACA"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FECACA"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FECACA"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FECACA"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="9.5" ss:Bold="1" ss:Color="#991B1B"/>
+   <Interior ss:Color="#FEE2E2" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="FooterTotal">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#0F172A"/>
+   <Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="FooterTotalCurrency">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#0F172A"/>
+   <Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/>
+   <NumberFormat ss:Format="&quot;Rp&quot;\ #,##0"/>
+  </Style>
+  <Style ss:ID="FooterTotalNumber">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#0F172A"/>
+   <Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/>
+   <NumberFormat ss:Format="#,##0"/>
+  </Style>
+ </Styles>
+
+ <Worksheet ss:Name="Pelaporan Saldo VA &amp; Transaksi">
+  <Table ss:DefaultRowHeight="19">
+   <Column ss:Width="38"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="200"/>
+   <Column ss:Width="130"/>
+   <Column ss:Width="135"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="80"/>
+   <Column ss:Width="130"/>
+   <Column ss:Width="130"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="180"/>
+   <Column ss:Width="135"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="220"/>
+   ${sheet1RowsXml}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Selected/>
+   <ProtectObjects>False</ProtectObjects>
+   <ProtectScenarios>False</ProtectScenarios>
+   <DisplayGridlines/>
+  </WorksheetOptions>
+ </Worksheet>
+
+ <Worksheet ss:Name="Laporan Status Dapur">
+  <Table ss:DefaultRowHeight="19">
+   <Column ss:Width="38"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="220"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="260"/>
+   <Column ss:Width="150"/>
+   <Column ss:Width="140"/>
+   ${sheet2RowsXml}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <ProtectObjects>False</ProtectObjects>
+   <ProtectScenarios>False</ProtectScenarios>
+   <DisplayGridlines/>
+  </WorksheetOptions>
+ </Worksheet>
+</Workbook>`;
+
+    const blob = new Blob([workbookXml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const dateFileStr = now.toISOString().slice(0, 10);
+    link.download = `Laporan_ERP_MMS_SaldoVA_StatusDapur_${dateFileStr}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    App.closeModal('modal-export-dapur-excel');
+    App.showToast(`✓ Rekapitulasi Excel Multi-Sheet (${filteredReports.length} Laporan Transaksi & ${filteredStatuses.length} Status Dapur) berhasil diunduh!`, 'success');
   }
 };
+
 
