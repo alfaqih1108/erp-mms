@@ -364,4 +364,21 @@ ON CONFLICT (id) DO NOTHING;
 ALTER TABLE kitchen_reports ADD COLUMN IF NOT EXISTS foundation_incentive NUMERIC(15,2) DEFAULT 0;
 ALTER TABLE kitchen_reports ADD COLUMN IF NOT EXISTS incentive_notes TEXT DEFAULT '';
 
+-- L. TABEL KITCHEN DAILY STATUSES (Laporan Status Operasional Harian Dapur)
+CREATE TABLE IF NOT EXISTS kitchen_daily_statuses (
+    id VARCHAR(100) PRIMARY KEY,
+    date DATE NOT NULL,
+    kitchen_id VARCHAR(50),
+    kitchen_name VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'BERJALAN', -- 'BERJALAN' or 'BERHENTI'
+    reason TEXT DEFAULT '',
+    reported_by_id VARCHAR(50),
+    reported_by_name VARCHAR(150) DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(date, kitchen_id)
+);
 
+ALTER TABLE kitchen_daily_statuses ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access to kitchen_daily_statuses" ON kitchen_daily_statuses;
+CREATE POLICY "Public full access to kitchen_daily_statuses" ON kitchen_daily_statuses FOR ALL USING (true) WITH CHECK (true);

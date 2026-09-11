@@ -3327,6 +3327,87 @@ class DatabaseManager {
   }
 
   // =========================================================================
+  // KITCHEN DAILY OPERATIONAL STATUS (LAPORAN STATUS HARIAN DAPUR)
+  // =========================================================================
+
+  getKitchenDailyStatuses() {
+    if (!this.data) this.data = {};
+    if (!Array.isArray(this.data.kitchenDailyStatuses)) {
+      this.data.kitchenDailyStatuses = [];
+    }
+    return this.data.kitchenDailyStatuses;
+  }
+
+  getKitchenDailyStatusesForDate(dateStr) {
+    const all = this.getKitchenDailyStatuses();
+    return all.filter(s => s.date === dateStr);
+  }
+
+  getKitchenDailyStatus(dateStr, kitchenId) {
+    const all = this.getKitchenDailyStatuses();
+    return all.find(s => s.date === dateStr && (s.kitchenId === kitchenId || s.kitchenIdSppg === kitchenId)) || null;
+  }
+
+  async saveKitchenDailyStatuses(dateStr, statusesArray, user = null) {
+    if (!this.data) this.data = {};
+    if (!Array.isArray(this.data.kitchenDailyStatuses)) {
+      this.data.kitchenDailyStatuses = [];
+    }
+
+    const currentUser = user || this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+    const savedRecords = [];
+
+    for (const item of statusesArray) {
+      const kitchenId = item.kitchenId || item.id || 'DAPUR-01';
+      const kitchenName = item.kitchenName || item.namaDapur || 'Dapur SPPG';
+      const status = item.status === 'BERHENTI' ? 'BERHENTI' : 'BERJALAN';
+      const reason = status === 'BERHENTI' ? (item.reason || item.notes || '').trim() : '';
+      const recordId = `KDS-${dateStr.replace(/-/g, '')}-${kitchenId}`;
+
+      const record = {
+        id: recordId,
+        date: dateStr,
+        kitchenId: kitchenId,
+        kitchenName: kitchenName,
+        status: status,
+        reason: reason,
+        reportedById: currentUser.id,
+        reportedByName: currentUser.name,
+        updatedAt: realTimestamp,
+        createdAt: item.createdAt || realTimestamp
+      };
+
+      // Upsert into local state
+      const existingIdx = this.data.kitchenDailyStatuses.findIndex(s => s.date === dateStr && s.kitchenId === kitchenId);
+      if (existingIdx !== -1) {
+        this.data.kitchenDailyStatuses[existingIdx] = { ...this.data.kitchenDailyStatuses[existingIdx], ...record };
+      } else {
+        this.data.kitchenDailyStatuses.push(record);
+      }
+      savedRecords.push(record);
+
+      // Async sync to Supabase
+      this.syncToSupabase('kitchen_daily_statuses', {
+        id: record.id,
+        date: record.date,
+        kitchen_id: record.kitchenId,
+        kitchen_name: record.kitchenName,
+        status: record.status,
+        reason: record.reason,
+        reported_by_id: record.reportedById,
+        reported_by_name: record.reportedByName,
+        updated_at: record.updatedAt
+      }).catch(err => console.warn('Sync kitchen_daily_statuses error:', err));
+    }
+
+    const stoppedCount = savedRecords.filter(r => r.status === 'BERHENTI').length;
+    this.addLog(`${currentUser.name} memperbarui status operasional ${savedRecords.length} dapur untuk tanggal ${dateStr} (${stoppedCount > 0 ? `${stoppedCount} Berhenti` : 'Semua Berjalan'})`, 'kitchen');
+    this.save();
+    return savedRecords;
+  }
+
+  // =========================================================================
   // LEAVES (CUTI & IZIN - PASAL 14, 15, 16)
   // =========================================================================
 
@@ -5768,9 +5849,9 @@ class DatabaseManager {
     try {
       console.log('⚡ [Supabase Pull] Memuat data real-time dengan Smart Merge...');
 
-      // Jalankan seluruh 9 endpoint secara PARALEL untuk kecepatan instan (<300ms)
+      // Jalankan seluruh 10 endpoint secara PARALEL untuk kecepatan instan (<300ms)
       // Dokumen binary berat (Base64) DIKECUALIKAN dari pull berkala (Lazy-Loaded On-Demand) untuk menghemat Egress hingga 99%
-      const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes] = await Promise.allSettled([
+      const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes, kdsRes] = await Promise.allSettled([
         fetch(`${url}/rest/v1/users?select=*`, { headers }),
         fetch(`${url}/rest/v1/kitchens?select=*`, { headers }),
         fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
@@ -5779,7 +5860,8 @@ class DatabaseManager {
         fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,purpose,stage,status,settlement,approval_history,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,file_data,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers })
+        fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_daily_statuses?select=*&order=date.desc`, { headers })
       ]);
 
       // 1. Process Users
@@ -6141,6 +6223,29 @@ class DatabaseManager {
               points: Array.isArray(parsedPoints) ? parsedPoints : [],
               status: f.status,
               createdAt: f.created_at
+            };
+          });
+        }
+      }
+
+      // 10. Process Kitchen Daily Statuses (Smart Merge)
+      if (kdsRes && kdsRes.status === 'fulfilled' && kdsRes.value.ok) {
+        const kdsList = await kdsRes.value.json();
+        if (Array.isArray(kdsList)) {
+          const existingKDS = this.data.kitchenDailyStatuses || [];
+          this.data.kitchenDailyStatuses = kdsList.map(s => {
+            const local = existingKDS.find(item => item.id === s.id || (item.date === s.date && item.kitchenId === s.kitchen_id));
+            return {
+              id: s.id,
+              date: s.date,
+              kitchenId: s.kitchen_id,
+              kitchenName: s.kitchen_name,
+              status: s.status || 'BERJALAN',
+              reason: s.reason || '',
+              reportedById: s.reported_by_id,
+              reportedByName: s.reported_by_name,
+              createdAt: s.created_at || (local ? local.createdAt : ''),
+              updatedAt: s.updated_at || (local ? local.updatedAt : '')
             };
           });
         }

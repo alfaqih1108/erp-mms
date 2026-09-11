@@ -3717,8 +3717,212 @@ h4 {
   }
 }
 
+/* ==========================================================================
+   DAPUR YAYASAN & VA — 4x2 KPI HUD MATRIX
+   ========================================================================== */
+.dapur-kpi-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 14px !important;
+  margin-bottom: 28px !important;
+}
 
+.dapur-kpi-grid .kpi-chip {
+  padding: 18px 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  min-height: 120px !important;
+}
 
+@media (max-width: 1024px) {
+  .dapur-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+}
 
+@media (max-width: 600px) {
+  .dapur-kpi-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+}
+
+/* ==========================================================================
+   LAPORAN STATUS OPERASIONAL DAPUR — COMPACT CALENDAR & WEEKLY SUMMARY
+   ========================================================================== */
+.dapur-status-grid-container {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  gap: 18px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+
+.status-calendar-box {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px 14px;
+}
+
+.status-cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.status-cal-month-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+}
+
+.status-cal-days-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+.status-cal-day-name {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  padding: 3px 0;
+}
+
+.status-cal-day-name.weekend {
+  color: #F87171;
+}
+
+.status-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.status-cal-cell {
+  position: relative;
+  min-height: 44px;
+  padding: 4px 2px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+.status-cal-cell:hover {
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  transform: translateY(-1px);
+}
+
+.status-cal-cell.is-other-month {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.status-cal-cell.status-cell-all-running {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #34D399;
+}
+
+.status-cal-cell.status-cell-has-stopped {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #FCD34D;
+}
+
+.status-cal-cell.status-cell-unconfirmed {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
+.status-cal-cell.status-cell-selected {
+  box-shadow: 0 0 0 2px #3B82F6, 0 0 14px rgba(59, 130, 246, 0.45) !important;
+  border-color: #3B82F6 !important;
+  transform: scale(1.05);
+  z-index: 2;
+}
+
+.status-cal-date-num {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.status-cal-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  margin-top: 3px;
+}
+
+.status-cal-dot.dot-green {
+  background: #34D399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.6);
+}
+
+.status-cal-dot.dot-yellow {
+  background: #FCD34D;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.status-cal-dot.dot-gray {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.status-weekly-summary-box {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status-day-card {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  transition: all 0.2s ease;
+}
+
+.status-day-card.is-active-day {
+  border-color: rgba(59, 130, 246, 0.6);
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, rgba(20, 20, 20, 0.4) 100%);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.status-stopped-box {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 6px;
+}
+
+@media (max-width: 900px) {
+  .dapur-status-grid-container {
+    grid-template-columns: 1fr !important;
+  }
+}
 
 

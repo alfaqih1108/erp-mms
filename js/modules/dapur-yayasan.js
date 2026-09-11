@@ -19,6 +19,9 @@ window.DapurYayasanModule = {
   pageSize: 5,
   uploadedSPMUrl: '',
   uploadedSPMName: '',
+  statusCalYear: 2026,
+  statusCalMonth: 8, // September (0-indexed: 0=Jan, 8=Sep)
+  statusSelectedDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : '2026-09-11'),
 
   render: function(container) {
     if (!container) return;
@@ -363,6 +366,9 @@ window.DapurYayasanModule = {
           </div>
 
         </div>
+
+        <!-- SECTION: LAPORAN STATUS OPERASIONAL DAPUR (Interactive Compact Calendar & Weekly Summary) -->
+        ${this.renderStatusSection(user, activeKitchensForReports, allKitchens)}
 
         <!-- Master Dapur Quick View Cards (Hanya muncul berdasarkan penentuan peranan Maker di Database Master) -->
         <div class="nalar-card" style="margin-bottom: 28px;">
@@ -939,6 +945,44 @@ window.DapurYayasanModule = {
             </button>
             <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-spm-lightbox')">Tutup</button>
           </div>
+        </div>
+      </div>
+
+      <!-- Modal Update Status Operasional Dapur -->
+      <div id="modal-kitchen-status" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 740px;">
+          <div class="modal-header">
+            <div>
+              <span class="text-mono-badge" style="color: #34D399;">Operational Status Log</span>
+              <h3 id="modal-kitchen-status-title" class="modal-title" style="margin-top: 2px;">Update Status Operasional Dapur</h3>
+            </div>
+            <button class="modal-close-btn" onclick="App.closeModal('modal-kitchen-status')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <form id="form-kitchen-status" onsubmit="DapurYayasanModule.handleSaveDailyStatus(event)">
+            <input type="hidden" id="status-target-date" value="">
+            
+            <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+              <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 16px;">
+                <div style="font-size: 11px; color: #93C5FD; font-weight: 600;">📅 TANGGAL PELAPORAN OPERASIONAL:</div>
+                <div id="status-modal-date-display" style="font-size: 14px; font-weight: 700; color: #fff; margin-top: 2px;"></div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  Pilih status untuk setiap titik dapur di bawah. Jika dapur <strong>Tidak Berjalan / Berhenti</strong>, wajib mengisi alasan kendala/libur.
+                </div>
+              </div>
+
+              <!-- Daftar Seluruh Dapur yang Didelegasikan -->
+              <div id="status-modal-kitchens-list" style="display: flex; flex-direction: column; gap: 12px;"></div>
+            </div>
+
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+              <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-kitchen-status')">Batal</button>
+              <button type="submit" id="btn-save-kitchen-status" class="btn-nalar-primary" style="padding: 8px 22px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);">
+                💾 Simpan Status Operasional
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     `;
@@ -1793,5 +1837,632 @@ window.DapurYayasanModule = {
     this.endDate = val;
     this.currentPage = 1;
     this.render(document.getElementById('main-content-area'));
+  },
+
+  // =========================================================================
+  // LAPORAN STATUS OPERASIONAL DAPUR (COMPACT CALENDAR & WEEKLY SUMMARY)
+  // =========================================================================
+
+  prevStatusMonth: function() {
+    this.statusCalMonth--;
+    if (this.statusCalMonth < 0) {
+      this.statusCalMonth = 11;
+      this.statusCalYear--;
+    }
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  nextStatusMonth: function() {
+    this.statusCalMonth++;
+    if (this.statusCalMonth > 11) {
+      this.statusCalMonth = 0;
+      this.statusCalYear++;
+    }
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  setStatusToday: function() {
+    const todayStr = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : '2026-09-11');
+    const parts = todayStr.split('-').map(Number);
+    this.statusCalYear = parts[0] || 2026;
+    this.statusCalMonth = parts[1] ? (parts[1] - 1) : 8;
+    this.statusSelectedDate = todayStr;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  selectStatusDate: function(dateStr) {
+    this.statusSelectedDate = dateStr;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  renderStatusSection: function(user, delegatedKitchens, allKitchens) {
+    const isMaker = (user.role === 'MAKER_YAYASAN');
+    const targetKitchens = delegatedKitchens.length > 0 ? delegatedKitchens : allKitchens;
+    const monthsFull = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+    return `
+      <!-- SECTION: LAPORAN STATUS OPERASIONAL DAPUR -->
+      <div class="nalar-card" style="margin-bottom: 28px; padding: 22px 24px;">
+        
+        <!-- Header Section -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 14px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="text-mono-badge" style="color: #34D399; background: rgba(52, 211, 153, 0.12);">
+                Operational Tracker
+              </span>
+              <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
+                (Monitoring Keaktifan & Libur Dapur)
+              </span>
+            </div>
+            <h3 style="font-size: 18px; margin-top: 3px; font-weight: 700; color: #FFFFFF;">
+              Laporan Status Operasional Dapur
+            </h3>
+          </div>
+
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn-nalar-secondary" 
+                    onclick="DapurYayasanModule.openStatusModalForDate('${this.statusSelectedDate}')"
+                    style="font-size: 12px; padding: 7px 15px; border-color: rgba(52, 211, 153, 0.4); color: #34D399; display: inline-flex; align-items: center; gap: 6px;">
+              ⚡ Update Status Tanggal Ini (${this.statusSelectedDate})
+            </button>
+          </div>
+        </div>
+
+        <!-- 2 Kolom Grid: Kiri Kalender Compact, Kanan Weekly Summary 7 Hari -->
+        <div class="dapur-status-grid-container">
+          
+          <!-- SISI KIRI: Compact Calendar Box -->
+          <div class="status-calendar-box">
+            
+            <div class="status-cal-header">
+              <div class="status-cal-month-title">
+                ${monthsFull[this.statusCalMonth]} ${this.statusCalYear}
+              </div>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 11px;" onclick="DapurYayasanModule.prevStatusMonth()" title="Bulan Sebelumnya">◀</button>
+                <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #60A5FA; border-color: rgba(96,165,250,0.4);" onclick="DapurYayasanModule.setStatusToday()" title="Hari Ini">Hari Ini</button>
+                <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 11px;" onclick="DapurYayasanModule.nextStatusMonth()" title="Bulan Berikutnya">▶</button>
+              </div>
+            </div>
+
+            <!-- Header Nama Hari (SEN - MIN) -->
+            <div class="status-cal-days-header">
+              <div class="status-cal-day-name">SEN</div>
+              <div class="status-cal-day-name">SEL</div>
+              <div class="status-cal-day-name">RAB</div>
+              <div class="status-cal-day-name">KAM</div>
+              <div class="status-cal-day-name">JUM</div>
+              <div class="status-cal-day-name weekend">SAB</div>
+              <div class="status-cal-day-name weekend">MIN</div>
+            </div>
+
+            <!-- Grid Tanggal Compact Bulanan -->
+            <div class="status-cal-grid">
+              ${this.renderStatusCalendarGrid(targetKitchens)}
+            </div>
+
+            <!-- Legend Bar -->
+            <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 6px; font-size: 10.5px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span class="status-cal-dot dot-green"></span>
+                  <span style="color: #6EE7B7; font-weight: 500;">Semua Berjalan</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span class="status-cal-dot dot-yellow"></span>
+                  <span style="color: #FDE68A; font-weight: 500;">Ada Berhenti</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span class="status-cal-dot dot-gray"></span>
+                  <span style="color: var(--text-muted);">Belum Konfirmasi</span>
+                </div>
+              </div>
+              <div style="color: var(--text-muted); font-style: italic; font-size: 10px; margin-top: 2px;">
+                *Klik tanggal untuk melihat summary & update status operasional dapur.
+              </div>
+            </div>
+
+          </div>
+
+          <!-- SISI KANAN: Weekly Summary Operasional Window (Rentang 7 Hari) -->
+          <div class="status-weekly-summary-box">
+            ${this.renderStatusWeeklySummary(targetKitchens)}
+          </div>
+
+        </div>
+
+        <!-- BAGIAN BAWAH: Catatan & Alert Dapur yang Belum Dikonfirmasi -->
+        ${this.renderUnconfirmedAlert(targetKitchens)}
+
+      </div>
+    `;
+  },
+
+  renderStatusCalendarGrid: function(targetKitchens) {
+    const year = this.statusCalYear;
+    const month = this.statusCalMonth;
+
+    const firstDay = new Date(year, month, 1);
+    const startingDayOfWeek = (firstDay.getDay() + 6) % 7; // 0=Senin, 6=Minggu
+
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    const todayRealStr = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10));
+
+    let html = '';
+
+    // 1. Previous month overflow days
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      const prevDateNum = daysInPrevMonth - startingDayOfWeek + i + 1;
+      html += `
+        <div class="status-cal-cell is-other-month">
+          <div class="status-cal-date-num" style="color: var(--text-dim);">${prevDateNum}</div>
+        </div>
+      `;
+    }
+
+    // 2. Current month days
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const isSelected = (dateStr === this.statusSelectedDate);
+      const isToday = (dateStr === todayRealStr);
+
+      // Status evaluation for targetKitchens on dateStr
+      const dayStatuses = DB.getKitchenDailyStatusesForDate(dateStr) || [];
+
+      let stateClass = 'status-cell-unconfirmed';
+      let dotClass = 'dot-gray';
+      let titleTooltip = `Tanggal ${dateStr}: Belum ada konfirmasi status`;
+
+      if (dayStatuses.length > 0) {
+        const stoppedKitchens = dayStatuses.filter(s => {
+          const isTarget = targetKitchens.some(k => k.id === s.kitchenId || k.idSppg === s.kitchenId || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name)));
+          return isTarget && (s.status === 'BERHENTI');
+        });
+
+        const runningKitchens = dayStatuses.filter(s => {
+          const isTarget = targetKitchens.some(k => k.id === s.kitchenId || k.idSppg === s.kitchenId || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name)));
+          return isTarget && (s.status === 'BERJALAN');
+        });
+
+        if (stoppedKitchens.length > 0) {
+          stateClass = 'status-cell-has-stopped';
+          dotClass = 'dot-yellow';
+          titleTooltip = `Tanggal ${dateStr}: ⚠️ ${stoppedKitchens.length} dapur berhenti operasi!`;
+        } else if (runningKitchens.length > 0) {
+          stateClass = 'status-cell-all-running';
+          dotClass = 'dot-green';
+          titleTooltip = `Tanggal ${dateStr}: 🟢 Seluruh ${runningKitchens.length} dapur beroperasi normal.`;
+        }
+      }
+
+      html += `
+        <div class="status-cal-cell ${stateClass} ${isSelected ? 'status-cell-selected' : ''}"
+             onclick="DapurYayasanModule.selectStatusDate('${dateStr}')"
+             title="${titleTooltip}">
+          <div class="status-cal-date-num" style="${isToday ? 'color: #60A5FA; text-decoration: underline;' : ''}">${d}</div>
+          <span class="status-cal-dot ${dotClass}"></span>
+        </div>
+      `;
+    }
+
+    // 3. Next month overflow days (fill grid to multiple of 7)
+    const totalRendered = startingDayOfWeek + daysInMonth;
+    const remaining = (7 - (totalRendered % 7)) % 7;
+    for (let j = 1; j <= remaining; j++) {
+      html += `
+        <div class="status-cal-cell is-other-month">
+          <div class="status-cal-date-num" style="color: var(--text-dim);">${j}</div>
+        </div>
+      `;
+    }
+
+    return html;
+  },
+
+  renderStatusWeeklySummary: function(targetKitchens) {
+    // Generate 7 consecutive days window centered around statusSelectedDate (from -3 to +3)
+    const baseDate = new Date(this.statusSelectedDate);
+    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+    const weekDays = [];
+    for (let offset = -3; offset <= 3; offset++) {
+      const d = new Date(baseDate);
+      d.setDate(d.getDate() + offset);
+      const YYYY = d.getFullYear();
+      const MM = String(d.getMonth() + 1).padStart(2, '0');
+      const DD = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${YYYY}-${MM}-${DD}`;
+      weekDays.push({
+        dateStr,
+        dayName: dayNames[d.getDay()],
+        formatted: `${d.getDate()} ${monthsShort[d.getMonth()]} ${YYYY}`,
+        isInspected: (dateStr === this.statusSelectedDate)
+      });
+    }
+
+    // Calculate aggregated metrics over the 7 days window
+    let totalFullRunningDays = 0;
+    let totalStoppedDays = 0;
+    let totalUnconfirmedDays = 0;
+
+    weekDays.forEach(w => {
+      const statuses = DB.getKitchenDailyStatusesForDate(w.dateStr) || [];
+      const stopped = statuses.filter(s => targetKitchens.some(k => k.id === s.kitchenId || k.idSppg === s.kitchenId || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name))) && s.status === 'BERHENTI');
+      const running = statuses.filter(s => targetKitchens.some(k => k.id === s.kitchenId || k.idSppg === s.kitchenId || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name))) && s.status === 'BERJALAN');
+      if (stopped.length > 0) {
+        totalStoppedDays++;
+      } else if (running.length > 0) {
+        totalFullRunningDays++;
+      } else {
+        totalUnconfirmedDays++;
+      }
+    });
+
+    const sDateObj = new Date(weekDays[0].dateStr);
+    const eDateObj = new Date(weekDays[6].dateStr);
+    const windowRangeLabel = `${sDateObj.getDate()} ${monthsShort[sDateObj.getMonth()]} — ${eDateObj.getDate()} ${monthsShort[eDateObj.getMonth()]} ${eDateObj.getFullYear()}`;
+
+    return `
+      <!-- Weekly Summary Header & Mini Metrics -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;">
+        <div>
+          <div style="font-size: 11px; color: #60A5FA; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+            📅 Summary Rentang 7 Hari Operasional
+          </div>
+          <div style="font-size: 14px; font-weight: 700; color: #FFFFFF; margin-top: 2px;">
+            ${windowRangeLabel}
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <div style="font-size: 11px; background: rgba(52, 211, 153, 0.12); color: #34D399; border: 1px solid rgba(52, 211, 153, 0.3); padding: 3px 8px; border-radius: 4px; font-weight: 600;">
+            🟢 ${totalFullRunningDays} Hari Normal
+          </div>
+          <div style="font-size: 11px; background: rgba(245, 158, 11, 0.12); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.3); padding: 3px 8px; border-radius: 4px; font-weight: 600;">
+            🟡 ${totalStoppedDays} Hari Ada Kendala/Libur
+          </div>
+          <div style="font-size: 11px; background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid var(--border-subtle); padding: 3px 8px; border-radius: 4px;">
+            🍲 ${targetKitchens.length} Dapur Dipantau
+          </div>
+        </div>
+      </div>
+
+      <!-- 7 Daily Cards List -->
+      <div style="display: flex; flex-direction: column; gap: 9px; max-height: 380px; overflow-y: auto; padding-right: 4px;">
+        ${weekDays.map(w => {
+          const statuses = DB.getKitchenDailyStatusesForDate(w.dateStr) || [];
+          const relevantStatuses = statuses.filter(s => targetKitchens.some(k => k.id === s.kitchenId || k.idSppg === s.kitchenId || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name))));
+          
+          const stoppedList = relevantStatuses.filter(s => s.status === 'BERHENTI');
+          const runningList = relevantStatuses.filter(s => s.status === 'BERJALAN');
+          const hasData = relevantStatuses.length > 0;
+
+          return `
+            <div class="status-day-card ${w.isInspected ? 'is-active-day' : ''}" 
+                 style="cursor: pointer;"
+                 onclick="DapurYayasanModule.selectStatusDate('${w.dateStr}')">
+              
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-weight: 700; font-size: 12.5px; color: ${w.isInspected ? '#60A5FA' : '#FFFFFF'};">
+                    ${w.dayName}, ${w.formatted}
+                  </span>
+                  ${w.isInspected ? `
+                    <span style="font-size: 9.5px; background: #3B82F6; color: #fff; font-weight: 700; padding: 1px 5px; border-radius: 3px;">
+                      SEDANG DILIHAT
+                    </span>
+                  ` : ''}
+                </div>
+
+                <div>
+                  ${!hasData ? `
+                    <span style="font-size: 10px; color: var(--text-muted); background: rgba(255,255,255,0.06); padding: 2px 7px; border-radius: 3px;">
+                      ⚪ Belum Dikonfirmasi
+                    </span>
+                  ` : (stoppedList.length > 0) ? `
+                    <span style="font-size: 10px; color: #FCD34D; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); padding: 2px 7px; border-radius: 3px; font-weight: 700;">
+                      🟡 ${stoppedList.length} Dapur Berhenti · ${runningList.length} Berjalan
+                    </span>
+                  ` : `
+                    <span style="font-size: 10px; color: #34D399; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.3); padding: 2px 7px; border-radius: 3px; font-weight: 600;">
+                      🟢 Seluruh ${runningList.length} Dapur Berjalan Normal
+                    </span>
+                  `}
+                </div>
+              </div>
+
+              <!-- Rincian Dapur Berhenti & Catatan Khusus -->
+              ${stoppedList.length > 0 ? `
+                <div class="status-stopped-box">
+                  <div style="font-size: 11px; font-weight: 700; color: #F87171; margin-bottom: 4px; display: flex; align-items: center; gap: 5px;">
+                    <span>⚠️ Dapur yang Berhenti / Tidak Beroperasi:</span>
+                  </div>
+                  ${stoppedList.map(st => `
+                    <div style="font-size: 11.5px; color: #fff; margin-bottom: 4px; padding-left: 6px; border-left: 2px solid #EF4444;">
+                      <div style="font-weight: 600; color: #FCA5A5;">
+                        🍲 ${st.kitchenName} (${st.kitchenId})
+                      </div>
+                      <div style="font-size: 11px; color: #FDE68A; margin-top: 1px;">
+                        📝 <strong>Catatan Khusus / Alasan:</strong> "${st.reason || 'Tidak ada catatan alasan'}"
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+
+              <!-- Rincian Dapur Berjalan (Pill Tags) -->
+              ${runningList.length > 0 ? `
+                <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+                  ${runningList.slice(0, 5).map(rn => `
+                    <span style="font-size: 9.5px; color: #6EE7B7; background: rgba(52, 211, 153, 0.08); padding: 1px 6px; border-radius: 3px; border: 1px solid rgba(52, 211, 153, 0.2);">
+                      ✓ ${rn.kitchenName.split('—')[1] || rn.kitchenName}
+                    </span>
+                  `).join('')}
+                  ${runningList.length > 5 ? `
+                    <span style="font-size: 9.5px; color: var(--text-muted); padding: 1px 4px;">
+                      +${runningList.length - 5} dapur lainnya
+                    </span>
+                  ` : ''}
+                </div>
+              ` : ''}
+
+              <!-- If Unconfirmed Action Button -->
+              ${!hasData ? `
+                <div style="margin-top: 6px; display: flex; justify-content: flex-end;">
+                  <button type="button" class="btn-nalar-secondary" 
+                          style="font-size: 10.5px; padding: 2px 8px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
+                          onclick="event.stopPropagation(); DapurYayasanModule.openStatusModalForDate('${w.dateStr}')">
+                    ⚡ Update Status Tanggal Ini
+                  </button>
+                </div>
+              ` : ''}
+
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  },
+
+  renderUnconfirmedAlert: function(targetKitchens) {
+    const statuses = DB.getKitchenDailyStatusesForDate(this.statusSelectedDate) || [];
+    
+    // Check which kitchens are missing for this date
+    const unconfirmedKitchens = targetKitchens.filter(k => {
+      return !statuses.some(s => s.kitchenId === k.id || s.kitchenId === k.idSppg || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name)));
+    });
+
+    if (unconfirmedKitchens.length === 0) {
+      return `
+        <div style="background: rgba(52, 211, 153, 0.06); border: 1px dashed rgba(52, 211, 153, 0.35); border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 18px;">✅</span>
+            <div style="font-size: 12px; color: #6EE7B7;">
+              <strong>Status Lengkap:</strong> Seluruh <strong>${targetKitchens.length} dapur</strong> telah terkonfirmasi status operasionalnya untuk tanggal <strong>${this.statusSelectedDate}</strong>.
+            </div>
+          </div>
+          <button type="button" class="btn-nalar-secondary" 
+                  style="font-size: 11px; padding: 4px 10px; color: #34D399; border-color: rgba(52, 211, 153, 0.4);"
+                  onclick="DapurYayasanModule.openStatusModalForDate('${this.statusSelectedDate}')">
+            ✏️ Ubah / Review Status
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="background: rgba(245, 158, 11, 0.07); border: 1px dashed rgba(245, 158, 11, 0.35); border-radius: var(--radius-md); padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; align-items: flex-start; gap: 10px; flex: 1;">
+          <span style="font-size: 20px; flex-shrink: 0;">⚠️</span>
+          <div>
+            <div style="font-size: 12.5px; font-weight: 700; color: #FCD34D;">
+              Catatan: ${unconfirmedKitchens.length} Dapur Belum Dikonfirmasi Statusnya untuk Tanggal ${this.statusSelectedDate}
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 3px;">
+              Dapur berikut belum memiliki log keaktifan: <strong>${unconfirmedKitchens.map(k => k.namaDapur || k.name).join(', ')}</strong>.
+            </div>
+          </div>
+        </div>
+
+        <button type="button" class="btn-nalar-primary" 
+                style="font-size: 12px; padding: 7px 14px; white-space: nowrap; flex-shrink: 0;"
+                onclick="DapurYayasanModule.openStatusModalForDate('${this.statusSelectedDate}')">
+          ⚡ Konfirmasi Status Sekarang
+        </button>
+      </div>
+    `;
+  },
+
+  openStatusModalForDate: function(dateStr) {
+    const user = DB.getCurrentUser();
+    const isMaker = (user.role === 'MAKER_YAYASAN');
+    const allKitchens = DB.getKitchens() || [];
+    const delegatedKitchens = isMaker 
+      ? allKitchens.filter(k => k.makerYayasan && (k.makerYayasan.includes(user.name) || k.makerYayasan.includes(user.id)))
+      : allKitchens;
+    const targetKitchens = delegatedKitchens.length > 0 ? delegatedKitchens : allKitchens;
+
+    const targetDate = dateStr || this.statusSelectedDate;
+    const dateObj = new Date(targetDate);
+    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const monthsFull = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const dateFormatted = !isNaN(dateObj.getTime())
+      ? `${dayNames[dateObj.getDay()]}, ${dateObj.getDate()} ${monthsFull[dateObj.getMonth()]} ${dateObj.getFullYear()}`
+      : targetDate;
+
+    const dateHiddenEl = document.getElementById('status-target-date');
+    const dateDisplayEl = document.getElementById('status-modal-date-display');
+    const titleEl = document.getElementById('modal-kitchen-status-title');
+    const listEl = document.getElementById('status-modal-kitchens-list');
+
+    if (dateHiddenEl) dateHiddenEl.value = targetDate;
+    if (dateDisplayEl) dateDisplayEl.textContent = dateFormatted;
+    if (titleEl) titleEl.textContent = `Update Status Operasional — ${targetDate}`;
+
+    if (listEl) {
+      const existingStatuses = DB.getKitchenDailyStatusesForDate(targetDate) || [];
+
+      listEl.innerHTML = targetKitchens.map(k => {
+        const kId = k.id || k.idSppg;
+        const exist = existingStatuses.find(s => s.kitchenId === k.id || s.kitchenId === k.idSppg || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name)));
+        const curStatus = exist ? exist.status : 'BERJALAN'; // default BERJALAN
+        const curReason = exist ? (exist.reason || '') : '';
+        const isStopped = (curStatus === 'BERHENTI');
+
+        return `
+          <div class="nalar-card" style="padding: 14px 16px; margin-bottom: 0; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 10.5px; font-weight: 700; color: #60A5FA; background: rgba(59,130,246,0.12); padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(59,130,246,0.25);">
+                    ${k.idSppg || k.id}
+                  </span>
+                  <span style="font-size: 13px; font-weight: 700; color: #fff;">
+                    ${k.namaDapur || k.name}
+                  </span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  📍 ${k.location || `${k.kotaKabupaten || '-'}, ${k.provinsi || '-'}`} · Maker: <span style="color: var(--text-secondary);">${k.makerYayasan || 'Maker Dapur'}</span>
+                </div>
+              </div>
+
+              <!-- Segmented Status Toggle Radio -->
+              <div style="display: flex; gap: 6px; background: rgba(0,0,0,0.4); padding: 4px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s ease; ${!isStopped ? 'background: rgba(16, 185, 129, 0.25); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.5);' : 'color: var(--text-muted);'}"
+                       id="lbl-running-${kId}">
+                  <input type="radio" name="status-${kId}" value="BERJALAN" ${!isStopped ? 'checked' : ''} 
+                         style="accent-color: #10B981;"
+                         onchange="DapurYayasanModule.handleStatusToggle('${kId}', 'BERJALAN')">
+                  🟢 Berjalan (Aktif)
+                </label>
+
+                <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s ease; ${isStopped ? 'background: rgba(239, 68, 68, 0.25); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.5);' : 'color: var(--text-muted);'}"
+                       id="lbl-stopped-${kId}">
+                  <input type="radio" name="status-${kId}" value="BERHENTI" ${isStopped ? 'checked' : ''} 
+                         style="accent-color: #EF4444;"
+                         onchange="DapurYayasanModule.handleStatusToggle('${kId}', 'BERHENTI')">
+                  🔴 Tidak Berjalan (Off)
+                </label>
+              </div>
+            </div>
+
+            <!-- Conditional Reason Textarea (Wajib jika BERHENTI) -->
+            <div id="reason-container-${kId}" style="display: ${isStopped ? 'block' : 'none'}; margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(239, 68, 68, 0.3);">
+              <label class="form-label" style="color: #FCA5A5; font-size: 11.5px; display: flex; align-items: center; justify-content: space-between;">
+                <span>Alasan / Catatan Khusus Berhenti Operasi <strong style="color: #F87171;">* (Wajib Diisi)</strong></span>
+                <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">Akan ditampilkan pada summary mingguan</span>
+              </label>
+              <textarea id="reason-text-${kId}" class="form-control" rows="2" 
+                        placeholder="Contoh: Pembersihan saluran gas, libur santri, renovasi cerobong, dsb..."
+                        style="font-size: 12px; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.04); color: #fff;"
+                        ${isStopped ? 'required' : ''}>${curReason}</textarea>
+            </div>
+
+          </div>
+        `;
+      }).join('');
+    }
+
+    App.openModal('modal-kitchen-status');
+  },
+
+  handleStatusToggle: function(kitchenId, statusVal) {
+    const isStopped = (statusVal === 'BERHENTI');
+    const reasonContainer = document.getElementById(`reason-container-${kitchenId}`);
+    const reasonText = document.getElementById(`reason-text-${kitchenId}`);
+    const lblRunning = document.getElementById(`lbl-running-${kitchenId}`);
+    const lblStopped = document.getElementById(`lbl-stopped-${kitchenId}`);
+
+    if (reasonContainer) {
+      reasonContainer.style.display = isStopped ? 'block' : 'none';
+    }
+    if (reasonText) {
+      if (isStopped) {
+        reasonText.setAttribute('required', 'required');
+        setTimeout(() => reasonText.focus(), 50);
+      } else {
+        reasonText.removeAttribute('required');
+      }
+    }
+
+    if (lblRunning) {
+      lblRunning.style.background = !isStopped ? 'rgba(16, 185, 129, 0.25)' : 'transparent';
+      lblRunning.style.color = !isStopped ? '#34D399' : 'var(--text-muted)';
+      lblRunning.style.border = !isStopped ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid transparent';
+    }
+    if (lblStopped) {
+      lblStopped.style.background = isStopped ? 'rgba(239, 68, 68, 0.25)' : 'transparent';
+      lblStopped.style.color = isStopped ? '#F87171' : 'var(--text-muted)';
+      lblStopped.style.border = isStopped ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid transparent';
+    }
+  },
+
+  handleSaveDailyStatus: async function(event) {
+    if (event) event.preventDefault();
+
+    const targetDateEl = document.getElementById('status-target-date');
+    const dateStr = targetDateEl ? targetDateEl.value : this.statusSelectedDate;
+    if (!dateStr) {
+      App.showToast('Tanggal status operasional tidak valid.', 'error');
+      return;
+    }
+
+    const user = DB.getCurrentUser();
+    const isMaker = (user.role === 'MAKER_YAYASAN');
+    const allKitchens = DB.getKitchens() || [];
+    const delegatedKitchens = isMaker 
+      ? allKitchens.filter(k => k.makerYayasan && (k.makerYayasan.includes(user.name) || k.makerYayasan.includes(user.id)))
+      : allKitchens;
+    const targetKitchens = delegatedKitchens.length > 0 ? delegatedKitchens : allKitchens;
+
+    const statusesToSave = [];
+
+    for (const k of targetKitchens) {
+      const kId = k.id || k.idSppg;
+      const radioEl = document.querySelector(`input[name="status-${kId}"]:checked`);
+      const statusVal = radioEl ? radioEl.value : 'BERJALAN';
+      const reasonEl = document.getElementById(`reason-text-${kId}`);
+      const reasonVal = reasonEl ? reasonEl.value.trim() : '';
+
+      if (statusVal === 'BERHENTI' && !reasonVal) {
+        App.showToast(`Mohon isi alasan berhenti beroperasi untuk ${k.namaDapur || k.name}!`, 'error');
+        if (reasonEl) reasonEl.focus();
+        return;
+      }
+
+      statusesToSave.push({
+        kitchenId: k.id,
+        kitchenName: `${k.idSppg || k.id} — ${k.namaDapur || k.name}`,
+        status: statusVal,
+        reason: statusVal === 'BERHENTI' ? reasonVal : ''
+      });
+    }
+
+    const saveBtn = document.getElementById('btn-save-kitchen-status');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '⏳ Menyimpan...';
+    }
+
+    try {
+      await DB.saveKitchenDailyStatuses(dateStr, statusesToSave, user);
+      App.closeModal('modal-kitchen-status');
+      this.statusSelectedDate = dateStr;
+      this.render(document.getElementById('main-content-area'));
+      App.showToast(`✅ Status operasional ${statusesToSave.length} dapur untuk tanggal ${dateStr} berhasil disimpan!`, 'success');
+    } catch (err) {
+      console.error('Error saving kitchen daily statuses:', err);
+      App.showToast('Gagal menyimpan status operasional dapur.', 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '💾 Simpan Status Operasional';
+      }
+    }
   }
 };
+
