@@ -5750,6 +5750,22 @@ class DatabaseManager {
         status: f.status
       });
     }
+
+    // 10. Sync Kitchen Daily Statuses ke Supabase
+    const kds = this.getKitchenDailyStatuses();
+    for (const s of kds) {
+      await this.syncToSupabase('kitchen_daily_statuses', {
+        id: s.id,
+        date: s.date,
+        kitchen_id: s.kitchenId,
+        kitchen_name: s.kitchenName,
+        status: s.status,
+        reason: s.reason || '',
+        reported_by_id: s.reportedById,
+        reported_by_name: s.reportedByName,
+        updated_at: s.updatedAt || s.createdAt || null
+      });
+    }
   }
 
   async pullUsersFromSupabase() {
@@ -6251,12 +6267,14 @@ class DatabaseManager {
         }
       }
 
-      // 10. Process Kitchen Daily Statuses (Smart Merge)
+      // 10. Process Kitchen Daily Statuses (Smart Two-Way Merge & Auto-Push)
       if (kdsRes && kdsRes.status === 'fulfilled' && kdsRes.value.ok) {
         const kdsList = await kdsRes.value.json();
         if (Array.isArray(kdsList)) {
           const existingKDS = this.data.kitchenDailyStatuses || [];
-          this.data.kitchenDailyStatuses = kdsList.map(s => {
+          
+          // 1. Map data dari remote Supabase
+          const remoteKDS = kdsList.map(s => {
             const local = existingKDS.find(item => item.id === s.id || (item.date === s.date && item.kitchenId === s.kitchen_id));
             return {
               id: s.id,
@@ -6271,6 +6289,32 @@ class DatabaseManager {
               updatedAt: s.updated_at || (local ? local.updatedAt : '')
             };
           });
+
+          // 2. Temukan record lokal yang belum sempat terunggah ke Supabase (misal dibuat saat offline/tabel baru dibuat)
+          const unsyncedLocal = existingKDS.filter(local => 
+            !kdsList.some(remote => remote.id === local.id || (remote.date === local.date && remote.kitchen_id === local.kitchenId))
+          );
+
+          // 3. Gabungkan remote dan unsynced local agar data di laptop tidak hilang
+          this.data.kitchenDailyStatuses = [...remoteKDS, ...unsyncedLocal];
+
+          // 4. Otomatis push record lokal yang belum sinkron ke database cloud Supabase
+          if (unsyncedLocal.length > 0) {
+            console.log(`⚡ [Auto-Push KDS] Mengunggah ${unsyncedLocal.length} data status dapur lokal ke Supabase...`);
+            for (const item of unsyncedLocal) {
+              this.syncToSupabase('kitchen_daily_statuses', {
+                id: item.id,
+                date: item.date,
+                kitchen_id: item.kitchenId,
+                kitchen_name: item.kitchenName,
+                status: item.status,
+                reason: item.reason,
+                reported_by_id: item.reportedById,
+                reported_by_name: item.reportedByName,
+                updated_at: item.updatedAt
+              }).catch(err => console.warn('Auto-push KDS notice:', err));
+            }
+          }
         }
       }
 
