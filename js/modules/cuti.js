@@ -267,8 +267,10 @@ window.CutiModule = {
                         ${l.reason}
                       </div>
                       ${l.attachmentName ? `
-                        <div style="font-size: 11px; color: #34D399; margin-top: 2px;">
-                          📎 ${l.attachmentName}
+                        <div style="margin-top: 4px;">
+                          <button type="button" class="btn-preview-link" style="color: #34D399; background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.3); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="event.stopPropagation(); CutiModule.openAttachmentModal('${l.id}')">
+                            📎 ${l.attachmentName} ↗
+                          </button>
                         </div>
                       ` : ''}
                     </td>
@@ -825,8 +827,8 @@ window.CutiModule = {
     try {
       const fileData = await DB.compressImageFile(file, 1200, 1200, 0.75);
       this.currentAttachment = {
-        url: fileData,
-        name: file.name
+        url: (fileData && typeof fileData === 'object') ? fileData.url : fileData,
+        name: (fileData && typeof fileData === 'object' && fileData.name) ? fileData.name : file.name
       };
       App.showToast(`Berkas "${file.name}" siap dilampirkan.`, 'info');
     } catch (err) {
@@ -937,5 +939,159 @@ window.CutiModule = {
         this.render(document.getElementById('main-content-area'));
       }
     }
+  },
+
+  // =========================================================================
+  // MODAL PRATINJAU & UNDUH LAMPIRAN DOKUMEN CUTI / IZIN
+  // =========================================================================
+  openAttachmentModal: async function(leaveId) {
+    if (!leaveId) return;
+    const leaves = DB.getLeaves() || [];
+    let leave = leaves.find(l => l.id === leaveId);
+    if (!leave) {
+      App.showToast('Data permohonan cuti tidak ditemukan.', 'warn');
+      return;
+    }
+
+    let attachmentUrl = leave.attachmentUrl;
+    let attachmentName = leave.attachmentName || 'Berkas_Lampiran';
+
+    // On-demand loader jika belum ada URL Base64/cloud di memori
+    if ((!attachmentUrl || attachmentUrl.length < 50) && attachmentName) {
+      App.showToast('Memuat berkas lampiran resmi dari server...', 'info');
+      attachmentUrl = await DB.fetchLeaveAttachment(leaveId);
+      leave.attachmentUrl = attachmentUrl;
+    }
+
+    let modalEl = document.getElementById('modal-leave-attachment');
+    if (!modalEl) {
+      modalEl = document.createElement('div');
+      modalEl.id = 'modal-leave-attachment';
+      modalEl.className = 'modal-backdrop';
+      document.body.appendChild(modalEl);
+    }
+
+    const isPdf = (attachmentUrl && attachmentUrl.startsWith('data:application/pdf')) || (attachmentName && attachmentName.toLowerCase().endsWith('.pdf'));
+    const isImg = (attachmentUrl && (attachmentUrl.startsWith('data:image/') || attachmentUrl.match(/^https?:\/\/.*\.(jpg|jpeg|png|webp|gif)/i))) || (attachmentName && attachmentName.match(/\.(jpg|jpeg|png|webp|gif)$/i));
+
+    modalEl.innerHTML = `
+      <div class="modal-box" style="max-width: 680px; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <div>
+            <span class="text-mono-badge" style="color: #A78BFA;">Lampiran Dokumen Cuti / Izin</span>
+            <h3 class="modal-title" style="margin-top: 2px;">Berkas Pendukung Permohonan: ${leave.id}</h3>
+          </div>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-leave-attachment')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 20px;">
+          <!-- Header Info Card -->
+          <div style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.25); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <span class="text-mono-badge" style="color: #C4B5FD; font-size: 11px;">${leave.type} (${leave.duration} Hari)</span>
+              <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${leave.createdAt || '-'}</span>
+            </div>
+            <div style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">
+              Pemohon: <strong style="color: #60A5FA;">${leave.employeeName}</strong> (${leave.department || leave.role})
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+              Periode Cuti: <strong>${leave.startDate}</strong> s/d <strong>${leave.endDate}</strong>
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px; font-style: italic;">
+              Alasan: "${leave.reason || '-'}"
+            </div>
+            <div style="font-size: 11.5px; color: #34D399; margin-top: 6px; display: flex; align-items: center; gap: 6px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 6px;">
+              <span>📎 Nama Berkas: <strong>${attachmentName}</strong></span>
+            </div>
+          </div>
+
+          <!-- Preview Berkas -->
+          ${attachmentUrl ? `
+            <div>
+              ${isImg ? `
+                <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px; text-align: center;">
+                  <img src="${attachmentUrl}" alt="Preview Dokumen Cuti" style="max-width: 100%; max-height: 420px; object-fit: contain; border-radius: 6px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); display: inline-block;">
+                </div>
+              ` : isPdf ? `
+                <div style="background: rgba(239, 68, 68, 0.06); border: 1px dashed rgba(239, 68, 68, 0.35); border-radius: var(--radius-sm); padding: 24px; text-align: center;">
+                  <div style="font-size: 46px; margin-bottom: 8px;">📄</div>
+                  <div style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px;">${attachmentName}</div>
+                  <div style="font-size: 12px; color: #FCA5A5; margin-bottom: 18px;">Dokumen Surat Keterangan Medis / Izin Resmi (Format PDF)</div>
+                  <div style="display: flex; justify-content: center; gap: 10px;">
+                    <button type="button" class="btn-nalar-primary" style="padding: 7px 18px; font-size: 12.5px; background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); border-color: #F87171; display: inline-flex; align-items: center; gap: 6px;" onclick="CutiModule.downloadAttachment('${leave.id}')">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      <span>Unduh & Buka Dokumen PDF</span>
+                    </button>
+                  </div>
+                </div>
+              ` : `
+                <div style="background: rgba(139, 92, 246, 0.06); border: 1px dashed rgba(139, 92, 246, 0.35); border-radius: var(--radius-sm); padding: 24px; text-align: center;">
+                  <div style="font-size: 46px; margin-bottom: 8px;">📝</div>
+                  <div style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px;">${attachmentName}</div>
+                  <div style="font-size: 12px; color: #C4B5FD; margin-bottom: 18px;">Berkas Lampiran Pendukung Resmi</div>
+                  <div style="display: flex; justify-content: center; gap: 10px;">
+                    <button type="button" class="btn-nalar-primary" style="padding: 7px 18px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px;" onclick="CutiModule.downloadAttachment('${leave.id}')">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      <span>Unduh Dokumen Berkas</span>
+                    </button>
+                  </div>
+                </div>
+              `}
+            </div>
+          ` : `
+            <div style="background: rgba(245, 158, 11, 0.08); border: 1px dashed rgba(245, 158, 11, 0.3); border-radius: var(--radius-sm); padding: 28px; text-align: center; color: #FCD34D; font-size: 13px;">
+              ⚠️ Berkas lampiran fisik belum terunggah atau tidak ditemukan di penyimpanan server.
+            </div>
+          `}
+        </div>
+
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-leave-attachment')">Tutup</button>
+          ${attachmentUrl ? `
+            <button type="button" class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;" onclick="CutiModule.downloadAttachment('${leave.id}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Unduh Berkas Lampiran</span>
+            </button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+
+    App.openModal('modal-leave-attachment');
+  },
+
+  downloadAttachment: async function(leaveId) {
+    if (!leaveId) return;
+    const leaves = DB.getLeaves() || [];
+    const leave = leaves.find(l => l.id === leaveId);
+    if (!leave) return;
+
+    let url = leave.attachmentUrl;
+    let fileName = leave.attachmentName || `Lampiran_Cuti_${leave.id}`;
+
+    if (!url || url.length < 50) {
+      App.showToast('Memuat dokumen dari cloud...', 'info');
+      url = await DB.fetchLeaveAttachment(leaveId);
+    }
+
+    if (!url) {
+      App.showToast('Tidak ada berkas lampiran yang tersedia untuk diunduh.', 'warn');
+      return;
+    }
+
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      window.open(url, '_blank');
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    App.showToast(`Berkas "${fileName}" berhasil diunduh!`, 'success');
   }
 };

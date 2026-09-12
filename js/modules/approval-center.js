@@ -329,8 +329,15 @@ window.ApprovalCenterModule = {
                     </div>
                     <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 500;">${l.employeeName} — ${l.type} (${l.duration} Hari)</h4>
                     <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px;">Alasan: ${l.reason}</p>
-                    <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-                      Periode: ${l.startDate} s/d ${l.endDate} · Divisi: ${l.department}
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+                      <span>Periode: ${l.startDate} s/d ${l.endDate} · Divisi: ${l.department}</span>
+                      ${(l.attachmentName || l.attachmentUrl) ? `
+                        <span>·</span>
+                        <button type="button" class="btn-preview-link" style="color: #A78BFA; background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="CutiModule.openAttachmentModal('${l.id}')">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                          <span>📎 Lihat Lampiran Surat / Dokumen (${l.attachmentName || 'Berkas'}) ↗</span>
+                        </button>
+                      ` : ''}
                     </div>
                   </div>
                 </div>
@@ -562,6 +569,20 @@ window.ApprovalCenterModule = {
                           ${item.notes && item.notes !== '-' ? `
                             <span>·</span>
                             <span>Catatan: <em style="color: #94A3B8;">"${item.notes}"</em></span>
+                          ` : ''}
+                          ${isLeave && item.raw && (item.raw.attachmentName || item.raw.attachmentUrl) ? `
+                            <span>·</span>
+                            <button type="button" class="btn-preview-link" style="color: #A78BFA; background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="CutiModule.openAttachmentModal('${item.id}')">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                              <span>📎 Lihat Lampiran ↗</span>
+                            </button>
+                          ` : ''}
+                          ${isPR && item.raw && (item.raw.attachmentName || item.raw.attachmentUrl) ? `
+                            <span>·</span>
+                            <button type="button" class="btn-preview-link" style="color: #FCD34D; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="PengajuanBarangModule.openLightbox('${item.id}', '${item.raw.itemName}')">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                              <span>Lihat Foto Barang ↗</span>
+                            </button>
                           ` : ''}
                         </div>
                       </div>

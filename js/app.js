@@ -1183,6 +1183,19 @@ window.App = {
                 }
               </span>
             </div>
+
+            <!-- Attachment Banner if attached -->
+            ${(details.attachmentName || details.attachmentUrl) ? `
+              <div style="margin-top: 10px; padding: 10px 14px; background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(139, 92, 246, 0.35); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #C4B5FD;">
+                  <span style="font-size: 15px;">📎</span>
+                  <span>Lampiran Dokumen: <strong style="color: #fff;">${details.attachmentName || 'Berkas Pendukung'}</strong></span>
+                </div>
+                <button type="button" class="btn-nalar-primary" style="padding: 4px 12px; font-size: 11.5px; background: linear-gradient(135deg, #8B5CF6, #7C3AED); border-color: #A78BFA; color: #fff; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" onclick="${details.type === 'PR' ? `PengajuanBarangModule.openLightbox('${details.id}', '${(details.title || '').replace(/'/g, "\\'")}')` : `CutiModule.openAttachmentModal('${details.id}')`}">
+                  <span>Lihat / Unduh Lampiran ↗</span>
+                </button>
+              </div>
+            ` : ''}
           </div>
 
           <!-- If PR has adjustment callout -->

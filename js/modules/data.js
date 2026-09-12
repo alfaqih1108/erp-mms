@@ -39,13 +39,28 @@ function getRealtimeTimestamp() {
 }
 window.getRealtimeTimestamp = getRealtimeTimestamp;
 
-// Utility: Kompresi Gambar Cerdas (<100 KB) agar penyimpanan LocalStorage & Cloud REST instan
+// Utility: Kompresi Gambar Cerdas (<100 KB) & Pembaca Dokumen (PDF/DOC) untuk LocalStorage & Supabase
 function compressImageFile(file, maxWidth = 1000, quality = 0.7) {
   return new Promise((resolve) => {
-    if (!file || !file.type || !file.type.startsWith('image/')) {
+    if (!file) {
       resolve({ url: null, name: null });
       return;
     }
+
+    // Jika file bukan gambar (misal PDF, DOC, DOCX), baca langsung sebagai DataURL
+    if (!file.type || !file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        resolve({ url: e.target.result, name: file.name, type: file.type || 'application/octet-stream' });
+      };
+      reader.onerror = () => {
+        resolve({ url: null, name: file.name });
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // File gambar: lakukan kompresi cerdas via Canvas
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
@@ -68,18 +83,18 @@ function compressImageFile(file, maxWidth = 1000, quality = 0.7) {
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, w, h);
           const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-          resolve({ url: compressedDataUrl, name: file.name });
+          resolve({ url: compressedDataUrl, name: file.name, type: 'image/jpeg' });
         } catch (err) {
-          resolve({ url: e.target.result, name: file.name });
+          resolve({ url: e.target.result, name: file.name, type: file.type });
         }
       };
       img.onerror = () => {
-        resolve({ url: e.target.result, name: file.name });
+        resolve({ url: e.target.result, name: file.name, type: file.type });
       };
       img.src = e.target.result;
     };
     reader.onerror = () => {
-      resolve({ url: null, name: null });
+      resolve({ url: null, name: file.name });
     };
     reader.readAsDataURL(file);
   });
@@ -4949,6 +4964,8 @@ class DatabaseManager {
         adjustments: pr.adjustments || [],
         targetKitchen: pr.targetKitchen,
         requester: `${pr.employeeName} (${pr.department})`,
+        attachmentUrl: pr.attachmentUrl || null,
+        attachmentName: pr.attachmentName || null,
         stage: pr.stage,
         status: pr.status,
         steps
@@ -5053,6 +5070,8 @@ class DatabaseManager {
         quotaDeductionType: leave.quotaDeductionType,
         requester: `${leave.employeeName} (${leave.department})`,
         reason: leave.reason,
+        attachmentUrl: leave.attachmentUrl || null,
+        attachmentName: leave.attachmentName || null,
         stage: leave.stage,
         status: leave.status,
         steps
@@ -6003,7 +6022,7 @@ class DatabaseManager {
               urgency: p.urgency,
               reason: p.reason,
               targetKitchen: p.target_kitchen,
-              attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : null,
+              attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : (p.attachment_url || null),
               attachmentName: p.attachment_name,
               stage: p.stage,
               status: p.status,
@@ -6051,7 +6070,7 @@ class DatabaseManager {
               quotaDeducted: deductType === 'NONE' ? 0 : (Number(l.duration) || 1),
               reason: l.reason,
               emergencyContact: l.emergency_contact,
-              attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : null,
+              attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : (l.attachment_url || null),
               attachmentName: l.attachment_name,
               stage: l.stage,
               status: l.status,
