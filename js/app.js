@@ -47,9 +47,9 @@ window.App = {
 
       let lastSyncTime = Date.now();
 
-      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif (dengan Debounce 45s)
+      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif (dengan Debounce 60s)
       window.addEventListener('focus', async () => {
-        if (Date.now() - lastSyncTime < 45000) return; // Hindari duplicate sync jika baru saja aktif
+        if (Date.now() - lastSyncTime < 60000) return; // Hindari duplicate sync jika baru saja aktif
         try {
           lastSyncTime = Date.now();
           await window.DB.pullLatestFromSupabase();
@@ -61,7 +61,8 @@ window.App = {
         }
       });
 
-      // 2. Multi-Device Periodic Background Polling setiap 60 detik (Hanya saat tab terlihat/aktif)
+      // 2. Multi-Device Periodic Background Polling setiap 180 detik / 3 menit (Hanya saat tab terlihat/aktif)
+      // Mengurangi beban Egress API hingga 66% tanpa mengorbankan konsistensi data multi-perangkat
       setInterval(async () => {
         if (document.visibilityState === 'hidden') return; // Hemat Egress & CPU saat tab di-minimize / background
         try {
@@ -72,7 +73,7 @@ window.App = {
         } catch (err) {
           console.warn('Periodic sync notice:', err);
         }
-      }, 60000);
+      }, 180000);
     }
   },
 

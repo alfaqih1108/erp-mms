@@ -5869,17 +5869,17 @@ class DatabaseManager {
       console.log('⚡ [Supabase Pull] Memuat data real-time dengan Smart Merge...');
 
       // Jalankan seluruh 10 endpoint secara PARALEL untuk kecepatan instan (<300ms)
-      // Dokumen binary berat (Base64) DIKECUALIKAN dari pull berkala (Lazy-Loaded On-Demand) untuk menghemat Egress hingga 99%
+      // Dokumen binary berat (Base64 file_data & SPM image) DIKECUALIKAN dari pull berkala (Lazy-Loaded On-Demand) untuk menghemat Egress hingga 99%
       const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes, kdsRes] = await Promise.allSettled([
-        fetch(`${url}/rest/v1/users?select=*`, { headers }),
-        fetch(`${url}/rest/v1/kitchens?select=*`, { headers }),
+        fetch(`${url}/rest/v1/users?select=id,nika,name,email,phone,role,role_label,jabatan,department,level_grade,kode_jabatan,password,username,bank_name,rekening_no,rekening_name,quota_annual_leave,remaining_annual_leave,quota_personal_leave,remaining_personal_leave,nik,status_karyawan,status_pajak,pendidikan,no_kk,alamat_ktp,alamat_domisili,status_tempat_tinggal,no_npwp,alamat_npwp,no_bpjs_kesehatan,no_bpjs_tenaga_kerja,emergency_name,emergency_relation,emergency_phone,notes`, { headers }),
+        fetch(`${url}/rest/v1/kitchens?select=id,id_sppg,nama_dapur,nama_yayasan,provinsi,kota_kabupaten,kecamatan,kelurahan,alamat_lengkap,location,maker_yayasan,perwakilan_yayasan,manager_area,status,kapasitas_porsi,created_at`, { headers }),
         fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,spm_attachment_url,va_bank_name,va_balance,notes,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,va_bank_name,va_balance,notes,created_at&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/timesheets?select=id,employee_id,employee_name,role,department,date,start_time,end_time,activity,activity_preset,category,status,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,purpose,stage,status,settlement,approval_history,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,file_data,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/field_issues?select=*&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc`, { headers }),
+        fetch(`${url}/rest/v1/field_issues?select=id,author_id,author_name,date,kitchen_id,kitchen_name,issue_description,status,created_at&order=created_at.desc`, { headers }),
         fetch(`${url}/rest/v1/kitchen_daily_statuses?select=*&order=date.desc`, { headers })
       ]);
 
@@ -6200,24 +6200,28 @@ class DatabaseManager {
         }
       }
 
-      // 8. Process Guideline Documents
+      // 8. Process Guideline Documents (Metadata only, fileData is Lazy-Loaded On-Demand)
       if (docRes.status === 'fulfilled' && docRes.value.ok) {
         const dList = await docRes.value.json();
         if (Array.isArray(dList) && dList.length > 0) {
-          this.data.guidelineDocuments = dList.map(d => ({
-            id: d.id,
-            title: d.title,
-            fileType: d.file_type,
-            category: d.category,
-            targetRole: d.target_role,
-            targetLabel: d.target_label,
-            fileSize: d.file_size,
-            description: d.description,
-            uploadedBy: d.uploaded_by,
-            uploadDate: d.upload_date,
-            fileData: d.file_data || null,
-            createdAt: d.created_at
-          }));
+          const localDocs = this.data.guidelineDocuments || [];
+          this.data.guidelineDocuments = dList.map(d => {
+            const local = localDocs.find(ld => ld.id === d.id);
+            return {
+              id: d.id,
+              title: d.title,
+              fileType: d.file_type,
+              category: d.category,
+              targetRole: d.target_role,
+              targetLabel: d.target_label,
+              fileSize: d.file_size,
+              description: d.description,
+              uploadedBy: d.uploaded_by,
+              uploadDate: d.upload_date,
+              fileData: (local && local.fileData) ? local.fileData : null,
+              createdAt: d.created_at
+            };
+          });
         }
       }
 
