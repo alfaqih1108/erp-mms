@@ -113,19 +113,64 @@ window.DapurYayasanModule = {
     const avgAllInCostPerPortion = totalBeneficiaries > 0 ? Math.round(totalDailyExpense / totalBeneficiaries) : 0;
     const overallEfficiency = totalTargetBudget > 0 ? Math.round((totalRawCost / totalTargetBudget) * 100) : 100;
 
+    const isSpecificKitchen = (this.selectedKitchenFilter !== 'ALL');
+    
+    // Sort reports for accurate latest date lookups
+    const sortedFiltered = [...filteredReports].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    
+    const formatIndoDate = (dateStr) => {
+      if (!dateStr) return '-';
+      const parts = dateStr.split('-');
+      if (parts.length < 3) return dateStr;
+      const y = parseInt(parts[0]);
+      const m = parseInt(parts[1]) - 1;
+      const d = parseInt(parts[2]);
+      const mNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      return `${d} ${mNames[m] || ''} ${y}`;
+    };
+
+    // Cari tanggal input terakhir masing-masing pos biaya
+    const latestRawReport = sortedFiltered.find(r => Number(r.rawMaterialCost) > 0) || sortedFiltered[0];
+    const latestRawDate = latestRawReport ? formatIndoDate(latestRawReport.date) : '-';
+
+    const latestOpsReport = sortedFiltered.find(r => Number(r.operationalCost) > 0) || sortedFiltered[0];
+    const latestOpsDate = latestOpsReport ? formatIndoDate(latestOpsReport.date) : '-';
+
+    const latestCarReport = sortedFiltered.find(r => Number(r.carRentalCost) > 0);
+    const latestCarDate = latestCarReport ? formatIndoDate(latestCarReport.date) : '-';
+
+    const latestIncentiveReport = sortedFiltered.find(r => Number(r.foundationIncentive) > 0);
+    const latestIncentiveDate = latestIncentiveReport ? formatIndoDate(latestIncentiveReport.date) : '-';
+
+    const latestOverallReport = sortedFiltered[0];
+    const latestOverallDate = latestOverallReport ? formatIndoDate(latestOverallReport.date) : '-';
+
     // Hitung Saldo VA Terkini
+    let latestVAReport = null;
     let latestVABalance = 0;
     let vaAccountLabel = '';
-    if (this.selectedKitchenFilter !== 'ALL') {
-      const latestKitchenReport = filteredReports.find(r => r.vaBalance !== undefined);
-      latestVABalance = latestKitchenReport ? (Number(latestKitchenReport.vaBalance) || 0) : 0;
-      vaAccountLabel = latestKitchenReport ? (latestKitchenReport.vaBankName || 'Virtual Account Bank') : 'Rekening VA Dapur';
+    if (isSpecificKitchen) {
+      latestVAReport = sortedFiltered.find(r => r.vaBalance !== undefined && r.vaBalance !== null && !isNaN(Number(r.vaBalance)));
+      if (!latestVAReport) {
+        const targetKitchen = allKitchens.find(k => (k.id === this.selectedKitchenFilter || k.idSppg === this.selectedKitchenFilter));
+        const filterName = targetKitchen ? (targetKitchen.namaDapur || targetKitchen.name).toLowerCase() : '';
+        const filterId = (this.selectedKitchenFilter || '').toLowerCase();
+        const kitchenAllReports = allReports.filter(r => {
+          const rName = (r.kitchenName || '').toLowerCase();
+          const rId = (r.kitchenId || '').toLowerCase();
+          return (rId === filterId || (filterName && rName.includes(filterName)) || (filterName && filterName.includes(rName)));
+        }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        latestVAReport = kitchenAllReports.find(r => r.vaBalance !== undefined && r.vaBalance !== null && !isNaN(Number(r.vaBalance)));
+      }
+      latestVABalance = latestVAReport ? (Number(latestVAReport.vaBalance) || 0) : 0;
+      vaAccountLabel = latestVAReport ? (latestVAReport.vaBankName || 'Virtual Account Bank') : 'Rekening VA Dapur';
     } else {
       // Konsolidasi saldo VA dari seluruh dapur yang aktif di filter
       const kitchenBalanceMap = {};
-      allReports.forEach(r => {
+      const sortedAll = [...allReports].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      sortedAll.forEach(r => {
         const kKey = r.kitchenId || r.kitchenName;
-        if (!kitchenBalanceMap[kKey] && r.vaBalance !== undefined) {
+        if (!kitchenBalanceMap[kKey] && r.vaBalance !== undefined && r.vaBalance !== null) {
           if (!isMaker || activeKitchenNames.some(name => (r.kitchenName || '').toLowerCase().includes(name))) {
             kitchenBalanceMap[kKey] = Number(r.vaBalance) || 0;
           }
@@ -133,7 +178,9 @@ window.DapurYayasanModule = {
       });
       latestVABalance = Object.values(kitchenBalanceMap).reduce((sum, b) => sum + b, 0);
       vaAccountLabel = isMaker ? 'Total Konsolidasi VA Delegasi Saya' : 'Total Saldo Konsolidasi Seluruh VA Dapur';
+      latestVAReport = sortedFiltered.find(r => r.vaBalance !== undefined && r.vaBalance !== null);
     }
+    const latestVADate = latestVAReport ? formatIndoDate(latestVAReport.date) : '-';
 
     // 4. Jaringan Distribusi Dapur Aktif
     const displayedKitchens = isMaker ? delegatedKitchens : allKitchens;
@@ -265,8 +312,12 @@ window.DapurYayasanModule = {
             <div class="kpi-chip-value" style="color: #FCA5A5; font-weight: 700; font-size: 20px;">
               Rp ${totalRawCost.toLocaleString('id-ID')}
             </div>
-            <div class="kpi-chip-footer">
-              <span class="stat-trend-up">●</span> ${filteredReports.length} laporan belanja tercatat
+            <div class="kpi-chip-footer" style="color: #FCA5A5; font-size: 11px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir diinput: <strong style="color: #fff;">${latestRawDate !== '-' ? latestRawDate : 'Belum diinput'}</strong> (${filteredReports.length} lap.)</span>
+              ` : `
+                <span class="stat-trend-up">●</span> ${filteredReports.length} laporan belanja tercatat ${latestRawDate !== '-' ? `• Terakhir: <strong style="color: #fff;">${latestRawDate}</strong>` : ''}
+              `}
             </div>
           </div>
 
@@ -279,8 +330,12 @@ window.DapurYayasanModule = {
             <div class="kpi-chip-value" style="color: #FDE68A; font-weight: 700; font-size: 20px;">
               Rp ${totalOpsCost.toLocaleString('id-ID')}
             </div>
-            <div class="kpi-chip-footer" style="color: #FCD34D;">
-              <span>● Gas LPG, bumbu & utilitas harian</span>
+            <div class="kpi-chip-footer" style="color: #FCD34D; font-size: 11px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir diinput: <strong style="color: #fff;">${latestOpsDate !== '-' ? latestOpsDate : 'Belum diinput'}</strong></span>
+              ` : `
+                <span>● Gas LPG & utilitas ${latestOpsDate !== '-' ? `• Terakhir: <strong style="color: #fff;">${latestOpsDate}</strong>` : ''}</span>
+              `}
             </div>
           </div>
 
@@ -293,8 +348,12 @@ window.DapurYayasanModule = {
             <div class="kpi-chip-value" style="color: #93C5FD; font-weight: 700; font-size: 20px;">
               Rp ${totalCarRentalCost.toLocaleString('id-ID')}
             </div>
-            <div class="kpi-chip-footer" style="color: #93C5FD;">
-              <span>● Armada pengantaran porsi santri</span>
+            <div class="kpi-chip-footer" style="color: #93C5FD; font-size: 11px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir diinput: <strong style="color: #fff;">${latestCarDate !== '-' ? latestCarDate : 'Belum pernah diinput'}</strong></span>
+              ` : `
+                <span>● Armada pengantaran ${latestCarDate !== '-' ? `• Terakhir: <strong style="color: #fff;">${latestCarDate}</strong>` : ''}</span>
+              `}
             </div>
           </div>
 
@@ -307,8 +366,12 @@ window.DapurYayasanModule = {
             <div class="kpi-chip-value" style="color: #E879F9; font-weight: 700; font-size: 20px;">
               Rp ${totalIncentive.toLocaleString('id-ID')}
             </div>
-            <div class="kpi-chip-footer" style="color: #E879F9;">
-              <span>● Insentif berkala & khusus yayasan</span>
+            <div class="kpi-chip-footer" style="color: #E879F9; font-size: 11px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir diinput: <strong style="color: #fff;">${latestIncentiveDate !== '-' ? latestIncentiveDate : 'Belum ada insentif'}</strong></span>
+              ` : `
+                <span>● Insentif berkala & khusus ${latestIncentiveDate !== '-' ? `• Terakhir: <strong style="color: #fff;">${latestIncentiveDate}</strong>` : ''}</span>
+              `}
             </div>
           </div>
 
@@ -321,8 +384,12 @@ window.DapurYayasanModule = {
             <div class="kpi-chip-value" style="color: #FF8A4C; font-weight: 800; font-size: 22px;">
               Rp ${totalDailyExpense.toLocaleString('id-ID')}
             </div>
-            <div class="kpi-chip-footer" style="color: #FF8A4C; font-weight: 500;">
-              <span>● Bahan + Ops + Sewa + Insentif</span>
+            <div class="kpi-chip-footer" style="color: #FF8A4C; font-weight: 500; font-size: 11px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir transaksi: <strong style="color: #fff;">${latestOverallDate !== '-' ? latestOverallDate : '-'}</strong></span>
+              ` : `
+                <span>● Bahan + Ops + Sewa + Insentif</span>
+              `}
             </div>
           </div>
 
@@ -341,7 +408,7 @@ window.DapurYayasanModule = {
             </div>
           </div>
 
-          <!-- Chip 6: Saldo Terakhir Virtual Account (VA) -->
+          <!-- Chip 7: Saldo Terakhir Virtual Account (VA) -->
           <div class="kpi-chip hud-corner-box">
             <div class="kpi-chip-header">
               <span class="kpi-chip-title">Saldo Virtual Account</span>
@@ -350,12 +417,16 @@ window.DapurYayasanModule = {
             <div class="kpi-chip-value" style="color: #7DD3FC; font-weight: 700; font-size: 20px;">
               Rp ${latestVABalance.toLocaleString('id-ID')}
             </div>
-            <div class="kpi-chip-footer" style="color: #7DD3FC; font-size: 10.5px; font-style: italic;">
-              <span>${vaAccountLabel}</span>
+            <div class="kpi-chip-footer" style="color: #7DD3FC; font-size: 10.5px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir diinput: <strong style="color: #fff;">${latestVADate !== '-' ? latestVADate : 'Belum diinput'}</strong> • ${vaAccountLabel}</span>
+              ` : `
+                <span>${vaAccountLabel} ${latestVADate !== '-' ? `• Terakhir: <strong style="color: #fff;">${latestVADate}</strong>` : ''}</span>
+              `}
             </div>
           </div>
 
-          <!-- Chip 7: Biaya Rata-Rata per Porsi Makanan -->
+          <!-- Chip 8: Biaya Rata-Rata per Porsi Makanan -->
           <div class="kpi-chip hud-corner-box">
             <div class="kpi-chip-header">
               <span class="kpi-chip-title">Biaya per Porsi Makanan</span>
