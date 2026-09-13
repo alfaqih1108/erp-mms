@@ -2352,7 +2352,8 @@ const INITIAL_DATABASE = {
       { id: 'conn-14', fromNodeId: 'org-ma-003', toNodeId: 'org-so-003', type: 'SOLID', label: 'Instruksi Lapangan Dapur' },
       { id: 'conn-15', fromNodeId: 'org-ma-003', toNodeId: 'org-so-004', type: 'SOLID', label: 'Instruksi Lapangan Dapur' }
     ]
-  }
+  },
+  kitchenDailyStatuses: []
 };
 
 // Database Management Class
@@ -2409,6 +2410,7 @@ class DatabaseManager {
           if (!Array.isArray(parsed.timesheets)) parsed.timesheets = [];
           if (!Array.isArray(parsed.cashAdvances)) parsed.cashAdvances = [];
           if (!Array.isArray(parsed.fieldIssues)) parsed.fieldIssues = [];
+          if (!Array.isArray(parsed.kitchenDailyStatuses)) parsed.kitchenDailyStatuses = [];
 
           return parsed;
         }
@@ -3373,6 +3375,7 @@ class DatabaseManager {
     const realTimestamp = getRealtimeTimestamp();
     const savedRecords = [];
 
+    const syncPromises = [];
     for (const item of statusesArray) {
       const kitchenId = item.kitchenId || item.id || 'DAPUR-01';
       const kitchenName = item.kitchenName || item.namaDapur || 'Dapur SPPG';
@@ -3403,22 +3406,25 @@ class DatabaseManager {
       savedRecords.push(record);
 
       // Async sync to Supabase
-      this.syncToSupabase('kitchen_daily_statuses', {
-        id: record.id,
-        date: record.date,
-        kitchen_id: record.kitchenId,
-        kitchen_name: record.kitchenName,
-        status: record.status,
-        reason: record.reason,
-        reported_by_id: record.reportedById,
-        reported_by_name: record.reportedByName,
-        updated_at: record.updatedAt
-      }).catch(err => console.warn('Sync kitchen_daily_statuses error:', err));
+      syncPromises.push(
+        this.syncToSupabase('kitchen_daily_statuses', {
+          id: record.id,
+          date: record.date,
+          kitchen_id: record.kitchenId,
+          kitchen_name: record.kitchenName,
+          status: record.status,
+          reason: record.reason,
+          reported_by_id: record.reportedById,
+          reported_by_name: record.reportedByName,
+          updated_at: record.updatedAt
+        }).catch(err => console.warn('Sync kitchen_daily_statuses error:', err))
+      );
     }
 
     const stoppedCount = savedRecords.filter(r => r.status === 'BERHENTI').length;
     this.addLog(`${currentUser.name} memperbarui status operasional ${savedRecords.length} dapur untuk tanggal ${dateStr} (${stoppedCount > 0 ? `${stoppedCount} Berhenti` : 'Semua Berjalan'})`, 'kitchen');
     this.save();
+    await Promise.allSettled(syncPromises);
     return savedRecords;
   }
 
@@ -5879,7 +5885,12 @@ class DatabaseManager {
     if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
     const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
     const key = window.SupabaseConfig.getAnonKey();
-    const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
+    const headers = { 
+      'apikey': key, 
+      'Authorization': `Bearer ${key}`,
+      'Range': '0-9999',
+      'Range-Unit': 'items'
+    };
 
     try {
       console.log('⚡ [Supabase Pull] Memuat data real-time dengan Smart Merge...');
@@ -5887,16 +5898,16 @@ class DatabaseManager {
       // Jalankan seluruh 10 endpoint secara PARALEL untuk kecepatan instan (<300ms)
       // Dokumen binary berat (Base64 file_data & SPM image) DIKECUALIKAN dari pull berkala (Lazy-Loaded On-Demand) untuk menghemat Egress hingga 99%
       const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes, kdsRes] = await Promise.allSettled([
-        fetch(`${url}/rest/v1/users?select=id,nika,name,email,phone,role,role_label,jabatan,department,level_grade,kode_jabatan,password,username,bank_name,rekening_no,rekening_name,quota_annual_leave,remaining_annual_leave,quota_personal_leave,remaining_personal_leave,nik,status_karyawan,status_pajak,pendidikan,no_kk,alamat_ktp,alamat_domisili,status_tempat_tinggal,no_npwp,alamat_npwp,no_bpjs_kesehatan,no_bpjs_tenaga_kerja,emergency_name,emergency_relation,emergency_phone,notes`, { headers }),
-        fetch(`${url}/rest/v1/kitchens?select=id,id_sppg,nama_dapur,nama_yayasan,provinsi,kota_kabupaten,kecamatan,kelurahan,alamat_lengkap,location,maker_yayasan,perwakilan_yayasan,manager_area,status,kapasitas_porsi,created_at`, { headers }),
-        fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,va_bank_name,va_balance,notes,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/timesheets?select=id,employee_id,employee_name,role,department,date,start_time,end_time,activity,activity_preset,category,status,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,purpose,stage,status,settlement,approval_history,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/field_issues?select=id,author_id,author_name,date,kitchen_id,kitchen_name,issue_description,status,created_at&order=created_at.desc`, { headers }),
-        fetch(`${url}/rest/v1/kitchen_daily_statuses?select=*&order=date.desc`, { headers })
+        fetch(`${url}/rest/v1/users?select=id,nika,name,email,phone,role,role_label,jabatan,department,level_grade,kode_jabatan,password,username,bank_name,rekening_no,rekening_name,quota_annual_leave,remaining_annual_leave,quota_personal_leave,remaining_personal_leave,nik,status_karyawan,status_pajak,pendidikan,no_kk,alamat_ktp,alamat_domisili,status_tempat_tinggal,no_npwp,alamat_npwp,no_bpjs_kesehatan,no_bpjs_tenaga_kerja,emergency_name,emergency_relation,emergency_phone,notes&limit=2000`, { headers }),
+        fetch(`${url}/rest/v1/kitchens?select=id,id_sppg,nama_dapur,nama_yayasan,provinsi,kota_kabupaten,kecamatan,kelurahan,alamat_lengkap,location,maker_yayasan,perwakilan_yayasan,manager_area,status,kapasitas_porsi,created_at&limit=2000`, { headers }),
+        fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=10000`, { headers }),
+        fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=10000`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,va_bank_name,va_balance,notes,created_at&order=created_at.desc&limit=10000`, { headers }),
+        fetch(`${url}/rest/v1/timesheets?select=id,employee_id,employee_name,role,department,date,start_time,end_time,activity,activity_preset,category,status,created_at&order=created_at.desc&limit=10000`, { headers }),
+        fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,purpose,stage,status,settlement,approval_history,created_at&order=created_at.desc&limit=10000`, { headers }),
+        fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc&limit=5000`, { headers }),
+        fetch(`${url}/rest/v1/field_issues?select=id,author_id,author_name,date,kitchen_id,kitchen_name,issue_description,status,created_at&order=created_at.desc&limit=10000`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_daily_statuses?select=*&order=date.desc&limit=10000`, { headers })
       ]);
 
       // 1. Process Users
