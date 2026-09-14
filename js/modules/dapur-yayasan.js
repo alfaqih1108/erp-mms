@@ -737,36 +737,75 @@ window.DapurYayasanModule = {
             const totalPages = Math.ceil(totalReports / this.pageSize) || 1;
             const curPage = Math.min(Math.max(1, this.currentPage || 1), totalPages);
 
+            // Logika Smart Pagination Ringkas & Responsif dengan Ellipsis (...)
+            const getPaginationPages = (current, total) => {
+              if (total <= 7) {
+                return Array.from({ length: total }, (_, i) => i + 1);
+              }
+
+              // Jika berada di 3 halaman awal (1, 2, 3)
+              if (current <= 3) {
+                return [1, 2, 3, 4, '...', total - 1, total];
+              }
+              // Jika berada di 3 halaman terakhir
+              else if (current >= total - 2) {
+                return [1, 2, '...', total - 3, total - 2, total - 1, total];
+              }
+              // Jika berada di tengah
+              else {
+                return [1, '...', current - 1, current, current + 1, '...', total];
+              }
+            };
+
+            const pageItems = getPaginationPages(curPage, totalPages);
+
             return `
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 12px;">
-                <div style="font-size: 12px; color: var(--text-muted);">
-                  Halaman <strong style="color: #fff;">${curPage}</strong> dari <strong style="color: #fff;">${totalPages}</strong> (Maks 5 Data / Halaman)
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 14px;">
+                <div style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                  <span>Halaman</span>
+                  <span style="color: #FCD34D; font-weight: 700; font-family: var(--font-mono); font-size: 13px;">${curPage}</span>
+                  <span>dari</span>
+                  <strong style="color: #fff; font-family: var(--font-mono); font-size: 13px;">${totalPages}</strong>
+                  <span style="color: var(--text-dim); font-size: 11px;">(Maks 5 Data / Hal)</span>
                 </div>
 
                 ${totalPages > 1 ? `
-                  <div style="display: flex; align-items: center; gap: 6px;">
+                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                     <button type="button" class="btn-nalar-secondary" 
-                            style="padding: 4px 12px; font-size: 11.5px; ${curPage <= 1 ? 'opacity: 0.35; cursor: not-allowed;' : ''}"
+                            style="padding: 5px 12px; font-size: 11.5px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; ${curPage <= 1 ? 'opacity: 0.35; cursor: not-allowed;' : 'color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);'}"
                             onclick="DapurYayasanModule.goToPage(${curPage - 1})"
                             ${curPage <= 1 ? 'disabled' : ''}>
-                      ◀ Sebelumnya
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                      <span>Sebelumnya</span>
                     </button>
 
-                    <div style="display: flex; gap: 4px;">
-                      ${Array.from({ length: totalPages }, (_, i) => i + 1).map(p => `
-                        <button type="button" class="btn-nalar-secondary" 
-                                style="min-width: 32px; padding: 4px 8px; font-size: 11.5px; font-weight: ${p === curPage ? '700' : '400'}; ${p === curPage ? 'background: rgba(245, 158, 11, 0.25); border-color: #F59E0B; color: #FCD34D;' : 'color: var(--text-muted);'}"
-                                onclick="DapurYayasanModule.goToPage(${p})">
-                          ${p}
-                        </button>
-                      `).join('')}
+                    <div style="display: flex; gap: 4px; align-items: center;">
+                      ${pageItems.map(item => {
+                        if (item === '...') {
+                          return `
+                            <span style="color: var(--text-muted); font-size: 13px; font-weight: 700; padding: 0 4px; user-select: none; letter-spacing: 1px;">
+                              •••
+                            </span>
+                          `;
+                        }
+                        const p = Number(item);
+                        const isActive = (p === curPage);
+                        return `
+                          <button type="button" class="btn-nalar-secondary" 
+                                  style="min-width: 32px; height: 30px; padding: 0 6px; font-size: 12px; font-weight: ${isActive ? '700' : '400'}; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; ${isActive ? 'background: rgba(245, 158, 11, 0.25); border-color: #F59E0B; color: #FCD34D; box-shadow: 0 0 10px rgba(245,158,11,0.2);' : 'color: var(--text-muted); background: rgba(0,0,0,0.25); border-color: rgba(255,255,255,0.08);'}"
+                                  onclick="DapurYayasanModule.goToPage(${p})">
+                            ${p}
+                          </button>
+                        `;
+                      }).join('')}
                     </div>
 
                     <button type="button" class="btn-nalar-secondary" 
-                            style="padding: 4px 12px; font-size: 11.5px; ${curPage >= totalPages ? 'opacity: 0.35; cursor: not-allowed;' : ''}"
+                            style="padding: 5px 12px; font-size: 11.5px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; ${curPage >= totalPages ? 'opacity: 0.35; cursor: not-allowed;' : 'color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);'}"
                             onclick="DapurYayasanModule.goToPage(${curPage + 1})"
                             ${curPage >= totalPages ? 'disabled' : ''}>
-                      Berikutnya ▶
+                      <span>Berikutnya</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
                     </button>
                   </div>
                 ` : ''}

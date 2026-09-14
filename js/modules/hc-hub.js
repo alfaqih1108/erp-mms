@@ -2039,21 +2039,34 @@ window.HCHubModule = {
       return { role: roleKey, label: u ? u.roleLabel : roleKey };
     });
 
-    // Generate Pagination Number Buttons
-    let pageButtonsHtml = '';
-    for (let p = 1; p <= totalPages; p++) {
-      if (p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)) {
-        pageButtonsHtml += `
-          <button type="button" class="btn-preset-pill ${p === currentPage ? 'active' : ''}" 
-                  style="min-width: 28px; text-align: center; font-weight: ${p === currentPage ? '700' : '400'}; ${p === currentPage ? 'background: rgba(16, 185, 129, 0.25); border-color: #34D399; color: #34D399;' : ''}" 
-                  onclick="HCHubModule.changeExportPage(${p})">
-            ${p}
-          </button>
-        `;
-      } else if (p === currentPage - 2 || p === currentPage + 2) {
-        pageButtonsHtml += `<span style="color: var(--text-muted); font-size: 11px; padding: 0 2px;">...</span>`;
+    // Generate Pagination Number Buttons (Smart Sliding Window with Ellipsis)
+    const getPaginationPages = (current, total) => {
+      if (total <= 7) {
+        return Array.from({ length: total }, (_, i) => i + 1);
       }
-    }
+      if (current <= 3) {
+        return [1, 2, 3, 4, '...', total - 1, total];
+      } else if (current >= total - 2) {
+        return [1, 2, '...', total - 3, total - 2, total - 1, total];
+      } else {
+        return [1, '...', current - 1, current, current + 1, '...', total];
+      }
+    };
+
+    const pageItems = getPaginationPages(currentPage, totalPages);
+    let pageButtonsHtml = pageItems.map(item => {
+      if (item === '...') {
+        return `<span style="color: var(--text-muted); font-size: 12px; font-weight: 700; padding: 0 4px; letter-spacing: 1px; user-select: none;">•••</span>`;
+      }
+      const p = Number(item);
+      return `
+        <button type="button" class="btn-preset-pill ${p === currentPage ? 'active' : ''}" 
+                style="min-width: 30px; height: 30px; text-align: center; font-weight: ${p === currentPage ? '700' : '400'}; ${p === currentPage ? 'background: rgba(16, 185, 129, 0.25); border-color: #34D399; color: #34D399;' : ''}" 
+                onclick="HCHubModule.changeExportPage(${p})">
+          ${p}
+        </button>
+      `;
+    }).join('');
 
     return `
       <div>
