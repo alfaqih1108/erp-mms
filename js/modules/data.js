@@ -3787,7 +3787,14 @@ class DatabaseManager {
 
   checkTimesheetCollision(employeeId, date, startTime, endTime) {
     if (!startTime || !endTime) return { collision: false };
-    const allTs = this.getTimesheets().filter(t => t.employeeId === employeeId && t.date === date);
+    const cleanDate = (date || '').slice(0, 10);
+    const normEmpId = (employeeId || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const allTs = this.getTimesheets().filter(t => {
+      if (!t) return false;
+      const tId = (t.employeeId || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const tDate = (t.date ? String(t.date).slice(0, 10) : '');
+      return tId === normEmpId && tDate === cleanDate;
+    });
 
     const toMinutes = (timeStr) => {
       const [h, m] = timeStr.split(':').map(Number);
@@ -6168,6 +6175,7 @@ class DatabaseManager {
       if (tsRes.status === 'fulfilled' && tsRes.value.ok) {
         const tss = await tsRes.value.json();
         if (Array.isArray(tss)) {
+          const allUsers = this.data.users || [];
           const remoteTS = tss.map(ts => {
             let hours = 0;
             if (ts.start_time && ts.end_time) {
@@ -6176,18 +6184,33 @@ class DatabaseManager {
               hours = Math.max(0, (e[0] + (e[1] || 0)/60) - (s[0] + (s[1] || 0)/60));
               hours = Math.round(hours * 10) / 10;
             }
+
+            // Normalisasi ID dan Nama Karyawan agar selalu sinkron dengan master users
+            const normTsName = (ts.employee_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const normTsId = (ts.employee_id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const matchedUser = allUsers.find(u => {
+              const uId = (u.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const uName = (u.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              return (normTsId && uId === normTsId) || (normTsName && uName === normTsName);
+            });
+
+            const finalId = matchedUser ? matchedUser.id : (ts.employee_id || '');
+            const finalName = matchedUser ? matchedUser.name : (ts.employee_name || 'Karyawan');
+            const finalRole = matchedUser ? matchedUser.role : (ts.role || 'STAFF');
+            const cleanDate = ts.date ? String(ts.date).slice(0, 10) : '';
+
             return {
               id: ts.id,
-              employeeId: ts.employee_id,
-              employeeName: ts.employee_name,
-              role: ts.role,
-              date: ts.date,
+              employeeId: finalId,
+              employeeName: finalName,
+              role: finalRole,
+              date: cleanDate,
               startTime: ts.start_time,
               endTime: ts.end_time,
               hours: hours || 0,
               activity: ts.activity,
               activityPreset: ts.activity_preset,
-              category: ts.category,
+              category: ts.category || 'Operasional',
               status: ts.status || 'RECORDED',
               createdAt: ts.created_at
             };

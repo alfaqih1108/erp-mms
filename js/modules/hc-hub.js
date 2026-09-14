@@ -2507,7 +2507,15 @@ window.HCHubModule = {
       // Each day for each target employee
       for (const dStr of dateList) {
         for (const u of targetUsers) {
-          const userLogs = allTimesheets.filter(t => t.employeeId === u.id && t.date === dStr);
+          const uNormName = (u.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const uNormId = (u.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const userLogs = allTimesheets.filter(t => {
+            if (!t) return false;
+            const tId = (t.employeeId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const tName = (t.employeeName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const tDate = t.date ? String(t.date).slice(0, 10) : '';
+            return ((tId && uNormId && tId === uNormId) || (tName && uNormName && tName === uNormName) || t.employeeId === u.id || t.employeeName === u.name) && tDate === dStr;
+          });
           const totalHours = userLogs.reduce((sum, t) => sum + (Number(t.hours) || 0), 0);
           const approvedLeave = DB.getUserApprovedLeaveOnDate(u.id, dStr);
 
@@ -2556,7 +2564,15 @@ window.HCHubModule = {
       // DETAIL SCOPE: Activity log details
       for (const dStr of dateList) {
         for (const u of targetUsers) {
-          const userLogs = allTimesheets.filter(t => t.employeeId === u.id && t.date === dStr);
+          const uNormName = (u.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const uNormId = (u.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const userLogs = allTimesheets.filter(t => {
+            if (!t) return false;
+            const tId = (t.employeeId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const tName = (t.employeeName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const tDate = t.date ? String(t.date).slice(0, 10) : '';
+            return ((tId && uNormId && tId === uNormId) || (tName && uNormName && tName === uNormName) || t.employeeId === u.id || t.employeeName === u.name) && tDate === dStr;
+          });
           const dayTotalHours = userLogs.reduce((sum, t) => sum + (Number(t.hours) || 0), 0);
 
           let dayStatusKey = 'EMPTY';

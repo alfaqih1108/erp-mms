@@ -41,11 +41,22 @@ window.DashboardModule = {
     const cashAdvances = (DB.getCashAdvances ? DB.getCashAdvances() : []) || [];
     const logs = DB.getActivityLogs() || [];
 
+    // Helper normalisasi nama & ID
+    const norm = (s) => (s || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const uIdNorm = norm(user.id);
+    const uNameNorm = norm(user.name);
+    const isUserMatch = (item) => {
+      if (!item) return false;
+      const itemId = norm(item.employeeId || item.requesterId || item.authorId);
+      const itemName = norm(item.employeeName || item.requesterName || item.authorName);
+      return (itemId && uIdNorm && itemId === uIdNorm) || (itemName && uNameNorm && itemName === uNameNorm) || (item.employeeId === user.id) || (item.employeeName === user.name);
+    };
+
     // Aggregations per User & Role
-    const userLeaves = leaves.filter(l => l && (l.employeeId === user.id || l.employeeName === user.name));
-    const userTimesheets = timesheets.filter(t => t && (t.employeeId === user.id || t.employeeName === user.name));
-    const userPrs = prs.filter(p => p && (p.employeeId === user.id || p.employeeName === user.name));
-    const userCashAdvances = cashAdvances.filter(ca => ca && (ca.employeeId === user.id || ca.requesterId === user.id || ca.employeeName === user.name));
+    const userLeaves = leaves.filter(l => isUserMatch(l));
+    const userTimesheets = timesheets.filter(t => isUserMatch(t));
+    const userPrs = prs.filter(p => isUserMatch(p));
+    const userCashAdvances = cashAdvances.filter(ca => isUserMatch(ca));
 
     // Timesheet Real-Time Metrics (Hari Ini vs Rekap Bulan)
     const todayStr = (window.getRealtimeDateStr ? window.getRealtimeDateStr() : new Date().toISOString().slice(0, 10));

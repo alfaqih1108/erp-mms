@@ -40,7 +40,19 @@ window.TimesheetModule = {
       return 0;
     };
 
-    const userTimesheets = allTimesheets.filter(t => t && (t.employeeId === user.id || t.employeeName === user.name));
+    const normalizeStr = (str) => (str || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const userNormName = normalizeStr(user.name);
+    const userNormId = normalizeStr(user.id);
+
+    const userTimesheets = allTimesheets.filter(t => {
+      if (!t) return false;
+      const tId = normalizeStr(t.employeeId);
+      const tName = normalizeStr(t.employeeName);
+      return (tId && userNormId && tId === userNormId) ||
+             (tName && userNormName && tName === userNormName) ||
+             (t.employeeId === user.id) ||
+             (t.employeeName === user.name);
+    });
     
     // Check Integrasi Cuti: Apakah user sedang Cuti Approved pada tanggal yang dipilih?
     const approvedLeave = DB.getUserApprovedLeaveOnDate(user.id, this.selectedDate);
@@ -48,8 +60,9 @@ window.TimesheetModule = {
     const isHalfDayLeave = approvedLeave && approvedLeave.isHalfDay;
 
     // Filter activities for selected date and sort chronologically by startTime
+    const targetDateClean = (this.selectedDate || '').slice(0, 10);
     const dayTimesheets = userTimesheets
-      .filter(t => t.date === this.selectedDate)
+      .filter(t => (t.date ? String(t.date).slice(0, 10) : '') === targetDateClean)
       .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'));
 
     const dayTotalHours = dayTimesheets.reduce((acc, curr) => acc + getHours(curr), 0);

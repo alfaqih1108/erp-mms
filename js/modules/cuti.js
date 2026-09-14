@@ -52,7 +52,14 @@ window.CutiModule = {
     const tenureStr = calculateTenure(user.joinDate);
 
     // 1. Filter Riwayat Pengajuan: HANYA menampilkan data dari user yang sedang login
-    const myLeaves = allLeaves.filter(l => l.employeeId === user.id || l.employeeName === user.name);
+    const myLeaves = allLeaves.filter(l => {
+      if (!l) return false;
+      const lId = (l.employeeId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const uId = (user.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const lName = (l.employeeName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const uName = (user.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return (lId && uId && lId === uId) || (lName && uName && lName === uName) || l.employeeId === user.id || l.employeeName === user.name;
+    });
 
     // Quota Calculations
     const personalQuota = user.quotaPersonalLeave || 3;

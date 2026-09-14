@@ -23,7 +23,14 @@ window.CashAdvanceModule = {
     const allCAs = DB.getCashAdvances();
     
     // User only PR & CA scoping (privasi mandiri karyawan)
-    const userCAs = allCAs.filter(c => c && c.employeeId === user.id);
+    const userCAs = allCAs.filter(c => {
+      if (!c) return false;
+      const cId = (c.employeeId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const uId = (user.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const cName = (c.employeeName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const uName = (user.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return (cId && uId && cId === uId) || (cName && uName && cName === uName) || c.employeeId === user.id || c.employeeName === user.name;
+    });
 
     // Hitung KPI Aggregations
     const totalRequested = userCAs.reduce((acc, c) => acc + (Number(c.amountRequested) || 0), 0);
