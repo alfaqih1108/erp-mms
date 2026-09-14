@@ -27,6 +27,7 @@ window.App = {
     this.applyRoleRestrictions();
     this.initLoginWaveAnimation();
     this.updateCloudBadge();
+    this.initRealtimeSubscription();
     
     // Buka langsung halaman / modul yang terakhir dibuka
     this.switchTab(savedTab, savedSubView);
@@ -47,9 +48,9 @@ window.App = {
 
       let lastSyncTime = Date.now();
 
-      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif atau terlihat (Debounce 5s)
+      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif atau terlihat (Debounce 3s)
       const handleReactivationSync = async () => {
-        if (Date.now() - lastSyncTime < 5000) return;
+        if (Date.now() - lastSyncTime < 3000) return;
         try {
           lastSyncTime = Date.now();
           console.log('🔄 [Multi-Device Auto-Sync] Memuat data terbaru dari Cloud...');
@@ -69,7 +70,7 @@ window.App = {
         }
       });
 
-      // 2. Multi-Device Periodic Background Polling setiap 90 detik (Hanya saat tab aktif)
+      // 2. Multi-Device Periodic Background Polling setiap 45 detik (Hanya saat tab aktif)
       setInterval(async () => {
         if (document.visibilityState === 'hidden') return;
         try {
@@ -80,7 +81,7 @@ window.App = {
         } catch (err) {
           console.warn('Periodic sync notice:', err);
         }
-      }, 90000);
+      }, 45000);
     }
   },
 
@@ -784,7 +785,7 @@ window.App = {
   },
 
   // Main Tab Router
-  switchTab: function(tabId, subView = null) {
+  switchTab: function(tabId, subView = null, isBackgroundRefresh = false) {
     this.currentTab = tabId;
     this.currentSubView = subView;
     localStorage.setItem('erpmms_active_tab', tabId);
@@ -901,7 +902,9 @@ window.App = {
         default:
           DashboardModule.render(container);
       }
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (!isBackgroundRefresh) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } catch (err) {
       console.error('Error rendering tab:', tabId, err);
       container.innerHTML = `
@@ -928,7 +931,48 @@ window.App = {
       this.updateSidebarBadges();
       return;
     }
-    this.switchTab(this.currentTab);
+    this.switchTab(this.currentTab, this.currentSubView, true);
+  },
+
+  // Supabase Realtime Live WebSocket Subscriptions
+  _realtimeChannel: null,
+  initRealtimeSubscription: function() {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
+    try {
+      const client = window.SupabaseConfig.getClient();
+      if (!client || typeof client.channel !== 'function') return;
+
+      if (this._realtimeChannel) {
+        try { client.removeChannel(this._realtimeChannel); } catch (e) {}
+      }
+
+      let debounceTimer = null;
+      const triggerDebouncedSync = () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          try {
+            console.log('⚡ [Supabase Realtime Sync] Menerima update database realtime...');
+            await window.DB.pullLatestFromSupabase();
+            this.updateSidebarBadges();
+            this.updateCloudBadge();
+            this.refreshCurrentTab();
+          } catch (err) {
+            console.warn('Realtime event sync notice:', err);
+          }
+        }, 300);
+      };
+
+      this._realtimeChannel = client.channel('erp-public-sync')
+        .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+          console.log(`⚡ [Realtime Database Event] ${payload.table} - ${payload.eventType}`);
+          triggerDebouncedSync();
+        })
+        .subscribe((status) => {
+          console.log('📡 [Supabase Realtime Status]:', status);
+        });
+    } catch (err) {
+      console.warn('Realtime subscription setup notice:', err);
+    }
   },
 
   updateSidebarBadges: function() {

@@ -3918,13 +3918,26 @@ class DatabaseManager {
     return true;
   }
 
-  deleteTimesheet(id) {
+  async deleteTimesheet(id) {
     if (!Array.isArray(this.data.timesheets)) return false;
     const idx = this.data.timesheets.findIndex(t => t.id === id);
     if (idx !== -1) {
       const deleted = this.data.timesheets.splice(idx, 1)[0];
       this.addLog(`${this.getCurrentUser().name} menghapus log timesheet: ${deleted.activityPreset || deleted.activity} (${deleted.startTime} - ${deleted.endTime})`, 'timesheet');
       this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/timesheets?id=eq.${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus timesheet dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -5908,8 +5921,8 @@ class DatabaseManager {
         fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,va_bank_name,va_balance,notes,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
-        fetch(`${url}/rest/v1/timesheets?select=id,employee_id,employee_name,role,department,date,start_time,end_time,activity,activity_preset,category,status,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
-        fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,purpose,stage,status,settlement,approval_history,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc&limit=10000&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc&limit=5000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/field_issues?select=id,author_id,author_name,date,kitchen_id,kitchen_name,issue_description,status,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/kitchen_daily_statuses?select=*&order=date.desc&limit=10000&offset=0`, { headers })
