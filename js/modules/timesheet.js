@@ -13,6 +13,12 @@
 
 window.TimesheetModule = {
   selectedDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
+  viewModeFilter: 'MY_SELF', // 'MY_SELF' | 'ALL' | specific userId
+
+  changeViewMode: function(mode) {
+    this.viewModeFilter = mode || 'MY_SELF';
+    this.render(document.getElementById('main-content-area'));
+  },
 
   render: function(container) {
     if (!container) return;
@@ -28,6 +34,8 @@ window.TimesheetModule = {
 
     const user = DB.getCurrentUser();
     const allTimesheets = DB.getTimesheets() || [];
+    const allUsers = DB.getUsers() || [];
+    const isLeadership = ['SUPER_ADMIN', 'DIREKTUR_UTAMA', 'DIREKTUR_OPERASIONAL', 'DIREKTUR_KEUANGAN', 'HUMAN_CAPITAL', 'MANAGER_AREA', 'MANAGER_KEUANGAN'].includes(user.role);
     
     const getHours = (t) => {
       if (t.hours !== undefined && t.hours !== null && !isNaN(Number(t.hours))) return Number(t.hours);
@@ -44,15 +52,28 @@ window.TimesheetModule = {
     const userNormName = normalizeStr(user.name);
     const userNormId = normalizeStr(user.id);
 
-    const userTimesheets = allTimesheets.filter(t => {
-      if (!t) return false;
-      const tId = normalizeStr(t.employeeId);
-      const tName = normalizeStr(t.employeeName);
-      return (tId && userNormId && tId === userNormId) ||
-             (tName && userNormName && tName === userNormName) ||
-             (t.employeeId === user.id) ||
-             (t.employeeName === user.name);
-    });
+    let userTimesheets = [];
+    if (this.viewModeFilter === 'ALL') {
+      userTimesheets = allTimesheets;
+    } else if (this.viewModeFilter !== 'MY_SELF') {
+      const targetNorm = normalizeStr(this.viewModeFilter);
+      userTimesheets = allTimesheets.filter(t => {
+        if (!t) return false;
+        const tId = normalizeStr(t.employeeId);
+        const tName = normalizeStr(t.employeeName);
+        return tId === targetNorm || tName === targetNorm;
+      });
+    } else {
+      userTimesheets = allTimesheets.filter(t => {
+        if (!t) return false;
+        const tId = normalizeStr(t.employeeId);
+        const tName = normalizeStr(t.employeeName);
+        return (tId && userNormId && tId === userNormId) ||
+               (tName && userNormName && tName === userNormName) ||
+               (t.employeeId === user.id) ||
+               (t.employeeName === user.name);
+      });
+    }
     
     // Check Integrasi Cuti: Apakah user sedang Cuti Approved pada tanggal yang dipilih?
     const approvedLeave = DB.getUserApprovedLeaveOnDate(user.id, this.selectedDate);
@@ -65,9 +86,14 @@ window.TimesheetModule = {
       .filter(t => (t.date ? String(t.date).slice(0, 10) : '') === targetDateClean)
       .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'));
 
+    const isTeamView = this.viewModeFilter === 'ALL';
+    const selectedUserObj = (this.viewModeFilter !== 'MY_SELF' && this.viewModeFilter !== 'ALL') ? allUsers.find(u => normalizeStr(u.id) === normalizeStr(this.viewModeFilter) || normalizeStr(u.name) === normalizeStr(this.viewModeFilter)) : null;
+    const viewTitle = isTeamView ? 'Seluruh Tim Yayasan & Dapur' : selectedUserObj ? `${selectedUserObj.name}` : user.name;
+    const uniqueEmployeesCount = new Set(dayTimesheets.map(t => t.employeeId || t.employeeName)).size;
+
     const dayTotalHours = dayTimesheets.reduce((acc, curr) => acc + getHours(curr), 0);
     const targetHours = isHalfDayLeave ? 4.0 : 8.0;
-    const progressPercent = Math.min(100, Math.round((dayTotalHours / targetHours) * 100));
+    const progressPercent = isTeamView ? 100 : Math.min(100, Math.round((dayTotalHours / targetHours) * 100));
 
     const totalAllHours = userTimesheets.reduce((acc, curr) => acc + getHours(curr), 0);
     const defaultActivities = DB.getDefaultActivities() || [];
@@ -75,18 +101,43 @@ window.TimesheetModule = {
     container.innerHTML = `
       <div class="animate-blur-in">
         
-        <!-- Top Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 26px; flex-wrap: wrap; gap: 16px;">
+        <!-- Top Header & Filter Controls -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
           <div>
             <div style="display: flex; align-items: center; gap: 8px;">
               <span class="text-mono-badge" style="color: #60A5FA; background: rgba(59, 130, 246, 0.15); padding: 2px 8px; border-radius: 4px; font-size: 11px;">
                 Presensi & Kepatuhan Jam Kerja
               </span>
               <span style="font-size: 11.5px; color: var(--text-muted); font-style: italic;">
-                ● Akun: <strong style="color: #fff;">${user.name}</strong> (${user.roleLabel})
+                ● Akun Aktif: <strong style="color: #fff;">${user.name}</strong> (${user.roleLabel})
               </span>
             </div>
             <h1 style="font-size: 26px; font-weight: 700; margin-top: 4px;">Timesheet & Log Aktivitas Harian</h1>
+          </div>
+
+          <!-- Filter Mode Controls (Pill Switcher & Dropdown) -->
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; background: rgba(14, 18, 28, 0.85); padding: 4px; border-radius: 10px; border: 1px solid rgba(59, 130, 246, 0.3); gap: 4px;">
+              <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; border-radius: 6px; ${this.viewModeFilter === 'MY_SELF' ? 'background: rgba(59,130,246,0.3); color: #60A5FA; border-color: #60A5FA; font-weight: 600;' : 'color: var(--text-muted); border-color: transparent;'}" onclick="TimesheetModule.changeViewMode('MY_SELF')">
+                👤 Log Saya
+              </button>
+              <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; border-radius: 6px; ${this.viewModeFilter === 'ALL' ? 'background: rgba(59,130,246,0.3); color: #60A5FA; border-color: #60A5FA; font-weight: 600;' : 'color: var(--text-muted); border-color: transparent;'}" onclick="TimesheetModule.changeViewMode('ALL')">
+                🌐 Semua Tim (36 Karyawan)
+              </button>
+              <select class="form-control" style="font-size: 11.5px; padding: 4px 8px; width: auto; background: rgba(0,0,0,0.6); border-color: rgba(59,130,246,0.4); color: #fff; border-radius: 6px;" onchange="TimesheetModule.changeViewMode(this.value)">
+                <option value="MY_SELF" ${this.viewModeFilter === 'MY_SELF' ? 'selected' : ''}>Pilih Karyawan Spesifik...</option>
+                <optgroup label="36 Akun Karyawan Yayasan">
+                  ${allUsers.map(u => `
+                    <option value="${u.id}" ${this.viewModeFilter === u.id ? 'selected' : ''}>${u.name} (${u.roleLabel || u.jabatan})</option>
+                  `).join('')}
+                </optgroup>
+              </select>
+            </div>
+
+            <button type="button" class="btn-nalar-primary" style="padding: 6px 14px; font-size: 12px; background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); display: flex; align-items: center; gap: 6px;" onclick="App.triggerManualSync()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Sinkron Cloud</span>
+            </button>
           </div>
         </div>
 
@@ -124,10 +175,20 @@ window.TimesheetModule = {
                   <!-- Day Total Duration Badge (Rata Kiri) -->
                   <div style="display: flex; flex-direction: column; align-items: flex-start; text-align: left;">
                     <span class="text-mono-badge" style="color: ${isFullDayLeave ? '#34D399' : '#60A5FA'}; margin-bottom: 2px;">
-                      ${isFullDayLeave ? 'STATUS HARI INI' : 'TOTAL DURASI HARI ITU'}
+                      ${isTeamView ? 'TOTAL JAM KERJA SELURUH TIM' : isFullDayLeave ? 'STATUS HARI INI' : `TOTAL DURASI (${viewTitle})`}
                     </span>
                     
-                    ${isFullDayLeave ? `
+                    ${isTeamView ? `
+                      <div style="display: flex; align-items: baseline; justify-content: flex-start; gap: 6px; margin-top: 4px; width: 100%;">
+                        <span style="font-size: 34px; font-weight: 700; color: #60A5FA; line-height: 1; font-family: var(--font-mono);">
+                          ${dayTotalHours.toFixed(1)}
+                        </span>
+                        <span style="color: var(--text-muted); font-size: 13px; font-weight: 400; font-family: var(--font-mono);">Jam Kerja Tim</span>
+                      </div>
+                      <div style="font-size: 11.5px; color: #34D399; margin-top: 4px; display: flex; align-items: center; justify-content: flex-start; gap: 5px; width: 100%; text-align: left;">
+                        <span>👥</span><span>${uniqueEmployeesCount} Karyawan Aktif · ${dayTimesheets.length} Entri Tercatat</span>
+                      </div>
+                    ` : isFullDayLeave ? `
                       <div style="display: flex; align-items: center; justify-content: flex-start; gap: 6px; margin-top: 4px; width: 100%;">
                         <span style="font-size: 24px; font-weight: 700; color: #34D399; line-height: 1.2;">
                           🏖️ CUTI RESMI
@@ -205,7 +266,7 @@ window.TimesheetModule = {
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
                   <div>
                     <span class="text-mono-badge" style="color: var(--text-muted);">Summary Log Harian</span>
-                    <h3 style="font-size: 17px; margin-top: 2px;">Aktivitas Tercatat: <span style="color: #60A5FA;">${this.selectedDate}</span></h3>
+                    <h3 style="font-size: 17px; margin-top: 2px;">Aktivitas: <span style="color: #60A5FA;">${this.selectedDate}</span> ${isTeamView ? '(Semua Tim)' : `(${viewTitle})`}</h3>
                   </div>
                   <span style="font-size: 11px; color: var(--text-muted); background: rgba(59,130,246,0.12); padding: 3px 8px; border-radius: 4px;">
                     ${dayTimesheets.length} Entri Terjadwal
@@ -244,13 +305,21 @@ window.TimesheetModule = {
                           </div>
 
                           <div>
-                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                              <span class="text-mono-badge" style="color: #60A5FA; background: rgba(59, 130, 246, 0.12); padding: 3px 8px; border-radius: 4px; font-size: 10px;">
+                            <!-- Employee author badge (shown clearly on each card) -->
+                            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px;">
+                              <span class="text-mono-badge" style="color: #60A5FA; background: rgba(59, 130, 246, 0.18); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                                👤 ${t.employeeName || 'Karyawan'}
+                              </span>
+                              <span style="font-size: 10.5px; color: var(--text-muted);">
+                                (${t.role ? t.role.replace(/_/g, ' ') : 'Staff'})
+                              </span>
+                              <span class="text-mono-badge" style="color: #93C5FD; background: rgba(59, 130, 246, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 10px;">
                                 ${t.activityPreset || 'Aktivitas Kerja'}
                               </span>
                               <span style="font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);">${t.id}</span>
                             </div>
-                            <h4 style="font-size: 14.5px; color: #fff; margin: 6px 0 3px 0; font-weight: 500;">${t.activity}</h4>
+
+                            <h4 style="font-size: 14.5px; color: #fff; margin: 4px 0 3px 0; font-weight: 500;">${t.activity}</h4>
                             <div style="font-size: 11px; color: var(--text-dim);">
                               Status: <strong style="color: ${t.status === 'APPROVED' ? '#34D399' : '#FBBF24'};">${t.status}</strong> · Reviewer: ${t.approver || 'Manager'}
                             </div>
@@ -264,7 +333,7 @@ window.TimesheetModule = {
                           <span class="badge-status ${t.status === 'APPROVED' ? 'badge-approved' : t.status === 'PENDING' ? 'badge-pending' : 'badge-rejected'}">
                             ${t.status}
                           </span>
-                          <button class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; color: var(--text-dim);" title="Hapus aktivitas ini" onclick="event.stopPropagation(); TimesheetModule.deleteEntry('${t.id}')">
+                          <button class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; color: var(--text-dim);" title="Hapus aktivitas ini" onclick="event.stopPropagation(); TimesheetModule.deleteEntry('${t.id}', '${t.employeeId}')">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                           </button>
                         </div>
@@ -708,7 +777,17 @@ window.TimesheetModule = {
     }
   },
 
-  deleteEntry: function(tsId) {
+  deleteEntry: function(tsId, authorId) {
+    const user = DB.getCurrentUser();
+    const normalizeStr = (str) => (str || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isOwner = !authorId || authorId === user.id || normalizeStr(authorId) === normalizeStr(user.id) || normalizeStr(authorId) === normalizeStr(user.name);
+    const isLeadership = ['SUPER_ADMIN', 'DIREKTUR_UTAMA', 'DIREKTUR_OPERASIONAL', 'DIREKTUR_KEUANGAN', 'HUMAN_CAPITAL'].includes(user.role);
+    
+    if (!isOwner && !isLeadership) {
+      App.showToast('Anda hanya dapat menghapus catatan timesheet milik Anda sendiri.', 'warn');
+      return;
+    }
+
     if (confirm('Apakah Anda yakin ingin menghapus catatan aktivitas ini?')) {
       const success = DB.deleteTimesheet(tsId);
       if (success) {

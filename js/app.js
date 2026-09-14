@@ -47,24 +47,31 @@ window.App = {
 
       let lastSyncTime = Date.now();
 
-      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif (dengan Debounce 60s)
-      window.addEventListener('focus', async () => {
-        if (Date.now() - lastSyncTime < 60000) return; // Hindari duplicate sync jika baru saja aktif
+      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif atau terlihat (Debounce 5s)
+      const handleReactivationSync = async () => {
+        if (Date.now() - lastSyncTime < 5000) return;
         try {
           lastSyncTime = Date.now();
+          console.log('🔄 [Multi-Device Auto-Sync] Memuat data terbaru dari Cloud...');
           await window.DB.pullLatestFromSupabase();
           this.updateSidebarBadges();
           this.updateCloudBadge();
           this.refreshCurrentTab();
         } catch (err) {
-          console.warn('Focus sync notice:', err);
+          console.warn('Reactivation sync notice:', err);
+        }
+      };
+
+      window.addEventListener('focus', handleReactivationSync);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          handleReactivationSync();
         }
       });
 
-      // 2. Multi-Device Periodic Background Polling setiap 180 detik / 3 menit (Hanya saat tab terlihat/aktif)
-      // Mengurangi beban Egress API hingga 66% tanpa mengorbankan konsistensi data multi-perangkat
+      // 2. Multi-Device Periodic Background Polling setiap 90 detik (Hanya saat tab aktif)
       setInterval(async () => {
-        if (document.visibilityState === 'hidden') return; // Hemat Egress & CPU saat tab di-minimize / background
+        if (document.visibilityState === 'hidden') return;
         try {
           lastSyncTime = Date.now();
           await window.DB.pullLatestFromSupabase();
@@ -73,7 +80,7 @@ window.App = {
         } catch (err) {
           console.warn('Periodic sync notice:', err);
         }
-      }, 180000);
+      }, 90000);
     }
   },
 
@@ -544,6 +551,23 @@ window.App = {
     this.showToast('Dokumen SOP Panduan Operasional ERP Yayasan dapat diakses setelah login di menu HC Hub.', 'info');
   },
 
+  triggerManualSync: async function() {
+    this.showToast('🔄 Menyinkronkan data multi-perangkat dari Cloud Supabase...', 'info');
+    if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+      try {
+        await window.DB.pullLatestFromSupabase();
+        this.updateUserHeader();
+        this.applyRoleRestrictions();
+        this.updateSidebarBadges();
+        this.updateCloudBadge();
+        this.refreshCurrentTab();
+        this.showToast('✅ Data Cloud berhasil disinkronkan & diperbarui!', 'success');
+      } catch (err) {
+        this.showToast('⚠️ Gagal menyinkronkan data Cloud: ' + (err.message || err), 'warn');
+      }
+    }
+  },
+
   handleLoginAs: function(userId) {
     localStorage.setItem('erpmms_auth_user_id', userId);
     DB.switchRole(userId);
@@ -559,6 +583,17 @@ window.App = {
     this.refreshCurrentTab();
 
     this.showToast(`Login berhasil sebagai: ${user.name} (${user.roleLabel})`, 'success');
+
+    // Tarik data cloud terbaru seketika saat beralih akun agar data selalu sinkron multi-devices
+    if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
+      window.DB.pullLatestFromSupabase().then(() => {
+        this.updateUserHeader();
+        this.applyRoleRestrictions();
+        this.updateSidebarBadges();
+        this.updateCloudBadge();
+        this.refreshCurrentTab();
+      }).catch(e => console.warn('Sync on switch user notice:', e));
+    }
   },
 
   handleCredentialLogin: async function(e) {
