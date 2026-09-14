@@ -371,25 +371,47 @@ window.DashboardModule = {
              ========================================================================== -->
         ${(user.role === 'MANAGER_AREA' || user.role === 'DIREKTUR_OPERASIONAL' || user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') ? (function() {
           const allIssues = DB.getFieldIssues() || [];
-          
-          // Filter to 3 most recent unique dates
-          const allDates = Array.from(new Set(allIssues.map(i => i.date))).sort().reverse();
-          const recent3Dates = allDates.slice(0, 3);
-          const recentIssues = allIssues.filter(i => recent3Dates.includes(i.date));
-          const archivedIssuesCount = allIssues.length - recentIssues.length;
+          const todayDateStr = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10));
+          const todayTime = new Date(todayDateStr).getTime();
+
+          // Helper hitung selisih hari terhadap tanggal hari ini
+          const getDaysDiff = (dateStr) => {
+            if (!dateStr) return 999;
+            const targetTime = new Date(dateStr.slice(0, 10)).getTime();
+            if (isNaN(targetTime)) return 999;
+            return Math.floor((todayTime - targetTime) / (1000 * 60 * 60 * 24));
+          };
+
+          // Aturan Tampilan di Dashboard Utama:
+          // 1. Kendala yang BELUM SELESAI (Belum Direspon / Ditanggapi) -> SELALU TAMPIL sampai diselesaikan.
+          // 2. Kendala yang SUDAH SELESAI (Followed Up / 100% Poin Selesai) -> HANYA TAMPIL MAKSIMAL 2 HARI (diffDays <= 2).
+          const activeDashboardIssues = allIssues.filter(issue => {
+            const isFullyResolved = (issue.status === 'FOLLOWED_UP') || 
+              (Array.isArray(issue.points) && issue.points.length > 0 && issue.points.every(p => (typeof p === 'object' ? p.status === 'SUDAH_SELESAI' : false)));
+
+            if (!isFullyResolved) {
+              return true; // Selalu tampilkan kendala yang masih menggantung / butuh respon
+            } else {
+              // Jika sudah selesai, hanya tampilkan maksimal 2 hari (hari ini & kemarin)
+              const diffDays = getDaysDiff(issue.date);
+              return diffDays >= 0 && diffDays <= 2;
+            }
+          });
+
+          const archivedIssuesCount = allIssues.length - activeDashboardIssues.length;
 
           const filter = DashboardModule.issueFilter || 'ALL';
-          const pendingCount = recentIssues.filter(i => i.status === 'PENDING').length;
-          const inProgressCount = recentIssues.filter(i => i.status === 'IN_PROGRESS').length;
-          const followedUpCount = recentIssues.filter(i => i.status === 'FOLLOWED_UP').length;
+          const pendingCount = activeDashboardIssues.filter(i => i.status === 'PENDING').length;
+          const inProgressCount = activeDashboardIssues.filter(i => i.status === 'IN_PROGRESS').length;
+          const followedUpCount = activeDashboardIssues.filter(i => i.status === 'FOLLOWED_UP').length;
 
           const filteredIssues = filter === 'ALL' 
-            ? recentIssues 
+            ? activeDashboardIssues 
             : filter === 'PENDING' 
-            ? recentIssues.filter(i => i.status === 'PENDING') 
+            ? activeDashboardIssues.filter(i => i.status === 'PENDING') 
             : filter === 'IN_PROGRESS'
-            ? recentIssues.filter(i => i.status === 'IN_PROGRESS')
-            : recentIssues.filter(i => i.status === 'FOLLOWED_UP');
+            ? activeDashboardIssues.filter(i => i.status === 'IN_PROGRESS')
+            : activeDashboardIssues.filter(i => i.status === 'FOLLOWED_UP');
 
           return `
             <div class="nalar-card hud-corner-box aura-box-amber" style="margin-bottom: 22px; padding: 16px 20px; border-left: 4px solid #F59E0B;">
@@ -405,7 +427,7 @@ window.DashboardModule = {
                         🚨 Monitoring Kendala Lapangan
                       </span>
                       <span style="font-size: 11px; color: #60A5FA; font-weight: 600; font-family: var(--font-mono);">
-                        (3 Hari Terakhir: ${recent3Dates.join(' · ') || 'Terbaru'})
+                        (Kendala Aktif & Selesai Maks 2 Hari)
                       </span>
                     </div>
                     <h3 style="font-size: 17px; font-weight: 700; color: #fff; margin-top: 3px; margin-bottom: 0;">
@@ -424,8 +446,8 @@ window.DashboardModule = {
                 <div class="approval-filter-bar" style="margin-bottom: 12px; gap: 6px;">
                   <button type="button" class="approval-filter-pill pill-all ${filter === 'ALL' ? 'active' : ''}" style="padding: 4px 10px; font-size: 11.5px;" onclick="DashboardModule.setIssueFilter('ALL')">
                     <span class="filter-dot dot-orange"></span>
-                    <span>Semua (3 Hari)</span>
-                    <span class="filter-badge" style="font-size: 10px; padding: 1px 5px;">${recentIssues.length}</span>
+                    <span>Semua Aktif</span>
+                    <span class="filter-badge" style="font-size: 10px; padding: 1px 5px;">${activeDashboardIssues.length}</span>
                   </button>
                   <button type="button" class="approval-filter-pill pill-rejected ${filter === 'PENDING' ? 'active' : ''}" style="padding: 4px 10px; font-size: 11.5px;" onclick="DashboardModule.setIssueFilter('PENDING')">
                     <span class="filter-dot dot-red"></span>
@@ -439,7 +461,7 @@ window.DashboardModule = {
                   </button>
                   <button type="button" class="approval-filter-pill pill-settled ${filter === 'FOLLOWED_UP' ? 'active' : ''}" style="padding: 4px 10px; font-size: 11.5px;" onclick="DashboardModule.setIssueFilter('FOLLOWED_UP')">
                     <span class="filter-dot dot-emerald"></span>
-                    <span>Selesai</span>
+                    <span>Selesai (≤ 2 Hari)</span>
                     <span class="filter-badge" style="font-size: 10px; padding: 1px 5px;">${followedUpCount}</span>
                   </button>
                 </div>
@@ -449,7 +471,7 @@ window.DashboardModule = {
                   <div style="text-align: center; padding: 18px 12px; border: 1px dashed var(--border-subtle); border-radius: var(--radius-sm); background: rgba(0,0,0,0.2);">
                     <span style="font-size: 18px;">✨</span>
                     <span style="color: var(--text-secondary); font-size: 12.5px; margin-left: 6px;">
-                      Tidak ada laporan kendala aktif dalam 3 hari terakhir.
+                      Tidak ada kendala aktif yang membutuhkan tindakan. Seluruh riwayat kendala lampau dapat dilihat di halaman Admin Hub.
                     </span>
                   </div>
                 ` : `
@@ -546,7 +568,7 @@ window.DashboardModule = {
                 <!-- Compact Footer Note -->
                 ${archivedIssuesCount > 0 ? `
                   <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-dim); flex-wrap: wrap; gap: 6px;">
-                    <span>📂 Menampilkan laporan kendala 3 hari terkini. Ada <strong>${archivedIssuesCount} laporan terdahulu</strong> di arsip.</span>
+                    <span>📂 Kendala yang sudah selesai > 2 hari otomatis diarsipkan dari dashboard. Ada <strong>${archivedIssuesCount} riwayat kendala</strong> di arsip.</span>
                     <a href="javascript:void(0)" onclick="App.switchTab('admin-kendala')" style="color: #60A5FA; font-weight: 600; text-decoration: underline;">
                       Buka Seluruh Rekap Kendala di Admin Hub →
                     </a>
