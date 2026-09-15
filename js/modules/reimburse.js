@@ -491,19 +491,6 @@ window.ReimburseModule = {
           </div>
         </div>
       </div>
-
-      <!-- Lightbox Struk / Bukti Bayar Preview -->
-      <div id="modal-reimburse-lightbox" class="modal-backdrop">
-        <div class="modal-box" style="max-width: 800px; padding: 0; overflow: hidden; background: #0b0f19; border: 1px solid rgba(255,255,255,0.15);">
-          <div style="padding: 14px 20px; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-size: 14px; font-weight: 600; color: #fff;" id="rmb-lightbox-title">Lampiran Struk / Bukti Bayar</div>
-            <button class="modal-close-btn" onclick="App.closeModal('modal-reimburse-lightbox')">✕</button>
-          </div>
-          <div id="rmb-lightbox-content" style="padding: 20px; text-align: center; max-height: 75vh; overflow: auto; display: flex; align-items: center; justify-content: center; background: #050811;">
-            <!-- Image or PDF rendered here -->
-          </div>
-        </div>
-      </div>
     `;
   },
 
@@ -534,7 +521,11 @@ window.ReimburseModule = {
 
     let html = `<option value="">-- Pilih Dapur Tujuan Operasional --</option>`;
     options.forEach(k => {
-      const label = `${k.namaDapur || k.name} (${k.kotaKabupaten || k.location || '-'})`;
+      const idSppg = k.idSppg || k.id || '';
+      const loc = k.kotaKabupaten || k.location || '';
+      const label = idSppg 
+        ? `${idSppg} — ${k.namaDapur || k.name}${loc ? ` (${loc})` : ''}`
+        : `${k.namaDapur || k.name}${loc ? ` (${loc})` : ''}`;
       html += `<option value="${label}">${label}</option>`;
     });
 
@@ -957,20 +948,74 @@ window.ReimburseModule = {
     App.openModal('modal-reimburse-detail');
   },
 
-  previewAttachment: function(id) {
-    const rmb = DB.getReimbursementById(id);
-    if (!rmb || !rmb.attachmentUrl) {
-      App.showToast('Tidak ada lampiran bukti bayar pada berkas ini.', 'info');
+  previewAttachment: async function(id) {
+    let rmb = DB.getReimbursementById(id);
+    if (!rmb) {
+      const all = DB.getReimbursements() || [];
+      rmb = all.find(r => r.id === id);
+    }
+    if (!rmb) {
+      App.showToast('Data pengajuan reimbursement tidak ditemukan.', 'warn');
       return;
     }
 
-    this.previewCustomImage(rmb.attachmentUrl, `Struk Bukti Bayar — ${rmb.id} (${rmb.itemName})`);
+    let url = rmb.attachmentUrl;
+    const fileName = rmb.attachmentName || `Struk_${rmb.id}`;
+
+    // Jika attachmentUrl belum ter-cache lokal, ambil on-demand dari Supabase Cloud
+    if (!url && rmb.attachmentName) {
+      App.showToast('Memuat berkas bukti bayar dari cloud...', 'info');
+      url = await DB.fetchReimbursementAttachment(id);
+    }
+
+    if (!url) {
+      App.showToast('Tidak ada lampiran struk / bukti bayar pada berkas ini.', 'info');
+      return;
+    }
+
+    this.previewCustomImage(url, `Struk Bukti Bayar — ${rmb.id} (${rmb.itemName})`, fileName);
   },
 
-  previewCustomImage: function(url, title = 'Lampiran Dokumen') {
+  ensureLightboxModalExists: function() {
+    if (document.getElementById('modal-reimburse-lightbox')) return;
+    const modalDiv = document.createElement('div');
+    modalDiv.id = 'modal-reimburse-lightbox';
+    modalDiv.className = 'modal-backdrop';
+    modalDiv.setAttribute('onclick', "App.closeModal('modal-reimburse-lightbox')");
+    modalDiv.innerHTML = `
+      <div class="modal-box" style="max-width: 720px; width: 92%; padding: 0; overflow: hidden; background: #0c101d; border: 1px solid rgba(16, 185, 129, 0.35); box-shadow: 0 20px 60px rgba(0,0,0,0.85); border-radius: 12px;" onclick="event.stopPropagation()">
+        <div class="modal-header" style="padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); background: #111827; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 16px;">🧾</span>
+            <div style="font-size: 14px; font-weight: 600; color: #fff;" id="rmb-lightbox-title">Lampiran Struk / Bukti Bayar</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <a id="rmb-lightbox-download-link" href="#" target="_blank" download="bukti_bayar" style="display: none; padding: 5px 12px; font-size: 11.5px; font-weight: 600; color: #34D399; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); border-radius: 6px; text-decoration: none; align-items: center; gap: 4px;">
+              ⬇️ Unduh / Buka Asli
+            </a>
+            <button type="button" class="modal-close-btn" onclick="App.closeModal('modal-reimburse-lightbox')" style="background: none; border: none; color: #94A3B8; font-size: 18px; cursor: pointer; padding: 4px;">✕</button>
+          </div>
+        </div>
+        <div id="rmb-lightbox-content" style="padding: 20px; text-align: center; max-height: 75vh; overflow: auto; display: flex; align-items: center; justify-content: center; background: #050811;"></div>
+      </div>
+    `;
+    document.body.appendChild(modalDiv);
+  },
+
+  previewCustomImage: function(url, title = 'Lampiran Dokumen', fileName = 'bukti_bayar') {
+    this.ensureLightboxModalExists();
+
     const titleEl = document.getElementById('rmb-lightbox-title');
     const contentEl = document.getElementById('rmb-lightbox-content');
+    const dlLink = document.getElementById('rmb-lightbox-download-link');
+
     if (titleEl) titleEl.textContent = title;
+
+    if (dlLink) {
+      dlLink.href = url;
+      dlLink.download = fileName;
+      dlLink.style.display = 'inline-flex';
+    }
 
     if (contentEl) {
       if (url.startsWith('data:application/pdf') || url.endsWith('.pdf')) {
@@ -981,7 +1026,7 @@ window.ReimburseModule = {
         `;
       } else {
         contentEl.innerHTML = `
-          <img src="${url}" alt="Preview" style="max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+          <img src="${url}" alt="Pratinjau Struk" style="max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
         `;
       }
     }

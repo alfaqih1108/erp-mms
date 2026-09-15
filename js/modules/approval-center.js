@@ -576,7 +576,7 @@ window.ApprovalCenterModule = {
 
                       <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
                         <span>💳 Rekening: <strong>${r.bankName}</strong> (${r.bankAccountNo} a.n ${r.bankAccountName})</span>
-                        ${r.attachmentUrl ? `
+                        ${(r.attachmentUrl || r.attachmentName) ? `
                           <span>·</span>
                           <button type="button" class="btn-preview-link" onclick="ReimburseModule.previewAttachment('${r.id}')" style="color: #34D399; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
                             <span>📎 Lihat Struk Bukti Bayar ↗</span>
@@ -713,7 +713,7 @@ window.ApprovalCenterModule = {
                           ` : ''}
                           ${isPR && item.raw && (item.raw.attachmentName || item.raw.attachmentUrl) ? `
                           ` : ''}
-                          ${isRMB && item.raw && item.raw.attachmentUrl ? `
+                          ${isRMB && item.raw && (item.raw.attachmentUrl || item.raw.attachmentName) ? `
                             <span>·</span>
                             <button type="button" class="btn-preview-link" style="color: #34D399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="ReimburseModule.previewAttachment('${item.id}')">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -1639,6 +1639,19 @@ window.ApprovalCenterModule = {
     App.closeModal('modal-rmb-disburse');
     App.showToast(`Klaim Reimburse ${id} telah dicairkan dan berstatus SETTLED!`, 'success');
     App.refreshCurrentTab();
+  },
+
+  previewReimburseAttachment: function(id) {
+    if (window.ReimburseModule && typeof window.ReimburseModule.previewAttachment === 'function') {
+      window.ReimburseModule.previewAttachment(id);
+    } else {
+      const rmb = DB.getReimbursementById(id);
+      if (rmb && rmb.attachmentUrl) {
+        window.open(rmb.attachmentUrl, '_blank');
+      } else {
+        App.showToast('Lampiran bukti bayar tidak tersedia.', 'warn');
+      }
+    }
   },
 
   // =========================================================================
