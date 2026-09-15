@@ -148,6 +148,32 @@ window.ApprovalCenterModule = {
       }
     });
 
+    // 4. REIMBURSEMENTS (KLAIM BIAYA OPERASIONAL)
+    const rmbs = DB.getReimbursements() || [];
+    rmbs.forEach(r => {
+      const userStep = Array.isArray(r.approvalHistory) ? r.approvalHistory.slice().reverse().find(isUserApprovalActor) : null;
+      if (userStep) {
+        const timestamp = userStep.timestamp || (r.disbursementDetails ? r.disbursementDetails.disbursedAt : r.updatedAt) || r.createdAt || '-';
+        const action = userStep.action || r.status;
+        history.push({
+          type: 'REIMBURSE',
+          id: r.id,
+          date: r.createdAt,
+          employeeName: r.employeeName,
+          department: r.department || r.employeeRole,
+          title: `Klaim: ${r.itemName} (${r.quantity} Unit) — Rp ${(r.subtotal || 0).toLocaleString('id-ID')}`,
+          summary: `Kategori: ${r.category} · Dapur: ${r.targetKitchen} · Tgl Beli: ${r.purchaseDate}`,
+          stage: r.stage,
+          status: r.status,
+          decision: r.hasAdjustment ? 'ADJUSTED_APPROVED' : action,
+          decisionTimestamp: timestamp,
+          approverName: userStep.actorName || user.name,
+          notes: userStep.notes || '-',
+          raw: r
+        });
+      }
+    });
+
     // Urutkan dari keputusan approval terbaru
     return history.sort((a, b) => (b.decisionTimestamp || '').localeCompare(a.decisionTimestamp || ''));
   },
@@ -159,59 +185,68 @@ window.ApprovalCenterModule = {
     const leaves = DB.getLeaves() || [];
     const prs = DB.getItemRequests() || [];
     const cas = DB.getCashAdvances() || [];
+    const rmbs = DB.getReimbursements() || [];
 
     // Filter Items Relevan sesuai Hak Akses Role (Antrean Pending)
     let relevantLeaves = [];
     let relevantPrs = [];
     let relevantCAs = [];
+    let relevantRmbs = [];
 
     // 1. Human Capital: Cuti tahap HC
     if (user.role === 'HUMAN_CAPITAL') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'HC_REVIEW' || l.stage === 'HC_FINAL'));
     }
-    // 2. Direktur Keuangan: Cuti Keuangan Tahap 1 + PR Tahap Direktur + Cash Advance Tahap Direktur
+    // 2. Direktur Keuangan: Cuti Keuangan Tahap 1 + PR Tahap Direktur + Cash Advance Tahap Direktur + Reimburse Tahap Direktur
     else if (user.role === 'DIREKTUR_KEUANGAN') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW'));
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL');
       relevantCAs = cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW');
+      relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'DIRECTOR_APPROVAL');
     }
-    // 3. Direktur Operasional: Cuti Manager/Keu + PR Tahap Direktur + Cash Advance Tahap Direktur
+    // 3. Direktur Operasional: Cuti Manager/Keu + PR Tahap Direktur + Cash Advance Tahap Direktur + Reimburse Tahap Direktur
     else if (user.role === 'DIREKTUR_OPERASIONAL') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_OPS_OR_KEU_REVIEW' || l.stage === 'DIR_KEU_REVIEW'));
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL');
       relevantCAs = cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW');
+      relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'DIRECTOR_APPROVAL');
     }
-    // 4. Manager Area: PR & Cuti dari Surveyor, Perwakilan Yayasan, Staff Operasional, & Maker Dapur
+    // 4. Manager Area: PR, Cuti & Reimburse Jalur 1 dari Surveyor, Perwakilan Yayasan, Staff Operasional, & Maker Dapur
     else if (user.role === 'MANAGER_AREA') {
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'SURVEYOR' || p.role === 'PERWAKILAN_YAYASAN' || p.role === 'STAFF_OPERASIONAL' || p.role === 'MAKER_YAYASAN'));
       relevantLeaves = leaves.filter(l => l.status === 'PENDING' && l.stage === 'MANAGER_AREA_REVIEW' && (l.role === 'SURVEYOR' || l.role === 'PERWAKILAN_YAYASAN' || l.role === 'STAFF_OPERASIONAL' || l.role === 'MAKER_YAYASAN'));
+      relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'MANAGER_APPROVAL' && r.workflowType === 'FIELD_JALUR_1');
     }
     // 5. Manager Keuangan: PR dari area lain jika ada delegasi
     else if (user.role === 'MANAGER_KEUANGAN') {
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && p.role !== 'FAT_OFFICER' && p.role !== 'STAFF_AHLI_KEUANGAN');
     }
-    // 6. FAT Officer: Pencairan Kasbon & Monitoring / Verifikasi LPJ Kasbon
+    // 6. FAT Officer: Pencairan Kasbon, Verifikasi LPJ Kasbon, & Pencairan Transfer Reimbursement (Settlement)
     else if (user.role === 'FAT_OFFICER') {
       relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
+      relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FAT_DISBURSEMENT');
     }
-    // 7. Staff Ahli Keuangan: Verifikasi Anggaran PR (Level 2 PR)
+    // 7. Staff Ahli Keuangan: Verifikasi Anggaran PR & Verifikasi Reimburse Jalur 1
     else if (user.role === 'STAFF_AHLI_KEUANGAN') {
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION');
+      relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FINANCE_VERIFICATION');
     }
     // 8. Direktur Utama & Super Admin: Oversight Semua
     else if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING');
       relevantPrs = prs.filter(p => p.status === 'PENDING');
       relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
+      relevantRmbs = rmbs.filter(r => r.status === 'PENDING');
     }
 
-    const totalPending = relevantLeaves.length + relevantPrs.length + relevantCAs.length;
+    const totalPending = relevantLeaves.length + relevantPrs.length + relevantCAs.length + relevantRmbs.length;
 
     // Dapatkan data riwayat approval saya
     const allHistory = this.getMyApprovalHistory(user);
     const historyLeaves = allHistory.filter(h => h.type === 'LEAVE');
     const historyPrs = allHistory.filter(h => h.type === 'PR');
     const historyCAs = allHistory.filter(h => h.type === 'CA');
+    const historyRmbs = allHistory.filter(h => h.type === 'REIMBURSE');
     const totalHistory = allHistory.length;
 
     const showExportBtn = this.isExportAllowed(user.role);
@@ -295,6 +330,12 @@ window.ApprovalCenterModule = {
             <span class="filter-dot dot-emerald"></span>
             <span>Cash Advance (Kasbon)</span>
             <span class="filter-badge">${this.activeTab === 'PENDING' ? relevantCAs.length : historyCAs.length}</span>
+          </button>
+
+          <button class="approval-filter-pill pill-rmb ${this.activeFilter === 'REIMBURSE' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('REIMBURSE')" style="${this.activeFilter === 'REIMBURSE' ? 'background: rgba(16, 185, 129, 0.2); border-color: #10B981; color: #34D399;' : ''}">
+            <span class="filter-dot" style="background: #10B981;"></span>
+            <span>Klaim Reimburse</span>
+            <span class="filter-badge" style="background: rgba(16, 185, 129, 0.3); color: #34D399;">${this.activeTab === 'PENDING' ? relevantRmbs.length : historyRmbs.length}</span>
           </button>
         </div>
 
@@ -486,6 +527,98 @@ window.ApprovalCenterModule = {
                 </div>
               `;
             }).join('') : ''}
+
+            <!-- Pending Reimbursements (Klaim Biaya Operasional) -->
+            ${(this.activeFilter === 'ALL' || this.activeFilter === 'REIMBURSE') ? relevantRmbs.map(r => {
+              const isManagerStage = (r.stage === 'MANAGER_APPROVAL');
+              const isFinanceStage = (r.stage === 'FINANCE_VERIFICATION');
+              const isDirectorStage = (r.stage === 'DIRECTOR_APPROVAL');
+              const isDisburseStage = (r.stage === 'FAT_DISBURSEMENT');
+
+              const stageName = isManagerStage 
+                ? '1. Review Manager Area' 
+                : isFinanceStage 
+                ? '2. Verifikasi Staf Ahli Keuangan' 
+                : isDirectorStage 
+                ? '3. Otorisasi Direksi' 
+                : '4. Pencairan Transfer FAT';
+
+              return `
+                <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #10B981; margin-bottom: 0;">
+                  <div style="display: flex; align-items: flex-start; gap: 16px;">
+                    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; color: #34D399; flex-shrink: 0; font-size: 20px;">
+                      🧾
+                    </div>
+                    <div>
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span class="text-mono-badge" style="color: #34D399;">REIMBURSE · ${r.id}</span>
+                        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${r.createdAt}</span>
+                        <span style="font-size: 10px; color: #A7F3D0; background: rgba(16,185,129,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                          Tahap: ${stageName}
+                        </span>
+                        <span style="font-size: 10px; color: #FCD34D; background: rgba(245,158,11,0.15); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                          ${r.workflowType === 'FIELD_JALUR_1' ? 'Jalur 1: Lapangan / Dapur' : 'Jalur 2: Kantor / Internal'}
+                        </span>
+                      </div>
+
+                      <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
+                        ${r.itemName} (${r.quantity} Unit) — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(r.subtotal || 0).toLocaleString('id-ID')}</span>
+                        ${r.hasAdjustment ? `<span style="font-size: 10.5px; color: #FCD34D; background: rgba(245,158,11,0.2); padding: 1px 6px; border-radius: 3px; margin-left: 6px;">✏️ Penyesuaian Nominal</span>` : ''}
+                      </h4>
+
+                      <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
+                        Pemohon: <strong>${r.employeeName}</strong> (${r.employeeRoleLabel || r.employeeRole}) · Kategori: <strong style="color: #FCD34D;">${r.category}</strong>
+                      </div>
+
+                      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+                        🍳 Dapur: <strong style="color: #CBD5E1;">${r.targetKitchen}</strong> · Tgl Beli: <strong style="color: #fff; font-family: var(--font-mono);">${r.purchaseDate}</strong>
+                      </div>
+
+                      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+                        <span>💳 Rekening: <strong>${r.bankName}</strong> (${r.bankAccountNo} a.n ${r.bankAccountName})</span>
+                        ${r.attachmentUrl ? `
+                          <span>·</span>
+                          <button type="button" class="btn-preview-link" onclick="ReimburseModule.previewAttachment('${r.id}')" style="color: #34D399; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                            <span>📎 Lihat Struk Bukti Bayar ↗</span>
+                          </button>
+                        ` : ''}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Action Buttons per Stage -->
+                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectReimburse('${r.id}')">
+                      ✕ Tolak
+                    </button>
+
+                    ${(isFinanceStage || isDirectorStage) ? `
+                      <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustReimburseModal('${r.id}')">
+                        ✏️ Setujui dgn Penyesuaian
+                      </button>
+                    ` : ''}
+
+                    ${isManagerStage ? `
+                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); border-color: #60A5FA; color: #fff; font-weight: 600;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
+                        ✓ Setujui & Teruskan ke Staf Ahli Keu
+                      </button>
+                    ` : isFinanceStage ? `
+                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
+                        ✓ Verifikasi Sah & Teruskan ke Direksi
+                      </button>
+                    ` : isDirectorStage ? `
+                      <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
+                        👑 Otorisasi & Teruskan ke FAT
+                      </button>
+                    ` : isDisburseStage ? `
+                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseReimburseModal('${r.id}')">
+                        💸 Transfer & Selesaikan Klaim (Settlement)
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              `;
+            }).join('') : ''}
           </div>
         ` : `
           <!-- TAB KONTEN 2: RIWAYAT APPROVAL SAYA (APPROVED & PROCESSED AUDIT LOG) -->
@@ -511,9 +644,10 @@ window.ApprovalCenterModule = {
                 const isTS = (item.type === 'TIMESHEET');
                 const isPR = (item.type === 'PR');
                 const isCA = (item.type === 'CA');
+                const isRMB = (item.type === 'REIMBURSE');
 
-                const themeColor = isLeave ? '#A78BFA' : isTS ? '#60A5FA' : isPR ? '#FCD34D' : '#34D399';
-                const typeLabel = isLeave ? 'CUTI / IZIN' : isTS ? 'TIMESHEET' : isPR ? 'PENGADAAN BARANG (PR)' : 'CASH ADVANCE (KASBON)';
+                const themeColor = isLeave ? '#A78BFA' : isTS ? '#60A5FA' : isPR ? '#FCD34D' : isCA ? '#34D399' : '#10B981';
+                const typeLabel = isLeave ? 'CUTI / IZIN' : isTS ? 'TIMESHEET' : isPR ? 'PENGADAAN BARANG (PR)' : isCA ? 'CASH ADVANCE (KASBON)' : 'KLAIM REIMBURSEMENT';
 
                 const isApproved = (item.decision === 'APPROVED' || item.status === 'APPROVED' || item.status === 'COMPLETED' || item.status === 'SETTLED');
                 const isRejected = (item.decision === 'REJECTED' || item.status === 'REJECTED');
@@ -578,10 +712,12 @@ window.ApprovalCenterModule = {
                             </button>
                           ` : ''}
                           ${isPR && item.raw && (item.raw.attachmentName || item.raw.attachmentUrl) ? `
+                          ` : ''}
+                          ${isRMB && item.raw && item.raw.attachmentUrl ? `
                             <span>·</span>
-                            <button type="button" class="btn-preview-link" style="color: #FCD34D; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="PengajuanBarangModule.openLightbox('${item.id}', '${item.raw.itemName}')">
+                            <button type="button" class="btn-preview-link" style="color: #34D399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="ReimburseModule.previewAttachment('${item.id}')">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                              <span>Lihat Foto Barang ↗</span>
+                              <span>Lihat Struk ↗</span>
                             </button>
                           ` : ''}
                         </div>
@@ -589,7 +725,7 @@ window.ApprovalCenterModule = {
 
                       <!-- Tombol Action Detail Tracker -->
                       <div style="display: flex; align-items: center; gap: 8px;">
-                        <button type="button" class="btn-nalar-secondary" style="padding: 6px 12px; font-size: 11.5px; border-color: rgba(255,255,255,0.15);" onclick="${isCA ? `App.openApprovalTracker('CA', '${item.id}')` : `App.showApprovalTracker('${item.type.toLowerCase()}', '${item.id}')`}">
+                        <button type="button" class="btn-nalar-secondary" style="padding: 6px 12px; font-size: 11.5px; border-color: rgba(255,255,255,0.15);" onclick="${isRMB ? `ReimburseModule.openDetailModal('${item.id}')` : isCA ? `App.openApprovalTracker('CA', '${item.id}')` : `App.showApprovalTracker('${item.type.toLowerCase()}', '${item.id}')`}">
                           🔍 Cek Alur & Rincian
                         </button>
                       </div>
@@ -1231,6 +1367,277 @@ window.ApprovalCenterModule = {
 
     App.closeModal('modal-ca-verify-settlement');
     App.showToast(`Laporan LPJ Cash Advance ${id} telah diverifikasi sah! Transaksi resmi ditutup (SETTLED).`, 'success');
+    App.refreshCurrentTab();
+  },
+
+  // =========================================================================
+  // REIMBURSEMENT (KLAIM BIAYA OPERASIONAL) APPROVAL & DISBURSEMENT HANDLERS
+  // =========================================================================
+
+  currentAdjustingRMBId: null,
+  currentDisbursingRMBId: null,
+  currentDisburseRMBProof: { url: null, name: null },
+
+  advanceReimburse: async function(id, currentStage) {
+    const rmb = DB.getReimbursementById(id);
+    if (!rmb) return;
+
+    if (currentStage === 'MANAGER_APPROVAL') {
+      await DB.advanceReimbursementStage(id, 'FINANCE_VERIFICATION', 'PENDING');
+      App.showToast(`Klaim Reimburse ${id} disetujui Manager Area & diteruskan ke Verifikasi Staf Ahli Keuangan!`, 'success');
+    } else if (currentStage === 'FINANCE_VERIFICATION') {
+      await DB.advanceReimbursementStage(id, 'DIRECTOR_APPROVAL', 'PENDING');
+      App.showToast(`Verifikasi Keuangan untuk ${id} selesai & diteruskan ke Direksi untuk otorisasi!`, 'success');
+    } else if (currentStage === 'DIRECTOR_APPROVAL') {
+      await DB.advanceReimbursementStage(id, 'FAT_DISBURSEMENT', 'PENDING');
+      App.showToast(`Otorisasi Direksi untuk ${id} disahkan & diteruskan ke FAT Officer untuk pencairan transfer!`, 'success');
+    }
+    App.refreshCurrentTab();
+  },
+
+  rejectReimburse: async function(id) {
+    const reason = prompt('Masukkan alasan penolakan Klaim Reimburse:', 'Bukti bayar tidak valid atau pengeluaran tidak sesuai pagu');
+    if (reason !== null) {
+      await DB.advanceReimbursementStage(id, 'REJECTED', 'REJECTED', { notes: reason.trim() });
+      App.showToast(`Klaim Reimburse ${id} ditolak.`, 'warn');
+      App.refreshCurrentTab();
+    }
+  },
+
+  openAdjustReimburseModal: function(id) {
+    const rmb = DB.getReimbursementById(id);
+    if (!rmb) return;
+
+    this.currentAdjustingRMBId = id;
+    const user = DB.getCurrentUser();
+
+    let modalEl = document.getElementById('modal-rmb-adjust');
+    if (!modalEl) {
+      modalEl = document.createElement('div');
+      modalEl.id = 'modal-rmb-adjust';
+      modalEl.className = 'modal-backdrop';
+      document.body.appendChild(modalEl);
+    }
+
+    const nextStageName = rmb.stage === 'FINANCE_VERIFICATION' ? 'Otorisasi Direksi' : 'Pencairan Transfer FAT';
+
+    modalEl.innerHTML = `
+      <div class="modal-box" style="max-width: 560px;">
+        <div class="modal-header">
+          <div>
+            <span class="text-mono-badge" style="color: #FCD34D;">Penyesuaian Nominal Klaim</span>
+            <h3 class="modal-title" style="margin-top: 2px;">Setujui Reimburse dgn Penyesuaian</h3>
+          </div>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-rmb-adjust')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <form onsubmit="ApprovalCenterModule.submitAdjustedReimburse(event)">
+          <div class="modal-body">
+            
+            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="text-mono-badge" style="color: #34D399;">${rmb.id}</span>
+                <span style="font-size: 11px; color: var(--text-muted);">${rmb.createdAt}</span>
+              </div>
+              <div style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">
+                ${rmb.itemName}
+              </div>
+              <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+                Pemohon: <strong>${rmb.employeeName}</strong> (${rmb.employeeRoleLabel || rmb.employeeRole}) · Dapur: <strong>${rmb.targetKitchen}</strong>
+              </div>
+              <div style="font-size: 12px; color: #FCD34D; margin-top: 4px;">
+                Nominal Awal: <strong>Rp ${Number(rmb.originalSubtotal || rmb.subtotal).toLocaleString('id-ID')}</strong> (${rmb.quantity} unit @ Rp ${Number(rmb.unitPrice).toLocaleString('id-ID')})
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nominal Subtotal Disetujui (Rp) <span style="color: #F87171;">*</span></label>
+              <input type="number" id="adjust-rmb-subtotal" class="form-control" value="${rmb.subtotal}" min="100" step="100" required style="font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: #34D399;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Alasan Penyesuaian Nominal <span style="color: #F87171;">*</span></label>
+              <textarea id="adjust-rmb-notes" class="form-control" rows="3" placeholder="Contoh: Disesuaikan dengan nominal sah yang tertera pada struk fisik..." required></textarea>
+            </div>
+
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-rmb-adjust')">Batal</button>
+            <button type="submit" class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B, #D97706); color: #000; font-weight: 700;">
+              ✓ Sahkan Penyesuaian & Teruskan ke ${nextStageName}
+            </button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    App.openModal('modal-rmb-adjust');
+  },
+
+  submitAdjustedReimburse: async function(e) {
+    if (e) e.preventDefault();
+    const id = this.currentAdjustingRMBId;
+    if (!id) return;
+
+    const rmb = DB.getReimbursementById(id);
+    if (!rmb) return;
+
+    const adjustedSubtotal = Number(document.getElementById('adjust-rmb-subtotal')?.value || 0);
+    const notes = document.getElementById('adjust-rmb-notes')?.value || '';
+
+    if (adjustedSubtotal <= 0 || !notes.trim()) {
+      App.showToast('Mohon lengkapi nominal dan alasan penyesuaian!', 'warn');
+      return;
+    }
+
+    let nextStage = 'DIRECTOR_APPROVAL';
+    if (rmb.stage === 'FINANCE_VERIFICATION') {
+      nextStage = 'DIRECTOR_APPROVAL';
+    } else if (rmb.stage === 'DIRECTOR_APPROVAL') {
+      nextStage = 'FAT_DISBURSEMENT';
+    }
+
+    await DB.advanceReimbursementStage(id, nextStage, 'PENDING', {
+      adjustedSubtotal,
+      notes: notes.trim()
+    });
+
+    App.closeModal('modal-rmb-adjust');
+    App.showToast(`Klaim Reimburse ${id} disetujui dengan nominal Rp ${adjustedSubtotal.toLocaleString('id-ID')} dan diteruskan!`, 'success');
+    App.refreshCurrentTab();
+  },
+
+  openDisburseReimburseModal: function(id) {
+    const rmb = DB.getReimbursementById(id);
+    if (!rmb) return;
+
+    this.currentDisbursingRMBId = id;
+    this.currentDisburseRMBProof = { url: null, name: null };
+    const user = DB.getCurrentUser();
+    const amountToDisburse = Number(rmb.subtotal) || 0;
+
+    let modalEl = document.getElementById('modal-rmb-disburse');
+    if (!modalEl) {
+      modalEl = document.createElement('div');
+      modalEl.id = 'modal-rmb-disburse';
+      modalEl.className = 'modal-backdrop';
+      document.body.appendChild(modalEl);
+    }
+
+    modalEl.innerHTML = `
+      <div class="modal-box" style="max-width: 620px;">
+        <div class="modal-header">
+          <div>
+            <span class="text-mono-badge" style="color: #34D399;">Pencairan Klaim Reimbursement (FAT)</span>
+            <h3 class="modal-title" style="margin-top: 2px;">Transfer Dana & Selesaikan Klaim (Settlement)</h3>
+          </div>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-rmb-disburse')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <form onsubmit="ApprovalCenterModule.submitDisburseReimburse(event)">
+          <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+            
+            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="text-mono-badge" style="color: #34D399;">${rmb.id}</span>
+                <span style="font-size: 11px; color: var(--text-muted);">${rmb.createdAt}</span>
+              </div>
+              <div style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">
+                ${rmb.itemName}
+              </div>
+              <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                Pemohon: <strong>${rmb.employeeName}</strong> (${rmb.employeeRoleLabel || rmb.employeeRole}) · Dapur: <strong>${rmb.targetKitchen}</strong>
+              </div>
+              <div style="font-size: 20px; font-family: var(--font-mono); font-weight: 700; color: #34D399; margin-top: 8px;">
+                Total Nominal Transfer: Rp ${amountToDisburse.toLocaleString('id-ID')}
+              </div>
+            </div>
+
+            <!-- Rekening Penerima -->
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 16px; font-size: 12px;">
+              <span class="text-mono-badge" style="color: #60A5FA; font-size: 10px;">Rekening Bank Tujuan Transfer</span>
+              <div style="color: #fff; font-weight: 600; font-size: 13.5px; margin-top: 4px;">
+                ${rmb.bankName} — <code style="color: #93C5FD; font-size: 13px;">${rmb.bankAccountNo}</code> a.n ${rmb.bankAccountName}
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nomor Referensi Transfer Bank <span style="color: #F87171;">*</span></label>
+              <input type="text" id="disburse-rmb-ref" class="form-control" placeholder="Contoh: TRF-MANDIRI-998821 / Ref: 882910" value="TRF-FAT-${Date.now().toString().slice(-6)}" required style="font-family: var(--font-mono);">
+            </div>
+
+            <!-- Attachment Bukti Transfer Perbankan -->
+            <div class="form-group">
+              <label class="form-label">Upload Bukti Transfer Bank (Opsional)</label>
+              <input type="file" id="disburse-rmb-proof-input" accept="image/png,image/jpeg,image/jpg,application/pdf" class="form-control" onchange="ApprovalCenterModule.handleReimburseDisburseProofSelect(event)">
+              <div id="disburse-rmb-proof-status" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Pilih foto bukti transfer atau struk mutasi bank jika tersedia.</div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Catatan Pencairan Kasir FAT</label>
+              <input type="text" id="disburse-rmb-notes" class="form-control" value="Dana reimbursement telah ditransfer ke rekening pemohon.">
+            </div>
+
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-rmb-disburse')">Batal</button>
+            <button type="submit" class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;">
+              💸 Konfirmasi Transfer & Settlement Selesai
+            </button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    App.openModal('modal-rmb-disburse');
+  },
+
+  handleReimburseDisburseProofSelect: async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const maxSizeBytes = 2 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      App.showToast(`Ukuran bukti transfer (${(file.size / 1024 / 1024).toFixed(2)} MB) melebihi batas maksimal 2 MB!`, 'warn');
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      const res = await compressImageFile(file, 1200, 0.8);
+      this.currentDisburseRMBProof = {
+        url: res.url,
+        name: file.name
+      };
+      const statusEl = document.getElementById('disburse-rmb-proof-status');
+      if (statusEl) statusEl.innerHTML = `<span style="color: #34D399;">✓ Bukti transfer terlampir: ${file.name}</span>`;
+    } catch (err) {
+      console.warn('Disburse proof error:', err);
+    }
+  },
+
+  submitDisburseReimburse: async function(e) {
+    if (e) e.preventDefault();
+    const id = this.currentDisbursingRMBId;
+    if (!id) return;
+
+    const bankRefNo = document.getElementById('disburse-rmb-ref')?.value || '';
+    const notes = document.getElementById('disburse-rmb-notes')?.value || '';
+
+    await DB.disburseReimbursement(id, {
+      bankRefNo,
+      proofUrl: this.currentDisburseRMBProof ? this.currentDisburseRMBProof.url : null,
+      notes
+    });
+
+    App.closeModal('modal-rmb-disburse');
+    App.showToast(`Klaim Reimburse ${id} telah dicairkan dan berstatus SETTLED!`, 'success');
     App.refreshCurrentTab();
   },
 

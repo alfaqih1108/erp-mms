@@ -868,6 +868,9 @@ window.App = {
         case 'cash-advance':
           CashAdvanceModule.render(container);
           break;
+        case 'reimburse':
+          ReimburseModule.render(container);
+          break;
         case 'dapur':
           DapurYayasanModule.render(container);
           break;

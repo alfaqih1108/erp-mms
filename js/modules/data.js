@@ -2292,6 +2292,10 @@ const INITIAL_DATABASE = {
   // Cash Advance / Kasbon Operasional Data
   cashAdvances: [],
 
+  // Reimbursement / Klaim Penggantian Biaya Operasional
+  reimbursements: [],
+
+
   // Catalog Presets
   catalog: [
     { name: 'Laser Distance Meter 50M', estPrice: 1950000, category: 'Perangkat IT & Survei' },
@@ -2409,6 +2413,7 @@ class DatabaseManager {
           }
           if (!Array.isArray(parsed.timesheets)) parsed.timesheets = [];
           if (!Array.isArray(parsed.cashAdvances)) parsed.cashAdvances = [];
+          if (!Array.isArray(parsed.reimbursements)) parsed.reimbursements = [];
           if (!Array.isArray(parsed.fieldIssues)) parsed.fieldIssues = [];
           if (!Array.isArray(parsed.kitchenDailyStatuses)) parsed.kitchenDailyStatuses = [];
 
@@ -2502,6 +2507,7 @@ class DatabaseManager {
         if (Array.isArray(copy.itemRequests)) stripHeavy(copy.itemRequests);
         if (Array.isArray(copy.leaves)) stripHeavy(copy.leaves);
         if (Array.isArray(copy.cashAdvances)) stripHeavy(copy.cashAdvances);
+        if (Array.isArray(copy.reimbursements)) stripHeavy(copy.reimbursements);
         if (Array.isArray(copy.kitchenReports)) stripHeavy(copy.kitchenReports);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
       } catch (err2) {
@@ -4610,6 +4616,302 @@ class DatabaseManager {
   }
 
   // =========================================================================
+  // REIMBURSEMENT (KLAIM PENGGANTIAN BIAYA OPERASIONAL)
+  // =========================================================================
+
+  getReimbursements() {
+    return (this.data && Array.isArray(this.data.reimbursements)) ? this.data.reimbursements : (INITIAL_DATABASE.reimbursements || []);
+  }
+
+  getReimbursementById(id) {
+    return (this.getReimbursements() || []).find(r => r.id === id);
+  }
+
+  async addReimbursement(rmbData) {
+    const user = this.getCurrentUser();
+    const allRmb = this.getReimbursements() || [];
+    let maxNum = 0;
+    allRmb.forEach(r => {
+      if (r.id) {
+        const m = r.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `RMB-2026-${String(maxNum + 1).padStart(3, '0')}`;
+    const realTimestamp = getRealtimeTimestamp();
+
+    // Jalur 1: Mitra & Lapangan (Perwakilan Yayasan, Surveyor, Maker) -> Review Manager Area -> Verif Staf Ahli Keuangan -> Otorisasi Direksi -> Transfer FAT
+    // Jalur 2: Tim Kantor & Internal -> Otorisasi Direksi -> Transfer FAT
+    const isFieldJalur1 = ['PERWAKILAN_YAYASAN', 'SURVEYOR', 'MAKER_YAYASAN', 'MAKER'].includes(user.role);
+    const workflowType = isFieldJalur1 ? 'FIELD_JALUR_1' : 'INTERNAL_JALUR_2';
+    const initialStage = isFieldJalur1 ? 'MANAGER_APPROVAL' : 'DIRECTOR_APPROVAL';
+
+    const unitPrice = Number(rmbData.unitPrice) || 0;
+    const quantity = Number(rmbData.quantity) || 1;
+    const subtotal = Number(rmbData.subtotal) || (unitPrice * quantity);
+
+    const newRMB = {
+      id,
+      employeeId: user.id,
+      employeeName: user.name,
+      employeeNika: user.nika || '-',
+      employeeRole: user.role,
+      employeeRoleLabel: user.roleLabel || user.role,
+      department: user.department || 'Operasional Lapangan',
+      itemName: rmbData.itemName || 'Klaim Pengeluaran Biaya',
+      unitPrice: unitPrice,
+      quantity: quantity,
+      subtotal: subtotal,
+      originalSubtotal: subtotal,
+      purchaseDate: rmbData.purchaseDate || getRealtimeDateStr(),
+      category: rmbData.category || 'Bahan Baku & Dapur',
+      targetKitchen: rmbData.targetKitchen || '-',
+      isManualKitchen: Boolean(rmbData.isManualKitchen),
+      bankName: rmbData.bankName || user.bankName || 'Bank Mandiri',
+      bankAccountNo: rmbData.bankAccountNo || user.rekeningNo || '-',
+      bankAccountName: rmbData.bankAccountName || user.rekeningName || user.name,
+      attachmentUrl: rmbData.attachmentUrl || null,
+      attachmentName: rmbData.attachmentName || null,
+      notes: rmbData.notes || '',
+      workflowType: workflowType,
+      stage: initialStage,
+      status: 'PENDING',
+      createdAt: realTimestamp,
+      updatedAt: realTimestamp,
+      disbursementDetails: null,
+      rejectionReason: null,
+      approvalHistory: [
+        {
+          stage: 'SUBMISSION',
+          level: 1,
+          action: 'SUBMITTED',
+          actorName: user.name,
+          actorRole: user.roleLabel || user.role,
+          timestamp: realTimestamp,
+          notes: `Pengajuan Klaim Reimburse: "${rmbData.itemName}" (${quantity} unit @ Rp ${unitPrice.toLocaleString('id-ID')}, Subtotal: Rp ${subtotal.toLocaleString('id-ID')}) untuk "${rmbData.targetKitchen}"`
+        }
+      ]
+    };
+
+    if (!Array.isArray(this.data.reimbursements)) this.data.reimbursements = [];
+    this.data.reimbursements.unshift(newRMB);
+    this.addLog(`${user.name} mengajukan Klaim Reimburse ${id} (${rmbData.itemName} · Rp ${subtotal.toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('reimbursements', {
+      id: newRMB.id,
+      employee_id: newRMB.employeeId,
+      employee_name: newRMB.employeeName,
+      role: newRMB.employeeRole,
+      department: newRMB.department,
+      item_name: newRMB.itemName,
+      unit_price: newRMB.unitPrice,
+      quantity: newRMB.quantity,
+      subtotal: newRMB.subtotal,
+      purchase_date: newRMB.purchaseDate,
+      category: newRMB.category,
+      target_kitchen: newRMB.targetKitchen,
+      bank_name: newRMB.bankName,
+      bank_account_no: newRMB.bankAccountNo,
+      bank_account_name: newRMB.bankAccountName,
+      attachment_url: newRMB.attachmentUrl,
+      attachment_name: newRMB.attachmentName,
+      workflow_type: newRMB.workflowType,
+      stage: newRMB.stage,
+      status: newRMB.status,
+      approval_history: newRMB.approvalHistory
+    }).catch(e => console.warn('Sync reimburse notice:', e));
+
+    return newRMB;
+  }
+
+  async advanceReimbursementStage(id, nextStage, finalStatus, decisionData = {}) {
+    const user = this.getCurrentUser();
+    const rmb = this.getReimbursementById(id);
+    if (!rmb) return false;
+
+    const realTimestamp = getRealtimeTimestamp();
+    const currentStage = rmb.stage;
+    const isRejected = (finalStatus === 'REJECTED');
+
+    if (decisionData.adjustedSubtotal && Number(decisionData.adjustedSubtotal) > 0) {
+      rmb.subtotal = Number(decisionData.adjustedSubtotal);
+      rmb.hasAdjustment = true;
+    }
+
+    if (isRejected) {
+      rmb.stage = 'REJECTED';
+      rmb.status = 'REJECTED';
+      rmb.rejectionReason = decisionData.notes || 'Pengajuan klaim reimburse ditolak.';
+      
+      rmb.approvalHistory.push({
+        stage: currentStage,
+        action: 'REJECTED',
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: `Ditolak oleh ${user.name}. Alasan: "${rmb.rejectionReason}"`
+      });
+
+      this.addLog(`${user.name} (${user.roleLabel}) menolak Klaim Reimburse ${id} pada ${realTimestamp}`, 'procurement');
+    } else {
+      rmb.stage = nextStage;
+      rmb.status = 'PENDING';
+      rmb.updatedAt = realTimestamp;
+
+      let actionLabel = 'APPROVED';
+      let stageNote = `Disetujui oleh ${user.name} (${user.roleLabel}).`;
+
+      if (currentStage === 'MANAGER_APPROVAL') {
+        stageNote = decisionData.notes ? `Disetujui Manager Area: "${decisionData.notes}"` : 'Telah diverifikasi dan disetujui Manager Area, diteruskan ke Staf Ahli Keuangan.';
+      } else if (currentStage === 'FINANCE_VERIFICATION') {
+        stageNote = decisionData.notes ? `Verifikasi Keuangan Selesai: "${decisionData.notes}"` : 'Dokumen bukti bayar dan pagu anggaran terverifikasi sah oleh Staf Ahli Keuangan, diteruskan ke Direksi.';
+      } else if (currentStage === 'DIRECTOR_APPROVAL') {
+        stageNote = decisionData.notes ? `Otorisasi Direksi Selesai: "${decisionData.notes}"` : 'Otorisasi Direksi disetujui penuh, diteruskan ke FAT Officer untuk pencairan transfer.';
+      }
+
+      if (rmb.hasAdjustment) {
+        actionLabel = 'ADJUSTED_AND_APPROVED';
+        stageNote += ` [Penyesuaian Nominal: Rp ${Number(rmb.subtotal).toLocaleString('id-ID')}]`;
+      }
+
+      rmb.approvalHistory.push({
+        stage: currentStage,
+        action: actionLabel,
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: stageNote
+      });
+
+      this.addLog(`${user.name} (${user.roleLabel}) menyetujui Klaim Reimburse ${id} (Tahap: ${currentStage} ➔ ${nextStage}) pada ${realTimestamp}`, 'procurement');
+    }
+
+    this.save();
+
+    await this.syncToSupabase('reimbursements', {
+      id: rmb.id,
+      employee_id: rmb.employeeId,
+      employee_name: rmb.employeeName,
+      role: rmb.employeeRole,
+      department: rmb.department,
+      item_name: rmb.itemName,
+      unit_price: rmb.unitPrice,
+      quantity: rmb.quantity,
+      subtotal: rmb.subtotal,
+      purchase_date: rmb.purchaseDate,
+      category: rmb.category,
+      target_kitchen: rmb.targetKitchen,
+      bank_name: rmb.bankName,
+      bank_account_no: rmb.bankAccountNo,
+      bank_account_name: rmb.bankAccountName,
+      attachment_url: rmb.attachmentUrl,
+      attachment_name: rmb.attachmentName,
+      workflow_type: rmb.workflowType,
+      stage: rmb.stage,
+      status: rmb.status,
+      rejection_reason: rmb.rejectionReason,
+      approval_history: rmb.approvalHistory
+    }).catch(e => console.warn('Sync reimburse notice:', e));
+
+    return true;
+  }
+
+  async disburseReimbursement(id, disburseData = {}) {
+    const user = this.getCurrentUser();
+    const rmb = this.getReimbursementById(id);
+    if (!rmb) return false;
+
+    const realTimestamp = getRealtimeTimestamp();
+    rmb.stage = 'SETTLED';
+    rmb.status = 'SETTLED';
+    rmb.updatedAt = realTimestamp;
+
+    const bankRefNo = disburseData.bankRefNo || `TRF-RMB-${Date.now().toString().slice(-6)}`;
+    const proofUrl = disburseData.proofUrl || null;
+    const notes = disburseData.notes || 'Dana reimbursement telah berhasil ditransfer ke rekening pemohon.';
+
+    rmb.disbursementDetails = {
+      disbursedAt: realTimestamp,
+      disbursedBy: `${user.name} (${user.roleLabel})`,
+      bankRefNo: bankRefNo,
+      proofUrl: proofUrl,
+      notes: notes
+    };
+
+    rmb.approvalHistory.push({
+      stage: 'FAT_DISBURSEMENT',
+      action: 'SETTLED',
+      actorName: `${user.name} (${user.roleLabel})`,
+      actorRole: user.roleLabel,
+      timestamp: realTimestamp,
+      notes: `Pencairan dana transfer selesai sebesar Rp ${Number(rmb.subtotal).toLocaleString('id-ID')} ke rekening ${rmb.bankName} (${rmb.bankAccountNo} a.n ${rmb.bankAccountName}). No. Ref: ${bankRefNo}. Status: Settlement Selesai.`
+    });
+
+    this.addLog(`FAT Officer (${user.name}) mencairkan transfer Klaim Reimburse ${id} (Rp ${Number(rmb.subtotal).toLocaleString('id-ID')}) pada ${realTimestamp}. Status SETTLED.`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('reimbursements', {
+      id: rmb.id,
+      employee_id: rmb.employeeId,
+      employee_name: rmb.employeeName,
+      role: rmb.employeeRole,
+      department: rmb.department,
+      item_name: rmb.itemName,
+      unit_price: rmb.unitPrice,
+      quantity: rmb.quantity,
+      subtotal: rmb.subtotal,
+      purchase_date: rmb.purchaseDate,
+      category: rmb.category,
+      target_kitchen: rmb.targetKitchen,
+      bank_name: rmb.bankName,
+      bank_account_no: rmb.bankAccountNo,
+      bank_account_name: rmb.bankAccountName,
+      attachment_url: rmb.attachmentUrl,
+      attachment_name: rmb.attachmentName,
+      workflow_type: rmb.workflowType,
+      stage: rmb.stage,
+      status: rmb.status,
+      disbursement_details: rmb.disbursementDetails,
+      approval_history: rmb.approvalHistory
+    }).catch(e => console.warn('Sync reimburse notice:', e));
+
+    return true;
+  }
+
+  async deleteReimbursement(id) {
+    if (!Array.isArray(this.data.reimbursements)) {
+      this.data.reimbursements = [...(INITIAL_DATABASE.reimbursements || [])];
+    }
+    const idx = this.data.reimbursements.findIndex(r => r.id === id);
+    if (idx !== -1) {
+      const deleted = this.data.reimbursements.splice(idx, 1)[0];
+      const user = this.getCurrentUser();
+      const realTimestamp = getRealtimeTimestamp();
+      this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus Klaim Reimburse ${deleted.id} pada ${realTimestamp}`, 'procurement');
+      this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/reimbursements?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus reimburse dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
   // LAPORAN KENDALA HARIAN LAPANGAN (PERWAKILAN YAYASAN -> MANAGER AREA)
   // =========================================================================
   getFieldIssues() {
@@ -5272,32 +5574,34 @@ class DatabaseManager {
     const leaves = this.getLeaves() || [];
     const prs = this.getItemRequests() || [];
     const cas = this.getCashAdvances() || [];
+    const rmbs = this.getReimbursements() || [];
 
     let count = 0;
 
     if (user.role === 'HUMAN_CAPITAL') {
       count += leaves.filter(l => l.status === 'PENDING' && (l.stage === 'HC_REVIEW' || l.stage === 'HC_FINAL')).length;
-    } else if (user.role === 'DIREKTUR_KEUANGAN') {
+    } else if (user.role === 'DIREKTUR_KEUANGAN' || user.role === 'DIREKTUR_OPERASIONAL') {
       count += leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW')).length;
       count += prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL').length;
       count += cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW').length;
-    } else if (user.role === 'DIREKTUR_OPERASIONAL') {
-      count += leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_OPS_OR_KEU_REVIEW' || l.stage === 'DIR_KEU_REVIEW')).length;
-      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL').length;
-      count += cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW').length;
+      count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'DIRECTOR_APPROVAL').length;
     } else if (user.role === 'MANAGER_AREA') {
       count += prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'SURVEYOR' || p.role === 'PERWAKILAN_YAYASAN' || p.role === 'STAFF_OPERASIONAL' || p.role === 'MAKER_YAYASAN')).length;
       count += leaves.filter(l => l.status === 'PENDING' && l.stage === 'MANAGER_AREA_REVIEW' && (l.role === 'SURVEYOR' || l.role === 'PERWAKILAN_YAYASAN' || l.role === 'STAFF_OPERASIONAL' || l.role === 'MAKER_YAYASAN')).length;
+      count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'MANAGER_APPROVAL' && r.workflowType === 'FIELD_JALUR_1').length;
     } else if (user.role === 'MANAGER_KEUANGAN') {
       count += prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && p.role !== 'FAT_OFFICER' && p.role !== 'STAFF_AHLI_KEUANGAN').length;
     } else if (user.role === 'FAT_OFFICER') {
       count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
+      count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FAT_DISBURSEMENT').length;
     } else if (user.role === 'STAFF_AHLI_KEUANGAN') {
       count += prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION').length;
+      count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FINANCE_VERIFICATION').length;
     } else if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') {
       count += leaves.filter(l => l.status === 'PENDING').length;
       count += prs.filter(p => p.status === 'PENDING').length;
       count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
+      count += rmbs.filter(r => r.status === 'PENDING').length;
     }
 
     return count;

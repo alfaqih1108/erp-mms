@@ -45,8 +45,11 @@ window.PengajuanBarangModule = {
           </div>
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <button type="button" class="btn-nalar-secondary" onclick="App.switchTab('cash-advance')" style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #FCD34D; border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.08);">
-              <span>💵</span>
-              <span>Pengajuan Cash Advanced</span>
+              <span>💵 Cash Advance</span>
+            </button>
+
+            <button type="button" class="btn-nalar-secondary" onclick="App.switchTab('reimburse')" style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #34D399; border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.08);">
+              <span>🧾 Klaim Reimburse</span>
             </button>
 
             <button class="btn-nalar-primary" onclick="PengajuanBarangModule.openPRModal()">

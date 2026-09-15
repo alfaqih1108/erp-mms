@@ -67,7 +67,11 @@ window.CashAdvanceModule = {
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <button type="button" class="btn-nalar-secondary" onclick="App.switchTab('pengajuan')" style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-              <span>Pengadaan Barang (PR)</span>
+              <span>Pengadaan PR</span>
+            </button>
+
+            <button type="button" class="btn-nalar-secondary" onclick="App.switchTab('reimburse')" style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #34D399; border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.08);">
+              <span>🧾 Klaim Reimburse</span>
             </button>
 
             <button type="button" class="btn-nalar-primary" onclick="CashAdvanceModule.openCreateModal()" style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; box-shadow: 0 4px 18px rgba(245, 158, 11, 0.35);">
