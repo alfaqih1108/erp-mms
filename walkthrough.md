@@ -113,5 +113,22 @@ Telah diperbarui field **Target Lokasi / Titik SPPG** pada Form Pengajuan Cash A
 3. **Opsi "➕ Lainnya (Input Manual)"**: Memungkinkan pemohon memilih `__MANUAL__` yang secara otomatis menampilkan input teks tambahan jika kebutuhan operasional lapangan berada di luar titik SPPG terdaftar.
 4. **Validasi & Integrasi Data**: Sistem memastikan nilai lokasi (baik dari pilihan dropdown SPPG maupun input manual) tervalidasi dan tersimpan rapi pada record Cash Advance di database lokal dan Supabase Cloud.
 
+---
+
+## 🔑 7. Penambahan Hak Akses Lengkap Admin Hub untuk Akun FAT-001
+
+Telah dikonfigurasi hak akses penuh **Admin Hub** untuk akun pengguna:
+- **Nama**: Muhammad Imam Adamy
+- **ID Pengguna**: `FAT-001`
+- **NIKA**: `K-2026-012`
+- **Role**: `FAT_OFFICER` (Finance Accounting and Tax)
+
+### Cakupan Akses Lengkap yang Diberikan:
+1. **Navigasi Navbar & Mobile Drawer**: Menu **Admin Hub** kini otomatis tampil pada navigasi desktop pill maupun drawer smartphone saat login menggunakan akun `FAT-001`.
+2. **Sub-Menu 1: Daftar Dapur (Master SPPG)**: Akses penuh melihat 15 master titik dapur program, mendaftarkan dapur baru, dan memperbarui informasi titik dapur yayasan.
+3. **Sub-Menu 2: Laporan Dapur & Saldo VA**: Akses penuh monitoring transaksi harian dapur program, kalkulasi porsi, realisasi belanja bahan baku SPM, dan mutasi saldo Virtual Account.
+4. **Sub-Menu 3: Daftar Kendala Dapur SPPG**: Akses penuh monitoring kendala operasional lapangan di setiap titik SPPG serta merespons/menindaklanjuti kendala yang dilaporkan.
+
+
 
 

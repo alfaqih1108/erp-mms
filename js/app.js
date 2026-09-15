@@ -193,9 +193,11 @@ window.App = {
       drawerHC.style.display = hasHCAccess ? 'block' : 'none';
     }
 
-    // Rule 3: Admin Hub (Daftar Dapur SPPG & Laporan Dapur VA) tampil khusus untuk Staf Ahli Keuangan & Administrasi, Maker Yayasan, Manager Area, Jajaran Direksi & Super Admin
-    const hasAdminHubAccess = isSuperAdmin || [
+    // Rule 3: Admin Hub (Daftar Dapur SPPG, Laporan Dapur & Saldo VA, Daftar Kendala) tampil lengkap untuk Staf Ahli Keuangan & Administrasi, FAT Officer (Muhammad Imam Adamy), Maker Yayasan, Manager Area, Jajaran Direksi & Super Admin
+    const isFatImam = (user.id === 'FAT-001' || user.nika === 'K-2026-012' || (user.name && user.name.toLowerCase().includes('imam adamy')) || user.role === 'FAT_OFFICER');
+    const hasAdminHubAccess = isSuperAdmin || isFatImam || [
       'STAFF_AHLI_KEUANGAN',
+      'FAT_OFFICER',
       'MAKER_YAYASAN',
       'MANAGER_AREA',
       'DIREKTUR_UTAMA',
@@ -216,6 +218,7 @@ window.App = {
     // Sub-item RBAC:
     // a. Pada role MAKER_YAYASAN, sub-menu "Daftar Dapur" & "Daftar Kendala" disembunyikan
     // b. Pada role MANAGER_AREA, sub-menu "Laporan Dapur & Saldo VA" disembunyikan
+    // c. FAT Officer (Muhammad Imam Adamy), Staf Ahli Keuangan, Direksi & Super Admin memiliki akses lengkap ke SEMUA sub-menu
     const adminItemDapur = document.getElementById('admin-dropdown-dapur');
     const adminItemLaporanVA = document.getElementById('admin-dropdown-laporan-va');
     const adminItemKendala = document.getElementById('admin-dropdown-kendala');
@@ -224,24 +227,27 @@ window.App = {
     const mobileAdminLaporan = document.getElementById('mobile-admin-sub-laporan');
     const mobileAdminKendala = document.getElementById('mobile-admin-sub-kendala');
 
-    const canAccessDaftarDapur = isSuperAdmin || ((user.role !== 'MAKER_YAYASAN') && [
+    const canAccessDaftarDapur = isSuperAdmin || isFatImam || ((user.role !== 'MAKER_YAYASAN') && [
       'STAFF_AHLI_KEUANGAN',
+      'FAT_OFFICER',
       'MANAGER_AREA',
       'DIREKTUR_UTAMA',
       'DIREKTUR_OPERASIONAL',
       'DIREKTUR_KEUANGAN'
     ].includes(user.role));
 
-    const canAccessLaporanVA = isSuperAdmin || ((user.role !== 'MANAGER_AREA') && [
+    const canAccessLaporanVA = isSuperAdmin || isFatImam || ((user.role !== 'MANAGER_AREA') && [
       'STAFF_AHLI_KEUANGAN',
+      'FAT_OFFICER',
       'MAKER_YAYASAN',
       'DIREKTUR_UTAMA',
       'DIREKTUR_OPERASIONAL',
       'DIREKTUR_KEUANGAN'
     ].includes(user.role));
 
-    const canAccessKendala = isSuperAdmin || [
+    const canAccessKendala = isSuperAdmin || isFatImam || [
       'STAFF_AHLI_KEUANGAN',
+      'FAT_OFFICER',
       'MANAGER_AREA',
       'DIREKTUR_UTAMA',
       'DIREKTUR_OPERASIONAL',
