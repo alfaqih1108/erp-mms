@@ -166,14 +166,16 @@ window.PesananModule = {
 
   handleSearchInput: function(query) {
     this.searchQuery = (query || '').toLowerCase().trim();
-    const rows = document.querySelectorAll('.pesanan-table-row');
+    const rows = document.querySelectorAll('.pesanan-table-row, .pesanan-mobile-card');
     let visibleCount = 0;
 
     rows.forEach(row => {
       const text = row.getAttribute('data-search-text') || '';
       const match = !this.searchQuery || text.includes(this.searchQuery);
       row.style.display = match ? '' : 'none';
-      if (match) visibleCount++;
+      if (match && (row.classList.contains('pesanan-table-row') || row.classList.contains('pesanan-mobile-card'))) {
+        visibleCount++;
+      }
     });
 
     const emptyEl = document.getElementById('pesanan-empty-search');
@@ -354,31 +356,31 @@ window.PesananModule = {
             </div>
 
             <!-- Keyword Search Input -->
-            <div style="position: relative; min-width: 280px; flex: 1; max-width: 380px;">
+            <div style="position: relative; min-width: 260px; flex: 1; max-width: 380px;">
               <input type="text" id="pesanan-keyword-search" class="form-control" 
                      placeholder="🔍 Cari Dapur, Barang, Tanggal, ID PR..." 
                      value="${this.searchQuery}"
                      oninput="PesananModule.handleSearchInput(this.value)"
-                     style="padding-left: 36px; font-size: 13px; background: rgba(0,0,0,0.35); height: 38px; border-radius: 8px;">
+                     style="padding-left: 36px; font-size: 13px; background: rgba(0,0,0,0.35); height: 38px; border-radius: 8px; width: 100%;">
               <span style="position: absolute; left: 12px; top: 10px; font-size: 14px; opacity: 0.6;">🔍</span>
             </div>
 
           </div>
         </div>
 
-        <!-- Tracking Table -->
-        <div class="nalar-card" style="padding: 0; overflow: hidden;">
-          <div class="nalar-table-container" style="margin-bottom: 0;">
-            <table class="nalar-table" style="width: 100%; border-collapse: collapse;">
+        <!-- 1. DESKTOP & TABLET VIEW: Dense Table with Horizontal Scroll Safe Min-Width -->
+        <div class="pesanan-desktop-view nalar-card" style="padding: 0; overflow: hidden;">
+          <div class="nalar-table-container" style="margin-bottom: 0; overflow-x: auto; width: 100%;">
+            <table class="nalar-table" style="width: 100%; min-width: 1100px; border-collapse: collapse;">
               <thead>
                 <tr style="background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 11px; text-transform: uppercase; color: var(--text-dim); text-align: left;">
-                  <th style="padding: 12px 14px;">NO. PR & TGL PO</th>
-                  <th style="padding: 12px 14px;">NAMA BARANG & ANGGARAN</th>
-                  <th style="padding: 12px 14px;">DAPUR / LOKASI SPPG</th>
-                  <th style="padding: 12px 14px;">PEMOHON</th>
+                  <th style="padding: 12px 14px; min-width: 140px; width: 140px;">NO. PR & TGL PO</th>
+                  <th style="padding: 12px 14px; min-width: 240px;">NAMA BARANG & ANGGARAN</th>
+                  <th style="padding: 12px 14px; min-width: 220px;">DAPUR / LOKASI SPPG</th>
+                  <th style="padding: 12px 14px; min-width: 160px;">PEMOHON</th>
                   <th style="padding: 12px 14px; min-width: 180px;">STATUS PESANAN</th>
-                  <th style="padding: 12px 14px; min-width: 170px;">INVOICE & FAT SETTLEMENT</th>
-                  <th style="padding: 12px 14px; text-align: center; min-width: 140px;">AKSI</th>
+                  <th style="padding: 12px 14px; min-width: 180px;">INVOICE & FAT SETTLEMENT</th>
+                  <th style="padding: 12px 14px; text-align: center; min-width: 130px;">AKSI</th>
                 </tr>
               </thead>
               <tbody id="pesanan-table-body">
@@ -429,7 +431,7 @@ window.PesananModule = {
 
                       <!-- 3. Dapur Tujuan SPPG -->
                       <td style="padding: 14px; vertical-align: top; font-size: 12px;">
-                        <div style="display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 6px; color: #CBD5E1; max-width: 230px; word-break: break-word;">
+                        <div style="display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 6px; color: #CBD5E1; max-width: 260px; line-height: 1.4;">
                           <span>🍳</span>
                           <strong>${pr.targetKitchen || 'Kantor Pusat'}</strong>
                         </div>
@@ -551,11 +553,177 @@ window.PesananModule = {
               </tbody>
             </table>
           </div>
+        </div>
 
-          <!-- Empty search callout -->
-          <div id="pesanan-empty-search" style="display: none; padding: 32px; text-align: center; color: var(--text-muted); font-size: 13px;">
-            Tidak ditemukan pesanan dengan kata kunci pencarian tersebut.
-          </div>
+        <!-- 2. MOBILE VIEW: Elegant Full-Width Cards (Khusus Layar Smartphone <= 768px) -->
+        <div class="pesanan-mobile-view">
+          ${filteredPRs.length === 0 ? `
+            <div class="nalar-card" style="text-align: center; padding: 36px 16px; color: var(--text-muted); font-size: 13.5px;">
+              ${canSeeAll 
+                ? 'Belum ada pesanan pengadaan barang yang disetujui Direksi pada filter ini.' 
+                : 'Anda belum memiliki pesanan pengadaan barang yang disetujui Direksi pada filter ini.'}
+            </div>
+          ` : filteredPRs.map(pr => {
+            const currentStatus = pr.orderStatus || 'DALAM_ANTRIAN';
+            const stConfig = this.STATUS_CONFIG[currentStatus] || this.STATUS_CONFIG['DALAM_ANTRIAN'];
+            const isReceived = (currentStatus === 'SUDAH_DITERIMA');
+            const isInvoiceSubmitted = (currentStatus === 'INVOICE_SUBMITTED');
+            const isSettled = (currentStatus === 'SETTLEMENT');
+            const hasDisbursementProof = (pr.orderDisbursement && (pr.orderDisbursement.transferProofUrl || pr.orderDisbursement.bankRefNo));
+
+            const searchText = `${pr.id} ${pr.itemName} ${pr.targetKitchen} ${pr.employeeName} ${pr.createdAt} ${pr.category} ${stConfig.label}`.toLowerCase();
+
+            return `
+              <div class="pesanan-mobile-card" data-search-text="${searchText}">
+                
+                <!-- 1. Header: PR ID, Date & Category -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;">
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <span style="color: #FCD34D; font-weight: 700; font-size: 13.5px; font-family: var(--font-mono);">${pr.id}</span>
+                      <span style="font-size: 9.5px; color: #34D399; background: rgba(16,185,129,0.12); padding: 2px 6px; border-radius: 3px;">
+                        PO Terbit
+                      </span>
+                    </div>
+                    <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">
+                      📅 ${pr.createdAt ? pr.createdAt.split(' ')[0] : '-'}
+                    </div>
+                  </div>
+                  <div style="font-size: 11px; color: #CBD5E1; background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 6px; text-align: right;">
+                    ${pr.category || 'Operasional'}
+                  </div>
+                </div>
+
+                <!-- 2. Item Name, Qty & Budget -->
+                <div>
+                  <div style="font-weight: 700; color: #fff; font-size: 14.5px; line-height: 1.4;">
+                    ${pr.itemName}
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; flex-wrap: wrap; gap: 6px;">
+                    <span style="font-size: 12px; color: var(--text-muted);">Kuantitas: <strong style="color: #fff;">${pr.quantity} Unit</strong></span>
+                    <span style="font-size: 14px; font-family: var(--font-mono); font-weight: 700; color: #FCD34D;">
+                      Rp ${(Number(pr.totalPrice) || 0).toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 3. Location & Requester Info Box -->
+                <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px 12px; font-size: 12px; display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; align-items: flex-start; gap: 6px; color: #E2E8F0;">
+                    <span style="flex-shrink: 0;">🍳</span>
+                    <div style="word-break: break-word; line-height: 1.4;">
+                      <span style="color: var(--text-muted); font-size: 10.5px; display: block;">Dapur / Lokasi SPPG:</span>
+                      <strong>${pr.targetKitchen || 'Kantor Pusat'}</strong>
+                    </div>
+                  </div>
+                  <div style="display: flex; align-items: flex-start; gap: 6px; color: #E2E8F0; border-top: 1px solid rgba(255,255,255,0.04); padding-top: 6px;">
+                    <span style="flex-shrink: 0;">👤</span>
+                    <div>
+                      <span style="color: var(--text-muted); font-size: 10.5px; display: block;">Pemohon:</span>
+                      <strong>${pr.employeeName}</strong> <span style="font-size: 11px; color: var(--text-muted);">(${pr.department || pr.role})</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 4. Status Pesanan Control / Badge -->
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Status Pesanan:</span>
+                  ${isOperator && !isSettled ? `
+                    <div>
+                      <select class="form-control pesanan-status-select" 
+                              style="padding: 8px 12px; font-size: 12.5px; font-weight: 600; ${stConfig.badgeStyle}; border-radius: 8px; cursor: pointer; width: 100%;"
+                              onchange="PesananModule.handleStatusChangeDropdown('${pr.id}', this.value)">
+                        <option value="DALAM_ANTRIAN" ${currentStatus === 'DALAM_ANTRIAN' ? 'selected' : ''}>⏳ Masih dalam antrian</option>
+                        <option value="SUDAH_DIPESAN" ${currentStatus === 'SUDAH_DIPESAN' ? 'selected' : ''}>🛒 Sudah di pesan</option>
+                        <option value="SEDANG_DIKIRIM" ${currentStatus === 'SEDANG_DIKIRIM' ? 'selected' : ''}>🚚 Sedang di kirim</option>
+                        <option value="SUDAH_DITERIMA" ${currentStatus === 'SUDAH_DITERIMA' ? 'selected' : ''}>📦 Sudah di terima</option>
+                        <option value="GAGAL_PENGIRIMAN" ${currentStatus === 'GAGAL_PENGIRIMAN' ? 'selected' : ''}>⚠️ Gagal Pengiriman</option>
+                      </select>
+                      ${pr.lastTrackingNote ? `
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; font-style: italic;">
+                          "${pr.lastTrackingNote}"
+                        </div>
+                      ` : ''}
+                    </div>
+                  ` : `
+                    <div>
+                      <span class="status-badge" style="${stConfig.badgeStyle}; display: inline-flex; width: 100%; justify-content: center; padding: 6px 10px; font-size: 11.5px; border-radius: 6px;">
+                        ${stConfig.icon} ${stConfig.label}
+                      </span>
+                      ${pr.lastTrackingNote ? `
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; font-style: italic;">
+                          "${pr.lastTrackingNote}"
+                        </div>
+                      ` : ''}
+                    </div>
+                  `}
+                </div>
+
+                <!-- 5. Invoice & Settlement Status -->
+                <div style="display: flex; flex-direction: column; gap: 4px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Tagihan Vendor & FAT:</span>
+                  ${isSettled ? `
+                    <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; padding: 8px 12px;">
+                      <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 11px; font-weight: 700; color: #34D399;">✓ SETTLEMENT LUNAS</span>
+                        <span style="font-size: 10.5px; color: #94A3B8; font-family: var(--font-mono);">Ref: ${pr.orderDisbursement ? pr.orderDisbursement.bankRefNo : '-'}</span>
+                      </div>
+                      ${pr.orderDisbursement && pr.orderDisbursement.transferProofUrl ? `
+                        <button type="button" class="btn-preview-link" style="margin-top: 6px; font-size: 11px; color: #6EE7B7; background: rgba(16,185,129,0.15); padding: 5px 10px; border-radius: 6px; width: 100%; text-align: center;" onclick="PesananModule.previewTransferProof('${pr.id}')">
+                          💳 Lihat Bukti Transfer FAT ↗
+                        </button>
+                      ` : ''}
+                    </div>
+                  ` : isInvoiceSubmitted ? `
+                    <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 8px 12px;">
+                      <div style="font-size: 11px; color: #FCD34D; font-weight: 600;">
+                        📄 Invoice Terkirim ke FAT
+                      </div>
+                      ${pr.orderInvoice && pr.orderInvoice.fileUrl ? `
+                        <button type="button" class="btn-preview-link" style="margin-top: 6px; font-size: 11px; color: #FCD34D; background: rgba(245,158,11,0.12); padding: 5px 10px; border-radius: 6px; width: 100%; text-align: center;" onclick="PesananModule.previewInvoice('${pr.id}')">
+                          📎 Cek Invoice (${pr.orderInvoice.fileName || 'Faktur'}) ↗
+                        </button>
+                      ` : ''}
+                    </div>
+                  ` : isReceived ? (
+                    isOperator ? `
+                      <div>
+                        <button type="button" class="btn-nalar-primary" style="padding: 8px 14px; font-size: 12px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700; width: 100%;" onclick="PesananModule.openInvoiceModal('${pr.id}')">
+                          📄 Kirimkan Invoice ke FAT
+                        </button>
+                      </div>
+                    ` : `
+                      <div style="font-size: 11px; color: #34D399; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 6px; padding: 6px 10px;">
+                        📦 Barang telah diterima. Menunggu invoice diteruskan ke FAT oleh operator.
+                      </div>
+                    `
+                  ) : `
+                    <div style="font-size: 11px; color: var(--text-dim); font-style: italic;">
+                      ⏳ Menunggu barang diterima di lokasi.
+                    </div>
+                  `}
+                </div>
+
+                <!-- 6. Bottom Actions -->
+                <div style="display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 2px;">
+                  <button type="button" class="btn-nalar-secondary" style="flex: 1; padding: 7px 12px; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;" onclick="PesananModule.openTimelineModal('${pr.id}')">
+                    📜 Log Detail PO
+                  </button>
+                  ${(pr.attachmentUrl || pr.attachmentName) ? `
+                    <button type="button" class="btn-nalar-secondary" style="flex: 1; padding: 7px 12px; font-size: 12px; color: #60A5FA; border-color: rgba(96,165,250,0.3); display: inline-flex; align-items: center; justify-content: center; gap: 6px;" onclick="PengajuanBarangModule.openLightbox('${pr.id}', '${pr.itemName}')">
+                      🔍 Foto PR ↗
+                    </button>
+                  ` : ''}
+                </div>
+
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- Empty search callout -->
+        <div id="pesanan-empty-search" style="display: none; padding: 32px; text-align: center; color: var(--text-muted); font-size: 13px;">
+          Tidak ditemukan pesanan dengan kata kunci pencarian tersebut.
         </div>
 
       </div>

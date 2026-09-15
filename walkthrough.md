@@ -62,11 +62,15 @@ Perubahan status dilakukan secara instan melalui dropdown interaktif pada baris 
 * Status pesanan berubah menjadi **`SETTLEMENT`** (Selesai & Lunas).
 * Seluruh pihak terkait (operator maupun pemohon PR bersangkutan) dapat langsung melihat dan mengunduh **Bukti Transfer Bank** dari FAT di tabel Pesanan.
 
-### E. Fitur Filter & Audit Trail
-* **4 HUD Metrics Cards**: Total Pesanan PO, Dalam Antrean, Sedang Dikirim, dan Selesai/Settlement.
-* **Live Keyword Search**: Pencarian instan berdasarkan nama barang, nomor PR/PO, nama dapur, pemohon, dsb.
-* **Filter Tabs**: Filter cepat per status pesanan.
-* **Modal Log Audit Trail (Timeline)**: Menampilkan riwayat kronologis lengkap dari pengajuan awal, otorisasi Direksi, pergerakan tracking pesanan, hingga pencairan transfer bank FAT.
+### F. Desain Responsif Mobile & Desktop (Hybrid Layout)
+* **Desktop & Tablet View (`> 768px`)**: Tabel berdensitas tinggi dengan `min-width: 1100px` dan scroll horizontal yang mulus tanpa teks terjepit.
+* **Mobile Card View (`<= 768px`)**: Kartu pesanan mandiri yang proporsional, rapi, dan lega di layar smartphone, memuat:
+  - Header badge ID PR, tanggal, dan status PO resmi.
+  - Nama barang, kuantiti, dan nominal anggaran dengan font monospaced emas yang menonjol.
+  - Kotak informasi dapur SPPG dan pemohon yang jelas terbaca tanpa terpotong.
+  - Dropdown kontrol status (operator) atau status badge visual (pemohon).
+  - Box info status tagihan vendor dan tombol aksi (Kirim Invoice / Cek Invoice / Bukti Transfer).
+  - Tombol aksi: Log Detail PO & Foto PR Lightbox.
 
 ---
 
@@ -74,7 +78,8 @@ Perubahan status dilakukan secara instan melalui dropdown interaktif pada baris 
 
 | Berkas / Modul | Rincian Perubahan |
 | :--- | :--- |
-| [`js/modules/pesanan.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/pesanan.js) *(BARU)* | Modul Pesanan: Scoping visibilitas data (Syifa, Syafiq, FAT, Direksi melihat semua; pemohon lain hanya melihat PR miliknya), 4 HUD metrics, filter pills, search input, tabel tracking pesanan dengan dropdown status untuk operator, modal upload invoice vendor (single-file upload max 2MB), modal catatan gagal pengiriman, modal timeline riwayat log, viewer invoice dan bukti transfer bank. |
+| [`js/modules/pesanan.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/pesanan.js) *(BARU)* | Modul Pesanan: Scoping visibilitas data, 4 HUD metrics, filter pills, search input, tabel tracking pesanan dengan dropdown status untuk operator, **Hybrid Responsive Mobile Cards**, modal upload invoice vendor (single-file upload max 2MB), modal catatan gagal pengiriman, modal timeline riwayat log, viewer invoice dan bukti transfer bank. |
+| [`css/style.css`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/css/style.css) | Menambahkan class `.pesanan-desktop-view` dan `.pesanan-mobile-view` beserta breakpoint `@media (max-width: 768px)` untuk rendering kartu mobile yang proporsional. |
 | [`js/modules/data.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/data.js) | Menambahkan methods `getApprovedOrders()`, `updateOrderStatus()`, `submitOrderInvoice()`, `disburseOrderInvoice()`, `fetchOrderInvoiceAttachment()`, `fetchOrderTransferProof()`, update `getPendingApprovalsCount()`, serta mapping sinkronisasi Supabase Cloud. |
 | [`js/modules/approval-center.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/approval-center.js) | Menambahkan filter tab dan antrean pending settlement invoice vendor untuk FAT Officer, modal transfer pembayaran vendor (`openDisburseOrderInvoiceModal`), preview invoice, dan audit log riwayat settlement. |
 | [`js/app.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/app.js) | Mendaftarkan route `'pesanan'`, sinkronisasi badge counter aktif (`#badge-pesanan-count`) berbasis role scoping, dan navigasi. |
@@ -88,15 +93,13 @@ Perubahan status dilakukan secara instan melalui dropdown interaktif pada baris 
 
 ## 🧪 5. Verifikasi & Pengujian
 
+- ✅ **Tampilan Mobile Proporsional (Mobile Card Layout)**: Pada layar HP/smartphone (`<= 768px`), tabel padat secara otomatis bertransformasi menjadi **kartu pesanan vertikal yang lega, estetik, dan proporsional**. Teks dapur, nama barang, pemohon, dan nominal anggaran tersusun rapi tanpa ada teks yang tertekan menjadi 1 huruf vertikal.
+- ✅ **Tampilan Desktop & Tablet Aman**: Pada layar desktop/laptop/tablet, tabel memiliki pengaman `min-width: 1100px` dan container dengan horizontal touch-scroll sehingga seluruh 7 kolom data tetap lebar dan proporsional.
 - ✅ **Pemisahan Hak Visibilitas Data (Role-Based Scoping)**:
   - Akun **Syifa Izzatina** (`SO-004`), **Muhammad Syafiq Al Ghifari** (`SA-002`), **FAT Officer** (`FAT-001`), dan **Direksi / Super Admin** dapat melihat **SELURUH** pesanan pengadaan se-yayasan.
   - Akun **selain mereka** (misalnya Rendy Seftiana / Manager Area / Surveyor / Staff) **HANYA** melihat tracking pesanan yang diajukan oleh mereka sendiri.
 - ✅ **Akses Operator Terverifikasi**: Akun `SA-002` (Muhammad Syafiq Al Ghifari) dan `SO-004` (Syifa Izzatina) memiliki hak penuh untuk mengubah status pesanan melalui dropdown langsung dan mengunggah invoice vendor.
 - ✅ **Proteksi Akun Pemohon Reguler**: Akun pemohon reguler melihat badge status yang rapi (non-editable status dropdown) dan tetap dapat melihat detail log riwayat pengiriman barang, foto PR, serta melihat slip transfer FAT saat pesanan telah settlement (Lunas).
-- ✅ **5 Status Pesanan**: Dropdown langsung merespon pergantian status (`DALAM_ANTRIAN`, `SUDAH_DIPESAN`, `SEDANG_DIKIRIM`, `SUDAH_DITERIMA`, `GAGAL_PENGIRIMAN`) dan mencatat riwayat audit real-time timestamp ke database.
-- ✅ **Upload File Invoice Vendor**: Form hanya meminta upload file invoice (PNG/JPG/PDF, limit 2MB) dan meneruskan status ke `INVOICE_SUBMITTED`.
-- ✅ **Antrean FAT Officer**: FAT Officer (`FAT-001`) menerima antrean tagihan invoice di Approval Hub, dapat mempratinjau invoice, dan menyelesaikan settlement dengan mengunggah bukti transfer bank.
-- ✅ **Pratinjau Bukti Transfer**: Baik operator maupun pemohon PR dapat melihat langsung slip transfer bank yang telah diunggah oleh FAT Officer.
-- ✅ **Live Filter & Keyword Search**: Filter tabs dan kotak pencarian real-time berfungsi responsif di seluruh baris tabel pesanan.
+- ✅ **Live Filter & Keyword Search**: Filter tabs dan kotak pencarian real-time berfungsi responsif di seluruh kartu mobile maupun baris tabel desktop.
 
 
