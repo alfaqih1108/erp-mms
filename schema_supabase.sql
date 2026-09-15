@@ -382,3 +382,37 @@ CREATE TABLE IF NOT EXISTS kitchen_daily_statuses (
 ALTER TABLE kitchen_daily_statuses ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public full access to kitchen_daily_statuses" ON kitchen_daily_statuses;
 CREATE POLICY "Public full access to kitchen_daily_statuses" ON kitchen_daily_statuses FOR ALL USING (true) WITH CHECK (true);
+
+-- M. TABEL REIMBURSEMENTS (Klaim Reimbursement Operasional Lapangan & Kantor)
+CREATE TABLE IF NOT EXISTS reimbursements (
+    id VARCHAR(50) PRIMARY KEY,
+    employee_id VARCHAR(50) REFERENCES users(id) ON DELETE SET NULL,
+    employee_name VARCHAR(150) NOT NULL,
+    role VARCHAR(50),
+    department VARCHAR(100),
+    item_name TEXT NOT NULL,
+    unit_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    quantity INT DEFAULT 1,
+    subtotal NUMERIC(15,2) NOT NULL DEFAULT 0,
+    purchase_date DATE NOT NULL,
+    category VARCHAR(100),
+    target_kitchen VARCHAR(255),
+    bank_name VARCHAR(100),
+    bank_account_no VARCHAR(100),
+    bank_account_name VARCHAR(150),
+    attachment_url TEXT,
+    attachment_name VARCHAR(255),
+    workflow_type VARCHAR(50) DEFAULT 'FIELD_JALUR_1', -- 'FIELD_JALUR_1' or 'INTERNAL_JALUR_2'
+    stage VARCHAR(50) DEFAULT 'MANAGER_APPROVAL',
+    status VARCHAR(50) DEFAULT 'PENDING',
+    rejection_reason TEXT,
+    disbursement_details JSONB DEFAULT NULL,
+    approval_history JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE reimbursements ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access to reimbursements" ON reimbursements;
+CREATE POLICY "Public full access to reimbursements" ON reimbursements FOR ALL USING (true) WITH CHECK (true);
+

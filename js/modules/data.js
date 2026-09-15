@@ -6096,6 +6096,36 @@ class DatabaseManager {
         updated_at: s.updatedAt || s.createdAt || null
       });
     }
+
+    // 11. Sync Klaim Reimbursements ke Supabase
+    const rmbs = this.getReimbursements();
+    for (const r of rmbs) {
+      await this.syncToSupabase('reimbursements', {
+        id: r.id,
+        employee_id: r.employeeId,
+        employee_name: r.employeeName,
+        role: r.employeeRole || r.role,
+        department: r.department,
+        item_name: r.itemName,
+        unit_price: Number(r.unitPrice) || 0,
+        quantity: Number(r.quantity) || 1,
+        subtotal: Number(r.subtotal) || 0,
+        purchase_date: r.purchaseDate,
+        category: r.category,
+        target_kitchen: r.targetKitchen,
+        bank_name: r.bankName,
+        bank_account_no: r.bankAccountNo,
+        bank_account_name: r.bankAccountName,
+        attachment_url: r.attachmentUrl || null,
+        attachment_name: r.attachmentName || null,
+        workflow_type: r.workflowType || 'FIELD_JALUR_1',
+        stage: r.stage,
+        status: r.status,
+        rejection_reason: r.rejectionReason || null,
+        disbursement_details: r.disbursementDetails || null,
+        approval_history: r.approvalHistory || []
+      });
+    }
   }
 
   async pullUsersFromSupabase() {
@@ -6217,9 +6247,9 @@ class DatabaseManager {
     try {
       console.log('⚡ [Supabase Pull] Memuat data real-time dengan Smart Merge...');
 
-      // Jalankan seluruh 10 endpoint secara PARALEL untuk kecepatan instan (<300ms)
+      // Jalankan seluruh 11 endpoint secara PARALEL untuk kecepatan instan (<300ms)
       // Dokumen binary berat (Base64 file_data & SPM image) DIKECUALIKAN dari pull berkala (Lazy-Loaded On-Demand) untuk menghemat Egress hingga 99%
-      const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes, kdsRes] = await Promise.allSettled([
+      const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes, kdsRes, rmbRes] = await Promise.allSettled([
         fetch(`${url}/rest/v1/users?select=id,nika,name,email,phone,role,role_label,jabatan,department,level_grade,kode_jabatan,password,username,bank_name,rekening_no,rekening_name,quota_annual_leave,remaining_annual_leave,quota_personal_leave,remaining_personal_leave,nik,status_karyawan,status_pajak,pendidikan,no_kk,alamat_ktp,alamat_domisili,status_tempat_tinggal,no_npwp,alamat_npwp,no_bpjs_kesehatan,no_bpjs_tenaga_kerja,emergency_name,emergency_relation,emergency_phone,notes&limit=2000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/kitchens?select=id,id_sppg,nama_dapur,nama_yayasan,provinsi,kota_kabupaten,kecamatan,kelurahan,alamat_lengkap,location,maker_yayasan,perwakilan_yayasan,manager_area,status,kapasitas_porsi,created_at&limit=2000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
@@ -6229,7 +6259,8 @@ class DatabaseManager {
         fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc&limit=5000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/field_issues?select=id,author_id,author_name,date,kitchen_id,kitchen_name,issue_description,status,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
-        fetch(`${url}/rest/v1/kitchen_daily_statuses?select=*&order=date.desc&limit=10000&offset=0`, { headers })
+        fetch(`${url}/rest/v1/kitchen_daily_statuses?select=*&order=date.desc&limit=10000&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/reimbursements?select=id,employee_id,employee_name,role,department,item_name,unit_price,quantity,subtotal,purchase_date,category,target_kitchen,bank_name,bank_account_no,bank_account_name,attachment_name,workflow_type,stage,status,rejection_reason,disbursement_details,approval_history,created_at&order=created_at.desc&limit=10000&offset=0`, { headers })
       ]);
 
       // 1. Process Users
@@ -6693,6 +6724,86 @@ class DatabaseManager {
         }
       }
 
+      // 11. Process Reimbursements (Smart Merge & Attachment Preserved)
+      if (rmbRes && rmbRes.status === 'fulfilled' && rmbRes.value.ok) {
+        const rmbs = await rmbRes.value.json();
+        if (Array.isArray(rmbs)) {
+          const existingRMBs = this.data.reimbursements || [];
+          const remoteRMBs = rmbs.map(r => {
+            const local = existingRMBs.find(item => item.id === r.id);
+            return {
+              id: r.id,
+              employeeId: r.employee_id,
+              employeeName: r.employee_name,
+              employeeRole: r.role,
+              department: r.department,
+              itemName: r.item_name,
+              unitPrice: Number(r.unit_price) || 0,
+              quantity: Number(r.quantity) || 1,
+              subtotal: Number(r.subtotal) || 0,
+              originalSubtotal: local ? local.originalSubtotal : (Number(r.subtotal) || 0),
+              purchaseDate: r.purchase_date,
+              category: r.category,
+              targetKitchen: r.target_kitchen,
+              isManualKitchen: local ? local.isManualKitchen : false,
+              bankName: r.bank_name,
+              bankAccountNo: r.bank_account_no,
+              bankAccountName: r.bank_account_name,
+              attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : (r.attachment_url || null),
+              attachmentName: r.attachment_name,
+              notes: local ? local.notes : '',
+              workflowType: r.workflow_type || 'FIELD_JALUR_1',
+              stage: r.stage,
+              status: r.status,
+              rejectionReason: r.rejection_reason,
+              disbursementDetails: r.disbursement_details || null,
+              approvalHistory: r.approval_history || [],
+              createdAt: r.created_at,
+              updatedAt: r.updated_at || r.created_at
+            };
+          });
+
+          // Smart Merge: Pertahankan record lokal yang belum sempat tersinkron
+          const unsyncedRMB = existingRMBs.filter(local =>
+            local && local.id && !rmbs.some(remote => remote.id === local.id)
+          );
+
+          this.data.reimbursements = [...remoteRMBs, ...unsyncedRMB];
+
+          // Auto-push unsynced local records to Supabase
+          if (unsyncedRMB.length > 0) {
+            console.log(`⚡ [Auto-Push RMB] Mengunggah ${unsyncedRMB.length} klaim reimburse lokal ke Supabase...`);
+            for (const item of unsyncedRMB) {
+              this.syncToSupabase('reimbursements', {
+                id: item.id,
+                employee_id: item.employeeId,
+                employee_name: item.employeeName,
+                role: item.employeeRole || item.role,
+                department: item.department,
+                item_name: item.itemName,
+                unit_price: Number(item.unitPrice) || 0,
+                quantity: Number(item.quantity) || 1,
+                subtotal: Number(item.subtotal) || 0,
+                purchase_date: item.purchaseDate,
+                category: item.category,
+                target_kitchen: item.targetKitchen,
+                bank_name: item.bankName,
+                bank_account_no: item.bankAccountNo,
+                bank_account_name: item.bankAccountName,
+                attachment_url: item.attachmentUrl || null,
+                attachment_name: item.attachmentName || null,
+                workflow_type: item.workflowType || 'FIELD_JALUR_1',
+                stage: item.stage,
+                status: item.status,
+                rejection_reason: item.rejectionReason || null,
+                disbursement_details: item.disbursementDetails || null,
+                approval_history: item.approvalHistory || []
+              }).catch(err => console.warn('Auto-push RMB notice:', err));
+            }
+          }
+        }
+      }
+
       this.save();
       console.log('✅ [Supabase Pull] Data tersinkronisasi instan & hemat Egress (~20KB payload).');
     } catch (err) {
@@ -6703,6 +6814,37 @@ class DatabaseManager {
   // =========================================================================
   // ON-DEMAND LAZY ATTACHMENT FETCHERS (Hemat Egress 99%)
   // =========================================================================
+
+  async fetchReimbursementAttachment(rmbId) {
+    const rmbs = this.getReimbursements();
+    const r = rmbs.find(item => item.id === rmbId);
+    if (r && r.attachmentUrl && r.attachmentUrl.length > 50) {
+      return r.attachmentUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return r ? (r.attachmentUrl || '') : '';
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/reimbursements?select=id,attachment_url,attachment_name&id=eq.${encodeURIComponent(rmbId)}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].attachment_url) {
+          if (r) {
+            r.attachmentUrl = data[0].attachment_url;
+            if (data[0].attachment_name) r.attachmentName = data[0].attachment_name;
+          }
+          return data[0].attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat lampiran reimburse on-demand dari Supabase:', e);
+    }
+    return r ? (r.attachmentUrl || '') : '';
+  }
 
   async fetchKitchenReportAttachment(reportId) {
     const reports = this.getKitchenReports();
