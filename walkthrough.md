@@ -24,37 +24,45 @@ flowchart TD
 
 ---
 
-## 👥 2. Pengelola Utama (Designated Operators)
+## 👥 2. Hak Akses & Pembagian Visibilitas (Role-Based Scoping Matrix)
 
-Sesuai instruksi dan struktur RBAC, hak kelola perubahan status dan pengiriman invoice dipegang langsung oleh:
+Sesuai instruksi dan struktur RBAC Yayasan MMS, modul **Pesanan** menerapkan pembagian visibilitas dan hak kontrol sebagai berikut:
 
-1. **Muhammad Syafiq Al Ghifari** (`ID: SA-002`, `NIKA: K-2026-011` — Staf Ahli Keuangan & Anggaran)
-2. **Syifa Izzatina** (`ID: SO-004`, `NIKA: K-2026-016` — Staff Operasional)
-3. *Super Admin & Jajaran Direksi memiliki akses pengawasan (oversight), serta FAT Officer memproses pembayaran di Approval Hub.*
+| Kategori Akun / Pengguna | Cakupan Data Pesanan yang Tampil | Hak Akses & Kontrol di Tabel |
+| :--- | :--- | :--- |
+| **Operator Utama**<br>1. `SA-002` (Muhammad Syafiq Al Ghifari)<br>2. `SO-004` (Syifa Izzatina) | **Seluruh Pesanan Yayasan (Global View)** | **Full Control**: Mengubah status pesanan via dropdown langsung, mencatat alasan gagal kirim, dan mengunggah invoice supplier untuk diteruskan ke FAT. |
+| **FAT Officer** (`FAT-001` / `usr-checker`) | **Seluruh Pesanan Yayasan (Global View)** | **Settlement & Audit**: Memverifikasi berkas invoice supplier di Approval Hub, mengunggah bukti transfer pelunasan, dan memantau seluruh pesanan. |
+| **Jajaran Direksi & Super Admin**<br>(`DIREKTUR_UTAMA`, `DIREKTUR_OPERASIONAL`, `DIREKTUR_KEUANGAN`, `SUPER_ADMIN`) | **Seluruh Pesanan Yayasan (Global View)** | **Executive Oversight & Management**: Mengawasi seluruh pesanan yayasan dan status pengadaan di semua lokasi dapur. |
+| **Semua Akun Pemohon Lainnya**<br>*(Manager Area, Staff Lapangan, Surveyor, Perwakilan Yayasan, HC, dsb.)* | **Hanya Pesanan dari Pengajuan PR Mereka Sendiri (Scoped Tracking View)** | **Read-Only Tracking**: Memantau progress status pengadaan mereka (badge status rapi), melihat Log Audit Detail, foto PR, dan mengecek bukti transfer FAT saat pesanan telah settlement/lunas. |
 
 ---
 
 ## ⚙️ 3. Fitur & Teknis Modul Pesanan
 
-### A. 5 Pilihan Status Resmi (Dropdown Langsung di Tabel)
-Perubahan status dilakukan secara instan melalui dropdown interaktif pada baris tabel:
+### A. Scoped Personal Tracking & Header Dinamis
+* **Header & Banner Adaptif**: Menampilkan label *"📦 PO Execution & Delivery Tracking"* untuk Operator/Direksi/FAT, dan *"🔍 Pelacakan Pesanan Mandiri"* untuk pemohon umum beserta nama pemohon.
+* **HUD Metrics Tersinkronisasi**: Kartu KPI dan counter filter badge secara dinamis menghitung data pesanan yang relevan sesuai akun yang sedang aktif.
+* **Tampilan Status Bersih untuk Non-Operator**: Pemohon reguler melihat badge status visual yang informatif tanpa intervensi dropdown yang membingungkan.
+
+### B. 5 Pilihan Status Resmi (Dropdown Langsung di Tabel untuk Operator)
+Perubahan status dilakukan secara instan melalui dropdown interaktif pada baris tabel (khusus akun operator/direksi):
 1. **Masih dalam antrian** (`DALAM_ANTRIAN`): Status awal otomatis setelah PR disetujui Direksi.
 2. **Sudah di pesan** (`SUDAH_DIPESAN`): Barang telah dipesankan ke rekanan/supplier.
 3. **Sedang di kirim** (`SEDANG_DIKIRIM`): Barang dalam perjalanan kurir/ekspedisi.
-4. **Sudah di terima** (`SUDAH_DITERIMA`): Barang telah tiba di lokasi dapur penerima. Memunculkan tombol **"📄 Kirimkan Invoice"**.
+4. **Sudah di terima** (`SUDAH_DITERIMA`): Barang telah tiba di lokasi dapur penerima. Memunculkan tombol **"📄 Kirimkan Invoice"** bagi operator.
 5. **Gagal Pengiriman** (`GAGAL_PENGIRIMAN`): Apabila barang tidak sesuai atau rusak saat tiba di lokasi. Membuka modal input penjelasan kendala dan mencatat log audit.
 
-### B. Modal "Kirimkan Invoice Vendor ke FAT" (Ringkas & Efisien)
+### C. Modal "Kirimkan Invoice Vendor ke FAT" (Ringkas & Efisien)
 * **User Experience Ringkas**: Cukup hanya **Upload File Invoice / Kuitansi (PNG/JPG/PDF, max 2 MB)** tanpa perlu mengisi ulang form yang redundan.
 * Sistem otomatis membaca data PR (ID, Nama Barang, Total Budget, Dapur Penerima) dan langsung meneruskannya ke antrean **FAT Officer** (`INVOICE_SUBMITTED`).
 
-### C. Antrean Approval Hub: FAT Officer & Settlement
+### D. Antrean Approval Hub: FAT Officer & Settlement
 * FAT Officer (`FAT-001` Muhammad Imam Adamy) menerima notifikasi dan kartu antrean di **Approval Hub** pada filter **Invoice Pesanan (FAT)**.
 * FAT Officer dapat melakukan **Pratinjau Berkas Invoice Vendor (Lightbox/PDF)**, mengisi nomor referensi transfer bank, melampirkan foto slip transfer, dan mengonfirmasi pelunasan.
 * Status pesanan berubah menjadi **`SETTLEMENT`** (Selesai & Lunas).
-* Muhammad Syafiq dan Syifa Izzatina dapat langsung melihat dan mengunduh **Bukti Transfer Bank** dari FAT di tabel Pesanan.
+* Seluruh pihak terkait (operator maupun pemohon PR bersangkutan) dapat langsung melihat dan mengunduh **Bukti Transfer Bank** dari FAT di tabel Pesanan.
 
-### D. Fitur Filter & Audit Trail
+### E. Fitur Filter & Audit Trail
 * **4 HUD Metrics Cards**: Total Pesanan PO, Dalam Antrean, Sedang Dikirim, dan Selesai/Settlement.
 * **Live Keyword Search**: Pencarian instan berdasarkan nama barang, nomor PR/PO, nama dapur, pemohon, dsb.
 * **Filter Tabs**: Filter cepat per status pesanan.
@@ -66,10 +74,10 @@ Perubahan status dilakukan secara instan melalui dropdown interaktif pada baris 
 
 | Berkas / Modul | Rincian Perubahan |
 | :--- | :--- |
-| [`js/modules/pesanan.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/pesanan.js) *(BARU)* | Modul Pesanan: 4 HUD metrics, filter pills, search input, tabel tracking pesanan dengan dropdown status, modal upload invoice vendor (single-file upload max 2MB), modal catatan gagal pengiriman, modal timeline riwayat log, viewer invoice dan bukti transfer bank. |
+| [`js/modules/pesanan.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/pesanan.js) *(BARU)* | Modul Pesanan: Scoping visibilitas data (Syifa, Syafiq, FAT, Direksi melihat semua; pemohon lain hanya melihat PR miliknya), 4 HUD metrics, filter pills, search input, tabel tracking pesanan dengan dropdown status untuk operator, modal upload invoice vendor (single-file upload max 2MB), modal catatan gagal pengiriman, modal timeline riwayat log, viewer invoice dan bukti transfer bank. |
 | [`js/modules/data.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/data.js) | Menambahkan methods `getApprovedOrders()`, `updateOrderStatus()`, `submitOrderInvoice()`, `disburseOrderInvoice()`, `fetchOrderInvoiceAttachment()`, `fetchOrderTransferProof()`, update `getPendingApprovalsCount()`, serta mapping sinkronisasi Supabase Cloud. |
 | [`js/modules/approval-center.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/approval-center.js) | Menambahkan filter tab dan antrean pending settlement invoice vendor untuk FAT Officer, modal transfer pembayaran vendor (`openDisburseOrderInvoiceModal`), preview invoice, dan audit log riwayat settlement. |
-| [`js/app.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/app.js) | Mendaftarkan route `'pesanan'`, sinkronisasi badge counter aktif (`#badge-pesanan-count`), dan navigasi. |
+| [`js/app.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/app.js) | Mendaftarkan route `'pesanan'`, sinkronisasi badge counter aktif (`#badge-pesanan-count`) berbasis role scoping, dan navigasi. |
 | [`index.html`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/index.html) | Menambahkan tombol navbar pill `Pesanan`, tombol drawer mobile `Pesanan & PO`, modal global lightbox, dan registrasi script `pesanan.js`. |
 | [`js/modules/pengajuan-barang.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/pengajuan-barang.js) | Menambahkan tombol navigasi cepat ke **Pesanan & PO**. |
 | [`js/modules/cash-advance.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/cash-advance.js) | Menambahkan tombol navigasi cepat ke **Pesanan & PO**. |
@@ -80,11 +88,15 @@ Perubahan status dilakukan secara instan melalui dropdown interaktif pada baris 
 
 ## 🧪 5. Verifikasi & Pengujian
 
+- ✅ **Pemisahan Hak Visibilitas Data (Role-Based Scoping)**:
+  - Akun **Syifa Izzatina** (`SO-004`), **Muhammad Syafiq Al Ghifari** (`SA-002`), **FAT Officer** (`FAT-001`), dan **Direksi / Super Admin** dapat melihat **SELURUH** pesanan pengadaan se-yayasan.
+  - Akun **selain mereka** (misalnya Rendy Seftiana / Manager Area / Surveyor / Staff) **HANYA** melihat tracking pesanan yang diajukan oleh mereka sendiri.
 - ✅ **Akses Operator Terverifikasi**: Akun `SA-002` (Muhammad Syafiq Al Ghifari) dan `SO-004` (Syifa Izzatina) memiliki hak penuh untuk mengubah status pesanan melalui dropdown langsung dan mengunggah invoice vendor.
+- ✅ **Proteksi Akun Pemohon Reguler**: Akun pemohon reguler melihat badge status yang rapi (non-editable status dropdown) dan tetap dapat melihat detail log riwayat pengiriman barang, foto PR, serta melihat slip transfer FAT saat pesanan telah settlement (Lunas).
 - ✅ **5 Status Pesanan**: Dropdown langsung merespon pergantian status (`DALAM_ANTRIAN`, `SUDAH_DIPESAN`, `SEDANG_DIKIRIM`, `SUDAH_DITERIMA`, `GAGAL_PENGIRIMAN`) dan mencatat riwayat audit real-time timestamp ke database.
 - ✅ **Upload File Invoice Vendor**: Form hanya meminta upload file invoice (PNG/JPG/PDF, limit 2MB) dan meneruskan status ke `INVOICE_SUBMITTED`.
 - ✅ **Antrean FAT Officer**: FAT Officer (`FAT-001`) menerima antrean tagihan invoice di Approval Hub, dapat mempratinjau invoice, dan menyelesaikan settlement dengan mengunggah bukti transfer bank.
-- ✅ **Pratinjau Bukti Transfer**: Operator (`SA-002` / `SO-004`) dapat melihat langsung slip transfer bank yang telah diunggah oleh FAT Officer.
+- ✅ **Pratinjau Bukti Transfer**: Baik operator maupun pemohon PR dapat melihat langsung slip transfer bank yang telah diunggah oleh FAT Officer.
 - ✅ **Live Filter & Keyword Search**: Filter tabs dan kotak pencarian real-time berfungsi responsif di seluruh baris tabel pesanan.
 
 

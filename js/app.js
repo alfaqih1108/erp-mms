@@ -999,8 +999,23 @@ window.App = {
     }
 
     // Pesanan Badge (PR Orders Active / In-progress)
+    const user = DB.getCurrentUser();
     const approvedOrders = (typeof DB.getApprovedOrders === 'function') ? DB.getApprovedOrders() : [];
-    const activeOrdersCount = approvedOrders.filter(p => p.orderStatus !== 'SETTLEMENT').length;
+    const canSeeAllOrders = (window.PesananModule && typeof window.PesananModule.canViewAllOrders === 'function')
+      ? window.PesananModule.canViewAllOrders(user)
+      : true;
+
+    const visibleOrders = canSeeAllOrders
+      ? approvedOrders
+      : approvedOrders.filter(pr => {
+          if (!user) return false;
+          if (window.PesananModule && typeof window.PesananModule.isUserMatchingOrder === 'function') {
+            return window.PesananModule.isUserMatchingOrder(user, pr);
+          }
+          return pr.employeeId === user.id || (pr.employeeName && user.name && pr.employeeName.toLowerCase().includes(user.name.toLowerCase()));
+        });
+
+    const activeOrdersCount = visibleOrders.filter(p => p.orderStatus !== 'SETTLEMENT').length;
     
     const pesananBadge = document.getElementById('badge-pesanan-count');
     if (pesananBadge) {

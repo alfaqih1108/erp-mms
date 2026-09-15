@@ -19,6 +19,59 @@ window.PesananModule = {
   currentInvoiceFile: { url: null, name: null },
   activeModalPRId: null,
 
+  // Cek apakah user aktif berhak melihat SELURUH pesanan Yayasan:
+  // 1. Syifa Izzatina (SO-004 / K-2026-016)
+  // 2. Muhammad Syafiq Al Ghifari (SA-002 / K-2026-011)
+  // 3. FAT Officer (FAT-001 / FAT_OFFICER)
+  // 4. Jajaran Direksi (DIREKTUR_UTAMA, DIREKTUR_OPERASIONAL, DIREKTUR_KEUANGAN, KETUA_PEMBINA) & Super Admin
+  canViewAllOrders: function(user) {
+    if (!user) user = DB.getCurrentUser();
+    if (!user) return false;
+
+    // Super Admin
+    if (user.role === 'SUPER_ADMIN' || user.id === 'usr-superadmin') return true;
+
+    // Direksi
+    if (
+      user.role === 'DIREKTUR_UTAMA' || 
+      user.role === 'DIREKTUR_OPERASIONAL' || 
+      user.role === 'DIREKTUR_KEUANGAN' ||
+      user.role === 'KETUA_PEMBINA' ||
+      (user.role && user.role.startsWith('DIREKTUR_')) ||
+      user.id === 'usr-dirut' ||
+      user.id === 'usr-dir-ops' ||
+      user.id === 'usr-dir-keu' ||
+      user.id === 'usr-ketua-pembina'
+    ) {
+      return true;
+    }
+
+    // FAT Officer
+    if (
+      user.role === 'FAT_OFFICER' || 
+      user.id === 'FAT-001' || 
+      user.id === 'usr-checker' || 
+      (user.name && user.name.toLowerCase().includes('fat'))
+    ) {
+      return true;
+    }
+
+    // Operator Ditugaskan (Muhammad Syafiq Al Ghifari & Syifa Izzatina)
+    const isSyafiq = (
+      user.id === 'SA-002' || 
+      user.nika === 'K-2026-011' || 
+      (user.name && user.name.toLowerCase().includes('syafiq'))
+    );
+
+    const isSyifa = (
+      user.id === 'SO-004' || 
+      user.nika === 'K-2026-016' || 
+      (user.name && user.name.toLowerCase().includes('syifa'))
+    );
+
+    return isSyafiq || isSyifa;
+  },
+
   // Cek apakah user aktif adalah operator yang berhak mengubah status & mengirim invoice
   canManageOrders: function(user) {
     if (!user) user = DB.getCurrentUser();
@@ -28,18 +81,36 @@ window.PesananModule = {
       user.id === 'SA-002' || 
       user.id === 'SO-004' || 
       (user.nika && (user.nika === 'K-2026-011' || user.nika === 'K-2026-016')) ||
-      (user.name && (user.name.includes('Syafiq') || user.name.includes('Syifa Izzatina')))
+      (user.name && (user.name.toLowerCase().includes('syafiq') || user.name.toLowerCase().includes('syifa')))
     );
 
     const isExecutive = [
       'SUPER_ADMIN',
       'DIREKTUR_UTAMA',
       'DIREKTUR_OPERASIONAL',
-      'DIREKTUR_KEUANGAN',
-      'FAT_OFFICER'
-    ].includes(user.role);
+      'DIREKTUR_KEUANGAN'
+    ].includes(user.role) || (user.role && user.role.startsWith('DIREKTUR_')) || user.id === 'usr-superadmin';
 
     return isDesignatedOperator || isExecutive;
+  },
+
+  // Helper pencocokan kepemilikan PR untuk akun personal
+  isUserMatchingOrder: function(user, pr) {
+    if (!user || !pr) return false;
+    if (pr.employeeId && user.id && pr.employeeId === user.id) return true;
+    if (pr.employeeNika && user.nika && pr.employeeNika === user.nika) return true;
+    if (user.nika && pr.employeeId === user.nika) return true;
+
+    if (pr.employeeName && user.name) {
+      const prName = pr.employeeName.toLowerCase().trim();
+      const uName = user.name.toLowerCase().trim();
+      if (prName === uName) return true;
+      const uFirst = uName.split(' ')[0];
+      const prFirst = prName.split(' ')[0];
+      if (uFirst.length >= 3 && prName.includes(uFirst)) return true;
+      if (prFirst.length >= 3 && uName.includes(prFirst)) return true;
+    }
+    return false;
   },
 
   // Status Enum & Config
@@ -116,19 +187,26 @@ window.PesananModule = {
 
     const user = DB.getCurrentUser();
     const allApprovedPRs = DB.getApprovedOrders() || [];
+    const canSeeAll = this.canViewAllOrders(user);
     const isOperator = this.canManageOrders(user);
 
-    // Hitung Metrik Statistik
-    const totalOrders = allApprovedPRs.length;
-    const inQueueCount = allApprovedPRs.filter(p => (p.orderStatus || 'DALAM_ANTRIAN') === 'DALAM_ANTRIAN').length;
-    const inProgressCount = allApprovedPRs.filter(p => ['SUDAH_DIPESAN', 'SEDANG_DIKIRIM'].includes(p.orderStatus)).length;
-    const receivedCount = allApprovedPRs.filter(p => p.orderStatus === 'SUDAH_DITERIMA').length;
-    const failedCount = allApprovedPRs.filter(p => p.orderStatus === 'GAGAL_PENGIRIMAN').length;
-    const waitingFATCount = allApprovedPRs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED').length;
-    const settledCount = allApprovedPRs.filter(p => p.orderStatus === 'SETTLEMENT').length;
+    // Scoping dataset: jika bukan Syifa/Syafiq/FAT/Direksi/Super Admin, tampilkan HANYA pesanan yang diajukan oleh user tersebut
+    const basePRs = canSeeAll
+      ? allApprovedPRs
+      : allApprovedPRs.filter(pr => this.isUserMatchingOrder(user, pr));
+
+    // Hitung Metrik Statistik berdasarkan data yang terlihat oleh user
+    const totalOrders = basePRs.length;
+    const inQueueCount = basePRs.filter(p => (p.orderStatus || 'DALAM_ANTRIAN') === 'DALAM_ANTRIAN').length;
+    const orderedCount = basePRs.filter(p => p.orderStatus === 'SUDAH_DIPESAN').length;
+    const shippingCount = basePRs.filter(p => p.orderStatus === 'SEDANG_DIKIRIM').length;
+    const receivedCount = basePRs.filter(p => p.orderStatus === 'SUDAH_DITERIMA').length;
+    const failedCount = basePRs.filter(p => p.orderStatus === 'GAGAL_PENGIRIMAN').length;
+    const waitingFATCount = basePRs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED').length;
+    const settledCount = basePRs.filter(p => p.orderStatus === 'SETTLEMENT').length;
 
     // Filter berdasarkan tab filter aktif
-    const filteredPRs = allApprovedPRs.filter(p => {
+    const filteredPRs = basePRs.filter(p => {
       const st = p.orderStatus || 'DALAM_ANTRIAN';
       if (this.currentFilter === 'ALL') return true;
       if (this.currentFilter === 'DALAM_ANTRIAN') return st === 'DALAM_ANTRIAN';
@@ -149,17 +227,23 @@ window.PesananModule = {
           <div>
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <span class="text-mono-badge" style="color: #60A5FA; background: rgba(59,130,246,0.12); padding: 3px 8px; border-radius: 4px; font-size: 11px;">
-                📦 PO Execution & Delivery Tracking
+                ${canSeeAll ? '📦 PO Execution & Delivery Tracking' : '🔍 Pelacakan Pesanan Mandiri'}
               </span>
               <span style="font-size: 11.5px; color: var(--text-muted);">
-                ● Operator Ditugaskan: <strong style="color: #FCD34D;">Muhammad Syafiq Al Ghifari</strong> & <strong style="color: #FCD34D;">Syifa Izzatina</strong>
+                ${canSeeAll 
+                  ? '● Operator Ditugaskan: <strong style="color: #FCD34D;">Muhammad Syafiq Al Ghifari</strong> & <strong style="color: #FCD34D;">Syifa Izzatina</strong>'
+                  : `● Pemohon: <strong style="color: #60A5FA;">${user ? user.name : 'Pemohon'}</strong> (${user ? (user.roleLabel || user.jabatan || 'Pengadaan Anda') : 'Pengadaan PR'})`
+                }
               </span>
             </div>
             <h1 style="font-size: 26px; font-weight: 700; margin-top: 4px; color: #fff; letter-spacing: -0.01em;">
-              Modul Pelacakan Pesanan & Pengiriman Barang (PO)
+              ${canSeeAll ? 'Modul Pelacakan Pesanan & Pengiriman Barang (PO)' : 'Pelacakan Pesanan & Pengiriman Barang Saya (PO)'}
             </h1>
             <p style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">
-              Kelola status proses pemesanan, pengiriman ke dapur/kantor, upload invoice tagihan supplier, dan monitoring settlement FAT.
+              ${canSeeAll
+                ? 'Kelola status proses pemesanan, pengiriman ke dapur/kantor, upload invoice tagihan supplier, dan monitoring settlement FAT.'
+                : 'Pantau status proses pengadaan, jadwal pengiriman ke lokasi dapur/kantor tujuan, status invoice tagihan, dan bukti transfer settlement FAT.'
+              }
             </p>
           </div>
 
@@ -186,13 +270,13 @@ window.PesananModule = {
           <!-- Card 1: Total Approved PR -->
           <div class="nalar-card" style="margin-bottom: 0; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(59, 130, 246, 0.25); position: relative; overflow: hidden;">
             <div style="font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">
-              Total PR Disetujui Direksi
+              ${canSeeAll ? 'Total PR Disetujui Direksi' : 'PR Saya Disetujui Direksi'}
             </div>
             <div style="font-size: 28px; font-weight: 700; color: #60A5FA; margin-top: 6px; font-family: var(--font-mono);">
               ${totalOrders} <span style="font-size: 13px; font-weight: 400; color: var(--text-dim);">Berkas</span>
             </div>
             <div style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">
-              ⏳ Antrian: <strong style="color: #FCD34D;">${inQueueCount}</strong> · 🛒 Dipesan: <strong style="color: #93C5FD;">${allApprovedPRs.filter(p => p.orderStatus === 'SUDAH_DIPESAN').length}</strong>
+              ⏳ Antrian: <strong style="color: #FCD34D;">${inQueueCount}</strong> · 🛒 Dipesan: <strong style="color: #93C5FD;">${orderedCount}</strong>
             </div>
           </div>
 
@@ -202,7 +286,7 @@ window.PesananModule = {
               Pengiriman & Penerimaan
             </div>
             <div style="font-size: 28px; font-weight: 700; color: #C084FC; margin-top: 6px; font-family: var(--font-mono);">
-              ${allApprovedPRs.filter(p => p.orderStatus === 'SEDANG_DIKIRIM').length} <span style="font-size: 13px; font-weight: 400; color: var(--text-dim);">Dikirim</span>
+              ${shippingCount} <span style="font-size: 13px; font-weight: 400; color: var(--text-dim);">Dikirim</span>
             </div>
             <div style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">
               📦 Diterima: <strong style="color: #34D399;">${receivedCount}</strong> · ⚠️ Gagal: <strong style="color: #F87171;">${failedCount}</strong>
@@ -250,10 +334,10 @@ window.PesananModule = {
                 ⏳ Antrian (${inQueueCount})
               </button>
               <button type="button" class="btn-preset-pill ${this.currentFilter === 'SUDAH_DIPESAN' ? 'active' : ''}" onclick="PesananModule.setFilter('SUDAH_DIPESAN')">
-                🛒 Dipesan (${allApprovedPRs.filter(p => p.orderStatus === 'SUDAH_DIPESAN').length})
+                🛒 Dipesan (${orderedCount})
               </button>
               <button type="button" class="btn-preset-pill ${this.currentFilter === 'SEDANG_DIKIRIM' ? 'active' : ''}" onclick="PesananModule.setFilter('SEDANG_DIKIRIM')">
-                🚚 Dikirim (${allApprovedPRs.filter(p => p.orderStatus === 'SEDANG_DIKIRIM').length})
+                🚚 Dikirim (${shippingCount})
               </button>
               <button type="button" class="btn-preset-pill ${this.currentFilter === 'SUDAH_DITERIMA' ? 'active' : ''}" onclick="PesananModule.setFilter('SUDAH_DITERIMA')">
                 📦 Diterima (${receivedCount})
@@ -301,7 +385,9 @@ window.PesananModule = {
                 ${filteredPRs.length === 0 ? `
                   <tr>
                     <td colspan="7" style="text-align: center; padding: 48px 16px; color: var(--text-muted); font-size: 13.5px;">
-                      Belum ada pesanan pengadaan barang yang disetujui Direksi pada filter ini.
+                      ${canSeeAll 
+                        ? 'Belum ada pesanan pengadaan barang yang disetujui Direksi pada filter ini.' 
+                        : 'Anda belum memiliki pesanan pengadaan barang yang disetujui Direksi pada filter ini.'}
                     </td>
                   </tr>
                 ` : filteredPRs.map(pr => {
@@ -355,7 +441,7 @@ window.PesananModule = {
                         <div style="font-size: 11px; color: var(--text-muted);">${pr.department || pr.role}</div>
                       </td>
 
-                      <!-- 5. Status Pesanan (Dropdown untuk Operator Syafiq/Syifa/Admin) -->
+                      <!-- 5. Status Pesanan (Dropdown untuk Operator Syafiq/Syifa/Admin, Badge untuk Non-Operator) -->
                       <td style="padding: 14px; vertical-align: top;">
                         ${isOperator && !isSettled ? `
                           <div>
@@ -417,16 +503,27 @@ window.PesananModule = {
                               </div>
                             ` : ''}
                           </div>
-                        ` : isReceived ? `
-                          <div>
-                            <button type="button" class="btn-nalar-primary" style="padding: 6px 12px; font-size: 11px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700; width: 100%;" onclick="PesananModule.openInvoiceModal('${pr.id}')">
-                              📄 Kirimkan Invoice
-                            </button>
-                            <div style="font-size: 10px; color: #94A3B8; margin-top: 3px;">
-                              Barang telah tiba. Lampirkan invoice untuk diteruskan ke FAT.
+                        ` : isReceived ? (
+                          isOperator ? `
+                            <div>
+                              <button type="button" class="btn-nalar-primary" style="padding: 6px 12px; font-size: 11px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700; width: 100%;" onclick="PesananModule.openInvoiceModal('${pr.id}')">
+                                📄 Kirimkan Invoice
+                              </button>
+                              <div style="font-size: 10px; color: #94A3B8; margin-top: 3px;">
+                                Barang telah tiba. Lampirkan invoice untuk diteruskan ke FAT.
+                              </div>
                             </div>
-                          </div>
-                        ` : `
+                          ` : `
+                            <div>
+                              <span style="font-size: 11px; color: #34D399; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.25); padding: 2px 6px; border-radius: 4px; display: inline-block;">
+                                📦 Barang Telah Tiba
+                              </span>
+                              <div style="font-size: 10px; color: #94A3B8; margin-top: 3px;">
+                                Menunggu operator (Syafiq/Syifa) meneruskan invoice ke FAT.
+                              </div>
+                            </div>
+                          `
+                        ) : `
                           <span style="font-size: 11px; color: var(--text-dim); font-style: italic;">
                             Menunggu barang diterima
                           </span>
