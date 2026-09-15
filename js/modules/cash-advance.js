@@ -386,7 +386,12 @@ window.CashAdvanceModule = {
                     <label class="form-label" style="font-size: 12px; margin-bottom: 8px; color: #fff;">
                       Target Lokasi / Titik SPPG <span style="color: #F87171;">*</span>
                     </label>
-                    <input type="text" id="ca-location" class="form-control" placeholder="Contoh: Wilayah Bandung & Sumedang" style="padding: 12px 16px; font-size: 13.5px;" required>
+                    <select id="ca-target-kitchen-select" class="form-control" style="padding: 12px 16px; font-size: 13.5px;" onchange="CashAdvanceModule.handleKitchenSelectChange(this.value)" required>
+                      ${this.renderKitchenOptions(user)}
+                    </select>
+                    <div id="ca-manual-kitchen-wrapper" style="display: none; margin-top: 8px;">
+                      <input type="text" id="ca-manual-kitchen-input" class="form-control" placeholder="Tuliskan Target Lokasi / Titik SPPG manual..." style="padding: 10px 14px; font-size: 13px;">
+                    </div>
                   </div>
                 </div>
               </div>
@@ -628,6 +633,71 @@ window.CashAdvanceModule = {
     this.render(document.getElementById('main-content-area'));
   },
 
+  renderKitchenOptions: function(user) {
+    if (!user) user = DB.getCurrentUser();
+    const allKitchens = DB.getKitchens() || [];
+    let options = [];
+
+    // Jika Perwakilan Yayasan: HANYA tampilkan dapur yang didelegasikan kepadanya
+    if (user && user.role === 'PERWAKILAN_YAYASAN') {
+      const uName = (user.name || '').toLowerCase();
+      const uId = (user.id || '').toLowerCase();
+      const uNika = (user.nika || '').toLowerCase();
+      const uKitchen = (user.assignedKitchen || '').toLowerCase();
+      const uSppgId = (user.sppgId || '').toLowerCase();
+
+      options = allKitchens.filter(k => {
+        if (!k) return false;
+        const py = (k.perwakilanYayasan || '').toLowerCase();
+        const idSppg = (k.idSppg || k.id || '').toLowerCase();
+        const kName = (k.namaDapur || k.name || '').toLowerCase();
+        return py.includes(uName) || (uNika && py.includes(uNika)) || (uId && py.includes(uId)) || (uKitchen && (kName.includes(uKitchen) || idSppg.includes(uKitchen))) || (uSppgId && idSppg.includes(uSppgId));
+      });
+
+      if (options.length === 0 && typeof DB.getKitchensForUser === 'function') {
+        options = DB.getKitchensForUser(user);
+      }
+      if (options.length === 0) {
+        options = allKitchens;
+      }
+    } else {
+      options = allKitchens;
+    }
+
+    let html = `<option value="">-- Pilih Target Lokasi / Titik SPPG --</option>`;
+    options.forEach(k => {
+      const idSppg = k.idSppg || k.id || '';
+      const loc = k.kotaKabupaten || k.location || '';
+      const label = idSppg 
+        ? `${idSppg} — ${k.namaDapur || k.name}${loc ? ` (${loc})` : ''}`
+        : `${k.namaDapur || k.name}${loc ? ` (${loc})` : ''}`;
+      html += `<option value="${label}">${label}</option>`;
+    });
+
+    html += `<option value="__MANUAL__">➕ Lainnya (Input Manual)</option>`;
+    return html;
+  },
+
+  handleKitchenSelectChange: function(value) {
+    const wrapper = document.getElementById('ca-manual-kitchen-wrapper');
+    const input = document.getElementById('ca-manual-kitchen-input');
+    if (!wrapper) return;
+
+    if (value === '__MANUAL__') {
+      wrapper.style.display = 'block';
+      if (input) {
+        input.required = true;
+        input.focus();
+      }
+    } else {
+      wrapper.style.display = 'none';
+      if (input) {
+        input.required = false;
+        input.value = '';
+      }
+    }
+  },
+
   openCreateModal: function() {
     const user = DB.getCurrentUser();
     const today = new Date().toISOString().split('T')[0];
@@ -646,6 +716,14 @@ window.CashAdvanceModule = {
     if (previewEl) previewEl.textContent = 'Estimasi: Rp 0';
     const reasonEl = document.getElementById('ca-reason');
     if (reasonEl) reasonEl.value = '';
+
+    // Reset Target Kitchen Select
+    const kSelect = document.getElementById('ca-target-kitchen-select');
+    if (kSelect) {
+      kSelect.innerHTML = this.renderKitchenOptions(user);
+      kSelect.value = '';
+    }
+    this.handleKitchenSelectChange('');
 
     const bankNameEl = document.getElementById('ca-bank-name');
     if (bankNameEl && user) bankNameEl.value = user.bankName || 'BCA (Bank Central Asia)';
@@ -669,7 +747,20 @@ window.CashAdvanceModule = {
     
     const title = (document.getElementById('ca-title')?.value || '').trim();
     const category = document.getElementById('ca-category')?.value || 'Operasional Lapangan';
-    const targetLocation = (document.getElementById('ca-location')?.value || '').trim();
+    
+    const kSelect = document.getElementById('ca-target-kitchen-select')?.value || '';
+    let targetLocation = kSelect;
+    if (kSelect === '__MANUAL__') {
+      targetLocation = (document.getElementById('ca-manual-kitchen-input')?.value || '').trim();
+      if (!targetLocation) {
+        App.showToast('Mohon isi target lokasi / titik SPPG manual!', 'warn');
+        return;
+      }
+    } else if (!targetLocation) {
+      App.showToast('Silakan pilih Target Lokasi / Titik SPPG!', 'warn');
+      return;
+    }
+
     const amountRequested = Number(document.getElementById('ca-amount')?.value || 0);
     const usagePlanDate = document.getElementById('ca-usage-date')?.value || '';
     const settlementPlanDate = document.getElementById('ca-settlement-date')?.value || '';

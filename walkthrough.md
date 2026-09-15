@@ -102,4 +102,16 @@ Perubahan status dilakukan secara instan melalui dropdown interaktif pada baris 
 - ✅ **Proteksi Akun Pemohon Reguler**: Akun pemohon reguler melihat badge status yang rapi (non-editable status dropdown) dan tetap dapat melihat detail log riwayat pengiriman barang, foto PR, serta melihat slip transfer FAT saat pesanan telah settlement (Lunas).
 - ✅ **Live Filter & Keyword Search**: Filter tabs dan kotak pencarian real-time berfungsi responsif di seluruh kartu mobile maupun baris tabel desktop.
 
+---
+
+## 💵 6. Pembaharuan Form Cash Advance: Target Lokasi / Titik SPPG Dropdown
+
+Telah diperbarui field **Target Lokasi / Titik SPPG** pada Form Pengajuan Cash Advance (Kasbon Operasional) di [`js/modules/cash-advance.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/cash-advance.js):
+
+1. **Dropdown Berbasis Database SPPG**: Menampilkan seluruh titik SPPG resmi dari database yayasan lengkap dengan **ID SPPG** pada setiap opsinya (contoh: `THAH6JZO — SPPG Bandung Nagreg Citaman 2 (Kab. Bandung)`).
+2. **Filter Delegasi Khusus Perwakilan Yayasan**: Untuk pengguna ber-role `PERWAKILAN_YAYASAN`, opsi dropdown otomatis difilter sehingga **hanya memunculkan SPPG yang didelegasikan** ke akun bersangkutan.
+3. **Opsi "➕ Lainnya (Input Manual)"**: Memungkinkan pemohon memilih `__MANUAL__` yang secara otomatis menampilkan input teks tambahan jika kebutuhan operasional lapangan berada di luar titik SPPG terdaftar.
+4. **Validasi & Integrasi Data**: Sistem memastikan nilai lokasi (baik dari pilihan dropdown SPPG maupun input manual) tervalidasi dan tersimpan rapi pada record Cash Advance di database lokal dan Supabase Cloud.
+
+
 
