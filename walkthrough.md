@@ -129,6 +129,19 @@ Telah dikonfigurasi hak akses penuh **Admin Hub** untuk akun pengguna:
 3. **Sub-Menu 2: Laporan Dapur & Saldo VA**: Akses penuh monitoring transaksi harian dapur program, kalkulasi porsi, realisasi belanja bahan baku SPM, dan mutasi saldo Virtual Account.
 4. **Sub-Menu 3: Daftar Kendala Dapur SPPG**: Akses penuh monitoring kendala operasional lapangan di setiap titik SPPG serta merespons/menindaklanjuti kendala yang dilaporkan.
 
+---
+
+## 📑 8. Penambahan Kolom Link SPM (Format Hyperlink) pada Export Excel Saldo VA
+
+Telah ditambahkan kolom baru pada **Sheet 1 (Pelaporan Saldo VA & Transaksi)** pada fitur **Export Excel Multi-Sheet (.xlsx / .xls)** di [`js/modules/dapur-yayasan.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/dapur-yayasan.js):
+
+1. **Kolom "Link Dokumen SPM (Nota Belanja)"**:
+   - Menampilkan link dokumen SPM / Surat Perintah Membayar bahan baku yang diunggah oleh Maker Yayasan.
+   - Menggunakan atribut `ss:HRef` dan styling SpreadsheetML `CellHyperlink` (warna biru dan bergaris bawah), sehingga saat dibuka di Microsoft Excel, Google Sheets, LibreOffice, atau WPS Office, link tersebut **dapat langsung diklik (hyperlink interaktif)** dan membuka berkas/folder Google Drive nota asli di browser.
+2. **Fallback Teks Rapi**: Jika tidak terdapat link atau dokumen SPM berupa catatan lokal, sel otomatis menampilkan tanda `-` atau nama file secara proporsional.
+3. **Pemberian Hak Akses Export ke FAT Officer**: Akun `FAT-001` (Muhammad Imam Adamy) kini juga memiliki wewenang untuk mengekspor rekapitulasi Excel Saldo VA & Status Dapur.
+
+
 
 
 

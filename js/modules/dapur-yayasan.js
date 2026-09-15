@@ -2596,15 +2596,16 @@ window.DapurYayasanModule = {
       'KETUA_PEMBINA',
       'DIREKTUR_KEUANGAN',
       'DIREKTUR_OPERASIONAL',
-      'STAFF_AHLI_KEUANGAN'
+      'STAFF_AHLI_KEUANGAN',
+      'FAT_OFFICER'
     ];
-    return allowedRoles.includes(user.role);
+    return allowedRoles.includes(user.role) || user.id === 'FAT-001' || user.nika === 'K-2026-012';
   },
 
   openExportModal: function() {
     const user = DB.getCurrentUser();
     if (!this.canExportKitchenData(user)) {
-      App.showToast('Akses ditolak: Fitur export laporan ini khusus Direktur dan Staf Ahli Keuangan.', 'warn');
+      App.showToast('Akses ditolak: Fitur export laporan ini khusus Direktur, Staf Ahli Keuangan, dan FAT Officer.', 'warn');
       return;
     }
 
@@ -2633,7 +2634,7 @@ window.DapurYayasanModule = {
                 Export Rekapitulasi Terpadu
               </span>
               <span style="font-size: 11px; color: #FCD34D; font-style: italic;">
-                Khusus Direksi &amp; Staff Ahli Keuangan
+                Khusus Direksi, Staff Ahli Keuangan &amp; FAT
               </span>
             </div>
             <h3 class="modal-title" style="margin-top: 4px; font-size: 18px; font-weight: 700;">
@@ -2655,7 +2656,7 @@ window.DapurYayasanModule = {
               <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px 12px;">
                 <div style="font-size: 12px; font-weight: 600; color: #fff;">📄 Sheet 1: Saldo VA &amp; Belanja</div>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.35;">
-                  Rekapitulasi saldo VA terkini, penerima manfaat, bahan baku, ops, sewa mobil, insentif yayasan, dan total all-in.
+                  Rekapitulasi saldo VA terkini, penerima manfaat, bahan baku, ops, sewa mobil, insentif yayasan, dan link SPM belanja.
                 </div>
               </div>
               <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px 12px;">
@@ -2751,7 +2752,7 @@ window.DapurYayasanModule = {
   executeExportExcel: function() {
     const user = DB.getCurrentUser();
     if (!this.canExportKitchenData(user)) {
-      App.showToast('Akses ditolak: Fitur export ini hanya dapat diakses oleh Direktur dan Staf Ahli Keuangan.', 'warn');
+      App.showToast('Akses ditolak: Fitur export ini hanya dapat diakses oleh Direktur, Staf Ahli Keuangan, dan FAT Officer.', 'warn');
       return;
     }
 
@@ -2887,10 +2888,10 @@ window.DapurYayasanModule = {
     // ==========================================
     let sheet1RowsXml = `
       <Row ss:Height="24">
-        <Cell ss:StyleID="DocTitle" ss:MergeAcross="20"><Data ss:Type="String">YAYASAN MERAH PUTIH SEJAHTERA (ERP MMS V3)</Data></Cell>
+        <Cell ss:StyleID="DocTitle" ss:MergeAcross="21"><Data ss:Type="String">YAYASAN MERAH PUTIH SEJAHTERA (ERP MMS V3)</Data></Cell>
       </Row>
       <Row ss:Height="20">
-        <Cell ss:StyleID="DocSubtitle" ss:MergeAcross="20"><Data ss:Type="String">LAPORAN REKAPITULASI PELAPORAN TRANSAKSI DAPUR &amp; SALDO VIRTUAL ACCOUNT (VA)</Data></Cell>
+        <Cell ss:StyleID="DocSubtitle" ss:MergeAcross="21"><Data ss:Type="String">LAPORAN REKAPITULASI PELAPORAN TRANSAKSI DAPUR &amp; SALDO VIRTUAL ACCOUNT (VA)</Data></Cell>
       </Row>
       <Row ss:Height="12"><Cell ss:StyleID="Default"/></Row>
       <Row ss:Height="18">
@@ -2928,6 +2929,7 @@ window.DapurYayasanModule = {
         <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Bahan / Porsi (Rp)</Data></Cell>
         <Cell ss:StyleID="TableHeader"><Data ss:Type="String">All-In / Porsi (Rp)</Data></Cell>
         <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Status Efisiensi</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Link Dokumen SPM (Nota Belanja)</Data></Cell>
         <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Petugas Pelapor (Maker)</Data></Cell>
         <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Catatan Operasional &amp; Belanja</Data></Cell>
       </Row>
@@ -2936,7 +2938,7 @@ window.DapurYayasanModule = {
     if (filteredReports.length === 0) {
       sheet1RowsXml += `
         <Row ss:Height="22">
-          <Cell ss:StyleID="CellCenter" ss:MergeAcross="20">
+          <Cell ss:StyleID="CellCenter" ss:MergeAcross="21">
             <Data ss:Type="String">-- Tidak ada data transaksi dapur pada filter &amp; periode yang dipilih --</Data>
           </Cell>
         </Row>
@@ -2969,6 +2971,15 @@ window.DapurYayasanModule = {
         const vaBal = Number(r.vaBalance) || 0;
         const vaBank = r.vaBankName || 'Virtual Account Bank';
 
+        const rawSpmUrl = (r.spmAttachmentUrl || r.spm_attachment_url || r.spmUrl || '').trim();
+        const isHttpLink = rawSpmUrl && (rawSpmUrl.startsWith('http://') || rawSpmUrl.startsWith('https://')) && !rawSpmUrl.includes('unsplash.com');
+        let spmCellXml = `<Cell ss:StyleID="CellCenter"><Data ss:Type="String">-</Data></Cell>`;
+        if (isHttpLink) {
+          spmCellXml = `<Cell ss:StyleID="CellHyperlink" ss:HRef="${xmlEscape(rawSpmUrl)}"><Data ss:Type="String">${xmlEscape(rawSpmUrl)}</Data></Cell>`;
+        } else if (r.spmFileName && r.spmFileName !== '-' && !r.spmFileName.includes('unsplash')) {
+          spmCellXml = `<Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.spmFileName)}</Data></Cell>`;
+        }
+
         sheet1RowsXml += `
           <Row ss:Height="20">
             <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${idx + 1}</Data></Cell>
@@ -2990,6 +3001,7 @@ window.DapurYayasanModule = {
             <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${rawPerPorsi}</Data></Cell>
             <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${allInPerPorsi}</Data></Cell>
             <Cell ss:StyleID="${effStyle}"><Data ss:Type="String">${xmlEscape(effLabel)}</Data></Cell>
+            ${spmCellXml}
             <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.reporterName || '-')}</Data></Cell>
             <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.notes || '-')}</Data></Cell>
           </Row>
@@ -3012,7 +3024,7 @@ window.DapurYayasanModule = {
           <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumTotalDailyExpense}</Data></Cell>
           <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${avgRawCostPerPortion}</Data></Cell>
           <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${avgAllInCostPerPortion}</Data></Cell>
-          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="2"><Data ss:Type="String">Rata-rata Bahan: Rp ${avgRawCostPerPortion.toLocaleString('id-ID')} / Porsi</Data></Cell>
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="3"><Data ss:Type="String">Rata-rata Bahan: Rp ${avgRawCostPerPortion.toLocaleString('id-ID')} / Porsi</Data></Cell>
         </Row>
       `;
     }
@@ -3176,6 +3188,16 @@ window.DapurYayasanModule = {
    </Borders>
    <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0F172A"/>
   </Style>
+  <Style ss:ID="CellHyperlink">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#2563EB" ss:Underline="Single"/>
+  </Style>
   <Style ss:ID="CellCenter">
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
@@ -3299,6 +3321,7 @@ window.DapurYayasanModule = {
    <Column ss:Width="105"/>
    <Column ss:Width="105"/>
    <Column ss:Width="110"/>
+   <Column ss:Width="260"/>
    <Column ss:Width="140"/>
    <Column ss:Width="220"/>
    ${sheet1RowsXml}
