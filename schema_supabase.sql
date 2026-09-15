@@ -118,6 +118,10 @@ CREATE TABLE IF NOT EXISTS item_requests (
     status VARCHAR(50) DEFAULT 'PENDING',
     rejection_reason TEXT,
     approval_history JSONB DEFAULT '[]'::jsonb,
+    order_status VARCHAR(50) DEFAULT 'DALAM_ANTRIAN',
+    order_tracking_history JSONB DEFAULT '[]'::jsonb,
+    order_invoice JSONB,
+    order_disbursement JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -415,4 +419,10 @@ CREATE TABLE IF NOT EXISTS reimbursements (
 ALTER TABLE reimbursements ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public full access to reimbursements" ON reimbursements;
 CREATE POLICY "Public full access to reimbursements" ON reimbursements FOR ALL USING (true) WITH CHECK (true);
+
+-- N. MIGRATION FOR ORDER TRACKING & INVOICE SETTLEMENT (ITEM REQUESTS)
+ALTER TABLE item_requests ADD COLUMN IF NOT EXISTS order_status VARCHAR(50) DEFAULT 'DALAM_ANTRIAN';
+ALTER TABLE item_requests ADD COLUMN IF NOT EXISTS order_tracking_history JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE item_requests ADD COLUMN IF NOT EXISTS order_invoice JSONB;
+ALTER TABLE item_requests ADD COLUMN IF NOT EXISTS order_disbursement JSONB;
 

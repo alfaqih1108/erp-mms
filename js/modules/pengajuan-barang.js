@@ -52,6 +52,10 @@ window.PengajuanBarangModule = {
               <span>🧾 Klaim Reimburse</span>
             </button>
 
+            <button type="button" class="btn-nalar-secondary" onclick="App.switchTab('pesanan')" style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #60A5FA; border-color: rgba(59,130,246,0.4); background: rgba(59,130,246,0.08);">
+              <span>📦 Pesanan & PO</span>
+            </button>
+
             <button class="btn-nalar-primary" onclick="PengajuanBarangModule.openPRModal()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
               <span>Buat Pengajuan Barang Baru</span>

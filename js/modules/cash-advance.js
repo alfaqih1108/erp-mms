@@ -74,6 +74,10 @@ window.CashAdvanceModule = {
               <span>🧾 Klaim Reimburse</span>
             </button>
 
+            <button type="button" class="btn-nalar-secondary" onclick="App.switchTab('pesanan')" style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #60A5FA; border-color: rgba(59,130,246,0.4); background: rgba(59,130,246,0.08);">
+              <span>📦 Pesanan & PO</span>
+            </button>
+
             <button type="button" class="btn-nalar-primary" onclick="CashAdvanceModule.openCreateModal()" style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; box-shadow: 0 4px 18px rgba(245, 158, 11, 0.35);">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               <span>+ Ajukan Cash Advance Baru</span>

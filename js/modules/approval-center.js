@@ -174,6 +174,33 @@ window.ApprovalCenterModule = {
       }
     });
 
+    // 5. PESANAN PO (SETTLEMENT INVOICE VENDOR FAT)
+    prs.forEach(p => {
+      if (p.orderDisbursement && (
+        user.role === 'FAT_OFFICER' || 
+        user.role === 'SUPER_ADMIN' ||
+        (p.orderDisbursement.disbursedById === user.id) ||
+        (p.orderDisbursement.disbursedBy && p.orderDisbursement.disbursedBy.toLowerCase().includes(user.name.toLowerCase()))
+      )) {
+        history.push({
+          type: 'ORDER',
+          id: p.id,
+          date: p.orderInvoice ? p.orderInvoice.submittedAt : p.createdAt,
+          employeeName: p.employeeName,
+          department: p.department || p.role,
+          title: `Settlement PO: ${p.itemName} (${p.quantity} Unit) — Rp ${(Number(p.totalPrice) || 0).toLocaleString('id-ID')}`,
+          summary: `Dapur: ${p.targetKitchen} · Ref Bank: ${p.orderDisbursement.bankRefNo} · Status: Settlement Lunas`,
+          stage: 'SETTLEMENT',
+          status: 'APPROVED',
+          decision: 'SETTLEMENT_COMPLETED',
+          decisionTimestamp: p.orderDisbursement.disbursedAt || '-',
+          approverName: p.orderDisbursement.disbursedBy || user.name,
+          notes: p.orderDisbursement.notes || 'Pembayaran vendor lunas ditransfer',
+          raw: p
+        });
+      }
+    });
+
     // Urutkan dari keputusan approval terbaru
     return history.sort((a, b) => (b.decisionTimestamp || '').localeCompare(a.decisionTimestamp || ''));
   },
@@ -192,6 +219,7 @@ window.ApprovalCenterModule = {
     let relevantPrs = [];
     let relevantCAs = [];
     let relevantRmbs = [];
+    let relevantOrderInvoices = [];
 
     // 1. Human Capital: Cuti tahap HC
     if (user.role === 'HUMAN_CAPITAL') {
@@ -221,10 +249,11 @@ window.ApprovalCenterModule = {
     else if (user.role === 'MANAGER_KEUANGAN') {
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && p.role !== 'FAT_OFFICER' && p.role !== 'STAFF_AHLI_KEUANGAN');
     }
-    // 6. FAT Officer: Pencairan Kasbon, Verifikasi LPJ Kasbon, & Pencairan Transfer Reimbursement (Settlement)
+    // 6. FAT Officer: Pencairan Kasbon, Verifikasi LPJ Kasbon, Pencairan Reimbursement, & Settlement Invoice Vendor
     else if (user.role === 'FAT_OFFICER') {
       relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
       relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FAT_DISBURSEMENT');
+      relevantOrderInvoices = prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED');
     }
     // 7. Staff Ahli Keuangan: Verifikasi Anggaran PR & Verifikasi Reimburse Jalur 1
     else if (user.role === 'STAFF_AHLI_KEUANGAN') {
@@ -237,9 +266,10 @@ window.ApprovalCenterModule = {
       relevantPrs = prs.filter(p => p.status === 'PENDING');
       relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
       relevantRmbs = rmbs.filter(r => r.status === 'PENDING');
+      relevantOrderInvoices = prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED');
     }
 
-    const totalPending = relevantLeaves.length + relevantPrs.length + relevantCAs.length + relevantRmbs.length;
+    const totalPending = relevantLeaves.length + relevantPrs.length + relevantCAs.length + relevantRmbs.length + relevantOrderInvoices.length;
 
     // Dapatkan data riwayat approval saya
     const allHistory = this.getMyApprovalHistory(user);
@@ -247,6 +277,7 @@ window.ApprovalCenterModule = {
     const historyPrs = allHistory.filter(h => h.type === 'PR');
     const historyCAs = allHistory.filter(h => h.type === 'CA');
     const historyRmbs = allHistory.filter(h => h.type === 'REIMBURSE');
+    const historyOrders = allHistory.filter(h => h.type === 'ORDER');
     const totalHistory = allHistory.length;
 
     const showExportBtn = this.isExportAllowed(user.role);
@@ -337,6 +368,14 @@ window.ApprovalCenterModule = {
             <span>Klaim Reimburse</span>
             <span class="filter-badge" style="background: rgba(16, 185, 129, 0.3); color: #34D399;">${this.activeTab === 'PENDING' ? relevantRmbs.length : historyRmbs.length}</span>
           </button>
+
+          ${(relevantOrderInvoices.length > 0 || historyOrders.length > 0 || user.role === 'FAT_OFFICER') ? `
+            <button class="approval-filter-pill pill-order ${this.activeFilter === 'ORDER' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('ORDER')" style="${this.activeFilter === 'ORDER' ? 'background: rgba(59, 130, 246, 0.2); border-color: #3B82F6; color: #60A5FA;' : ''}">
+              <span class="filter-dot" style="background: #3B82F6;"></span>
+              <span>Invoice Pesanan (FAT)</span>
+              <span class="filter-badge" style="background: rgba(59, 130, 246, 0.3); color: #60A5FA;">${this.activeTab === 'PENDING' ? relevantOrderInvoices.length : historyOrders.length}</span>
+            </button>
+          ` : ''}
         </div>
 
         <!-- TAB KONTEN 1: ANTREAN PERSETUJUAN (PENDING) -->
@@ -360,143 +399,169 @@ window.ApprovalCenterModule = {
                   <div>
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                       <span class="text-mono-badge" style="color: #A78BFA;">CUTI / IZIN · ${l.id}</span>
-                      <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${l.createdAt}</span>
+                      <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${l.createdAt || l.startDate}</span>
                       <span style="font-size: 10px; color: #C4B5FD; background: rgba(139,92,246,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                        Tahap: ${l.stage === 'MANAGER_AREA_REVIEW' ? '1. Review Manager Area' : (l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW') ? '1. Review Direktur' : '2. Verifikasi Final Human Capital'}
+                        Tahap: ${l.stage === 'DIR_KEU_REVIEW' ? 'Review Direktur Keuangan' : l.stage === 'DIR_OPS_OR_KEU_REVIEW' ? 'Review Direktur Ops/Keu' : l.stage === 'MANAGER_AREA_REVIEW' ? 'Review Manager Area' : 'Verifikasi Final HC'}
                       </span>
-                      <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10px; color: #A78BFA; border-color: rgba(139,92,246,0.4);" onclick="App.showApprovalTracker('leave', '${l.id}')">
-                        🔍 Cek Level Approval
-                      </button>
                     </div>
-                    <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 500;">${l.employeeName} — ${l.type} (${l.duration} Hari)</h4>
-                    <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px;">Alasan: ${l.reason}</p>
-                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-                      <span>Periode: ${l.startDate} s/d ${l.endDate} · Divisi: ${l.department}</span>
-                      ${(l.attachmentName || l.attachmentUrl) ? `
-                        <span>·</span>
-                        <button type="button" class="btn-preview-link" style="color: #A78BFA; background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="CutiModule.openAttachmentModal('${l.id}')">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                          <span>📎 Lihat Lampiran Surat / Dokumen (${l.attachmentName || 'Berkas'}) ↗</span>
+
+                    <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
+                      ${l.employeeName} — <span style="color: #A78BFA;">${l.leaveType || l.type}</span> (${l.duration} Hari)
+                    </h4>
+
+                    <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
+                      Periode: <strong>${l.startDate}</strong> s/d <strong>${l.endDate}</strong> · Departemen: <strong>${l.department || l.role}</strong>
+                    </div>
+
+                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+                      Alasan: "${l.reason || '-'}" · Kontak Darurat: <strong>${l.emergencyContact || '-'}</strong>
+                    </div>
+
+                    ${(l.attachmentUrl || l.attachmentName) ? `
+                      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                        <button type="button" class="btn-preview-link" onclick="CutiModule.openAttachmentModal('${l.id}')" style="color: #A78BFA; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                          <span>📎 Lihat Lampiran Surat Dokter ↗</span>
                         </button>
-                      ` : ''}
-                    </div>
+                      </div>
+                    ` : ''}
                   </div>
                 </div>
 
-                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <!-- Action Buttons per Stage -->
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                   <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectLeave('${l.id}')">
-                    Tolak
+                    ✕ Tolak
                   </button>
-                  <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B;" onclick="ApprovalCenterModule.approveLeave('${l.id}', '${l.stage}')">
-                    ${l.stage === 'MANAGER_AREA_REVIEW' || l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW' ? 'Setujui & Teruskan ke HC' : 'Setujui Cuti Final'}
+                  <button class="btn-nalar-primary" style="background: #A78BFA; color: #1E1B4B; font-weight: 600;" onclick="ApprovalCenterModule.approveLeave('${l.id}', '${l.stage}')">
+                    ✓ Setujui Pengajuan
                   </button>
                 </div>
               </div>
             `).join('') : ''}
 
             <!-- Pending PRs -->
-            ${(this.activeFilter === 'ALL' || this.activeFilter === 'PR') ? relevantPrs.map(p => `
-              <div class="nalar-card aura-box-amber" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #F59E0B; margin-bottom: 0;">
-                <div style="display: flex; align-items: flex-start; gap: 16px;">
-                  <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); display: flex; align-items: center; justify-content: center; color: #FCD34D; flex-shrink: 0;">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-                  </div>
+            ${(this.activeFilter === 'ALL' || this.activeFilter === 'PR') ? relevantPrs.map(p => {
+              const isManagerStage = (p.stage === 'MANAGER_APPROVAL');
+              const isFinanceStage = (p.stage === 'FINANCE_VERIFICATION');
+              const isDirectorStage = (p.stage === 'DIRECTOR_APPROVAL');
 
-                  <div>
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                      <span class="text-mono-badge" style="color: #FCD34D;">PURCHASE REQ · ${p.id}</span>
-                      <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${p.createdAt}</span>
-                      <span style="font-size: 10px; color: #FDE68A; background: rgba(245,158,11,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                        Tahap: ${p.stage === 'MANAGER_APPROVAL' ? '1. Review Manager' : p.stage === 'FINANCE_VERIFICATION' ? '2. Verifikasi Anggaran Keuangan' : '3. Persetujuan Akhir Direktur'}
-                      </span>
-                      <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10px; color: #FCD34D; border-color: rgba(245,158,11,0.4);" onclick="App.showApprovalTracker('pr', '${p.id}')">
-                        🔍 Cek Level Approval
-                      </button>
-                    </div>
-                    <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 500;">
-                      ${p.itemName} (${p.quantity} Unit) — <span style="color: #FCD34D; font-weight: 600;">Rp ${(p.totalPrice || 0).toLocaleString('id-ID')}</span>
-                      ${p.hasAdjustment ? `<span style="font-size: 10.5px; color: #34D399; background: rgba(52,211,153,0.15); padding: 1px 6px; border-radius: 3px; margin-left: 6px;">📝 Telah Disesuaikan</span>` : ''}
-                    </h4>
-                    ${p.targetKitchen ? `
-                      <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? '#93C5FD' : '#FCD34D'}; background: ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? 'rgba(59,130,246,0.15)' : 'rgba(245,158,11,0.15)'}; border: 1px solid ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? 'rgba(59,130,246,0.35)' : 'rgba(245,158,11,0.3)'}; padding: 2px 8px; border-radius: 4px; margin: 2px 0 4px 0; font-weight: 500;">
-                        ${p.targetKitchen === 'Kantor' || p.targetKitchen.startsWith('Kantor') ? '🏢 Untuk Keperluan: Kantor Yayasan' : `🍳 Untuk Kepentingan Dapur: ${p.targetKitchen}`}
-                      </div>
-                    ` : ''}
-                    <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 8px;">Alasan: ${p.reason}</p>
-                    
-                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-                      <span>Pemohon: <strong style="color: #fff;">${p.employeeName}</strong> (${p.department})</span>
-                      <span>·</span>
-                      <span>Kategori: ${p.category}</span>
-                      ${(p.attachmentName || p.attachmentUrl) ? `
-                        <span>·</span>
-                        <button class="btn-preview-link" onclick="PengajuanBarangModule.openLightbox('${p.id}', '${p.itemName}')">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                          <span>Lihat Foto Barang yang Diajukan ↗</span>
-                        </button>
-                      ` : ''}
-                    </div>
-                  </div>
-                </div>
-
-                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                  <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectPR('${p.id}')">
-                    ✕ Tolak
-                  </button>
-                  <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustPRModal('${p.id}')">
-                    ✏️ Setujui dgn Penyesuaian
-                  </button>
-                  <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
-                    ✓ ${p.stage === 'MANAGER_APPROVAL' ? 'Setujui & Teruskan' : p.stage === 'FINANCE_VERIFICATION' ? 'Verifikasi Dana' : 'Setujui & Terbitkan PO'}
-                  </button>
-                </div>
-              </div>
-            `).join('') : ''}
-
-            <!-- Pending Cash Advances (Kasbon Operasional & LPJ) -->
-            ${(this.activeFilter === 'ALL' || this.activeFilter === 'CA') ? relevantCAs.map(c => {
-              const isDirectorStage = (c.stage === 'DIRECTOR_REVIEW');
-              const isDisburseStage = (c.stage === 'FAT_DISBURSEMENT');
-              const isSettlementReviewStage = (c.stage === 'SETTLEMENT_SUBMITTED');
+              const stageName = isManagerStage 
+                ? '1. Review Manager Area' 
+                : isFinanceStage 
+                ? '2. Verifikasi Anggaran Staf Ahli Keuangan' 
+                : '3. Otorisasi Direksi (Penerbitan PO)';
 
               return `
                 <div class="nalar-card aura-box-amber" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #F59E0B; margin-bottom: 0;">
                   <div style="display: flex; align-items: flex-start; gap: 16px;">
                     <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); display: flex; align-items: center; justify-content: center; color: #FCD34D; flex-shrink: 0; font-size: 20px;">
+                      🛒
+                    </div>
+                    <div>
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span class="text-mono-badge" style="color: #FCD34D;">PR · ${p.id}</span>
+                        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${p.createdAt}</span>
+                        <span style="font-size: 10px; color: #FDE68A; background: rgba(245,158,11,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                          Tahap: ${stageName}
+                        </span>
+                      </div>
+
+                      <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
+                        ${p.itemName} (${p.quantity} Unit) — <span style="font-family: var(--font-mono); color: #FCD34D;">Rp ${(Number(p.totalPrice) || 0).toLocaleString('id-ID')}</span>
+                      </h4>
+
+                      <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
+                        Pemohon: <strong>${p.employeeName}</strong> (${p.role}) · Kategori: <strong style="color: #60A5FA;">${p.category}</strong>
+                      </div>
+
+                      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+                        Target Dapur: <strong>${p.targetKitchen}</strong> · Alasan: "${p.reason || '-'}"
+                      </div>
+
+                      ${(p.attachmentUrl || p.attachmentName) ? `
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                          <button type="button" class="btn-preview-link" onclick="PengajuanBarangModule.openLightbox('${p.id}', '${p.itemName}')" style="color: #60A5FA; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                            <span>📎 Lihat Foto Barang / Estimasi Harga ↗</span>
+                          </button>
+                        </div>
+                      ` : ''}
+                    </div>
+                  </div>
+
+                  <!-- Action Buttons per Stage -->
+                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectPR('${p.id}')">
+                      ✕ Tolak
+                    </button>
+
+                    ${(isFinanceStage || isDirectorStage) ? `
+                      <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustPRModal('${p.id}')">
+                        ✏️ Setujui dgn Penyesuaian
+                      </button>
+                    ` : ''}
+
+                    ${isManagerStage ? `
+                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); border-color: #60A5FA; color: #fff; font-weight: 600;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
+                        ✓ Setujui & Teruskan ke Staf Ahli Keu
+                      </button>
+                    ` : isFinanceStage ? `
+                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
+                        ✓ Verifikasi Sah & Teruskan ke Direksi
+                      </button>
+                    ` : `
+                      <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 700;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
+                        👑 Otorisasi & Terbitkan PO Resmi
+                      </button>
+                    `}
+                  </div>
+                </div>
+              `;
+            }).join('') : ''}
+
+            <!-- Pending Cash Advances -->
+            ${(this.activeFilter === 'ALL' || this.activeFilter === 'CA') ? relevantCAs.map(c => {
+              const isDirectorStage = (c.stage === 'DIRECTOR_REVIEW');
+              const isDisburseStage = (c.stage === 'FAT_DISBURSEMENT');
+              const isSettlementReviewStage = (c.stage === 'SETTLEMENT_SUBMITTED');
+
+              const stageName = isDirectorStage 
+                ? '1. Review & Otorisasi Direksi' 
+                : isDisburseStage 
+                ? '2. Pencairan Kasir FAT' 
+                : '3. Verifikasi LPJ Kasir FAT';
+
+              return `
+                <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #10B981; margin-bottom: 0;">
+                  <div style="display: flex; align-items: flex-start; gap: 16px;">
+                    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; color: #34D399; flex-shrink: 0; font-size: 20px;">
                       💵
                     </div>
                     <div>
                       <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <span class="text-mono-badge" style="color: #FCD34D;">CASH ADVANCE · ${c.id}</span>
+                        <span class="text-mono-badge" style="color: #34D399;">KASBON · ${c.id}</span>
                         <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${c.createdAt}</span>
-                        <span style="font-size: 10px; color: #FDE68A; background: rgba(245,158,11,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                          Tahap: ${isDirectorStage ? '👑 Otorisasi Direksi' : isDisburseStage ? '💰 Pencairan / Transfer FAT' : '🔍 Verifikasi LPJ Belanja FAT'}
+                        <span style="font-size: 10px; color: #A7F3D0; background: rgba(16,185,129,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                          Tahap: ${stageName}
                         </span>
-                        <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10px; color: #FCD34D; border-color: rgba(245,158,11,0.4);" onclick="App.openApprovalTracker('CA', '${c.id}')">
-                          🔍 Cek Level Tracker
-                        </button>
                       </div>
 
                       <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
-                        ${c.title} — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${Number(c.amountApproved || c.amountRequested).toLocaleString('id-ID')}</span>
+                        ${c.title || c.purpose || 'Kasbon Operasional'} — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(Number(c.amountApproved || c.amountRequested || c.amount) || 0).toLocaleString('id-ID')}</span>
                       </h4>
 
-                      <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px;">
-                        Pemohon: <strong>${c.employeeName}</strong> (${c.department}) · Lokasi: <strong>${c.targetLocation}</strong>
+                      <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
+                        Pemohon: <strong>${c.employeeName}</strong> (${c.department || c.role}) · Target Lokasi: <strong style="color: #FCD34D;">${c.targetLocation || c.targetExpense || 'Operasional'}</strong>
                       </div>
 
-                      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-style: italic;">
-                        Justifikasi: "${c.reason}"
-                      </p>
-
-                      <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-                        Rekening Pemohon: <strong>${c.bankName}</strong> (${c.bankAccountNo} a.n ${c.bankAccountName}) · Target LPJ: ${c.settlementPlanDate}
+                      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+                        💳 Rekening Penerima: <strong>${c.bankName}</strong> (${c.bankAccountNo} a.n ${c.bankAccountName})
                       </div>
 
-                      ${isSettlementReviewStage && c.settlement ? `
-                        <div style="margin-top: 8px; background: rgba(0,0,0,0.35); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.06); font-size: 11.5px;">
-                          📊 <strong>Data Realisasi LPJ:</strong> Total Belanja: <strong style="color: #60A5FA;">Rp ${Number(c.settlement.totalSpent).toLocaleString('id-ID')}</strong> · 
-                          ${c.settlement.refundAmount > 0 ? `Sisa Dikembalikan ke Yayasan: <strong style="color: #34D399;">Rp ${Number(c.settlement.refundAmount).toLocaleString('id-ID')}</strong>` : c.settlement.reimburseAmount > 0 ? `Kekurangan (Reimburse): <strong style="color: #60A5FA;">Rp ${Number(c.settlement.reimburseAmount).toLocaleString('id-ID')}</strong>` : 'Sesuai Plafon (Pas)'}
+                      ${(c.attachmentUrl || c.attachmentName) ? `
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                          <button type="button" class="btn-preview-link" onclick="CashAdvanceModule.openLightbox('${c.id}')" style="color: #34D399; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                            <span>📎 Lihat Rincian Kasbon / LPJ ↗</span>
+                          </button>
                         </div>
                       ` : ''}
                     </div>
@@ -528,93 +593,48 @@ window.ApprovalCenterModule = {
               `;
             }).join('') : ''}
 
-            <!-- Pending Reimbursements (Klaim Biaya Operasional) -->
-            ${(this.activeFilter === 'ALL' || this.activeFilter === 'REIMBURSE') ? relevantRmbs.map(r => {
-              const isManagerStage = (r.stage === 'MANAGER_APPROVAL');
-              const isFinanceStage = (r.stage === 'FINANCE_VERIFICATION');
-              const isDirectorStage = (r.stage === 'DIRECTOR_APPROVAL');
-              const isDisburseStage = (r.stage === 'FAT_DISBURSEMENT');
-
-              const stageName = isManagerStage 
-                ? '1. Review Manager Area' 
-                : isFinanceStage 
-                ? '2. Verifikasi Staf Ahli Keuangan' 
-                : isDirectorStage 
-                ? '3. Otorisasi Direksi' 
-                : '4. Pencairan Transfer FAT';
-
+            <!-- Pending Invoices Pesanan (Settlement Pembayaran Vendor FAT) -->
+            ${(this.activeFilter === 'ALL' || this.activeFilter === 'PR' || this.activeFilter === 'ORDER') ? relevantOrderInvoices.map(p => {
               return `
-                <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #10B981; margin-bottom: 0;">
+                <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #3B82F6; margin-bottom: 0;">
                   <div style="display: flex; align-items: flex-start; gap: 16px;">
-                    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; color: #34D399; flex-shrink: 0; font-size: 20px;">
-                      🧾
+                    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); display: flex; align-items: center; justify-content: center; color: #60A5FA; flex-shrink: 0; font-size: 20px;">
+                      📄
                     </div>
                     <div>
                       <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <span class="text-mono-badge" style="color: #34D399;">REIMBURSE · ${r.id}</span>
-                        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${r.createdAt}</span>
-                        <span style="font-size: 10px; color: #A7F3D0; background: rgba(16,185,129,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                          Tahap: ${stageName}
-                        </span>
-                        <span style="font-size: 10px; color: #FCD34D; background: rgba(245,158,11,0.15); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                          ${r.workflowType === 'FIELD_JALUR_1' ? 'Jalur 1: Lapangan / Dapur' : 'Jalur 2: Kantor / Internal'}
+                        <span class="text-mono-badge" style="color: #60A5FA;">INVOICE PESANAN · ${p.id}</span>
+                        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${p.orderInvoice?.submittedAt || p.createdAt}</span>
+                        <span style="font-size: 10px; color: #93C5FD; background: rgba(59,130,246,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                          Tahap: Settlement Transfer FAT ke Vendor
                         </span>
                       </div>
 
                       <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
-                        ${r.itemName} (${r.quantity} Unit) — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(r.subtotal || 0).toLocaleString('id-ID')}</span>
-                        ${r.hasAdjustment ? `<span style="font-size: 10.5px; color: #FCD34D; background: rgba(245,158,11,0.2); padding: 1px 6px; border-radius: 3px; margin-left: 6px;">✏️ Penyesuaian Nominal</span>` : ''}
+                        Tagihan Invoice: ${p.itemName} (${p.quantity} Unit) — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(Number(p.totalPrice) || 0).toLocaleString('id-ID')}</span>
                       </h4>
 
                       <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
-                        Pemohon: <strong>${r.employeeName}</strong> (${r.employeeRoleLabel || r.employeeRole}) · Kategori: <strong style="color: #FCD34D;">${r.category}</strong>
+                        Pemohon PR: <strong>${p.employeeName}</strong> · Lokasi Dapur: <strong style="color: #FCD34D;">${p.targetKitchen}</strong>
                       </div>
 
                       <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
-                        🍳 Dapur: <strong style="color: #CBD5E1;">${r.targetKitchen}</strong> · Tgl Beli: <strong style="color: #fff; font-family: var(--font-mono);">${r.purchaseDate}</strong>
+                        Pengunggah Tagihan: <strong style="color: #CBD5E1;">${p.orderInvoice?.submittedBy || 'Operator Pesanan'}</strong> · Berkas: <strong style="color: #60A5FA;">${p.orderInvoice?.fileName || 'Invoice/Kuitansi'}</strong>
                       </div>
 
                       <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-                        <span>💳 Rekening: <strong>${r.bankName}</strong> (${r.bankAccountNo} a.n ${r.bankAccountName})</span>
-                        ${(r.attachmentUrl || r.attachmentName) ? `
-                          <span>·</span>
-                          <button type="button" class="btn-preview-link" onclick="ReimburseModule.previewAttachment('${r.id}')" style="color: #34D399; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                            <span>📎 Lihat Struk Bukti Bayar ↗</span>
-                          </button>
-                        ` : ''}
+                        <button type="button" class="btn-preview-link" onclick="ApprovalCenterModule.previewOrderInvoice('${p.id}')" style="color: #60A5FA; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                          <span>📎 Pratinjau Berkas Invoice Vendor ↗</span>
+                        </button>
                       </div>
                     </div>
                   </div>
 
-                  <!-- Action Buttons per Stage -->
+                  <!-- Action Buttons -->
                   <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectReimburse('${r.id}')">
-                      ✕ Tolak
+                    <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseOrderInvoiceModal('${p.id}')">
+                      💸 Bayar Vendor & Upload Bukti Transfer (Settlement)
                     </button>
-
-                    ${(isFinanceStage || isDirectorStage) ? `
-                      <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustReimburseModal('${r.id}')">
-                        ✏️ Setujui dgn Penyesuaian
-                      </button>
-                    ` : ''}
-
-                    ${isManagerStage ? `
-                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); border-color: #60A5FA; color: #fff; font-weight: 600;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
-                        ✓ Setujui & Teruskan ke Staf Ahli Keu
-                      </button>
-                    ` : isFinanceStage ? `
-                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
-                        ✓ Verifikasi Sah & Teruskan ke Direksi
-                      </button>
-                    ` : isDirectorStage ? `
-                      <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
-                        👑 Otorisasi & Teruskan ke FAT
-                      </button>
-                    ` : isDisburseStage ? `
-                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseReimburseModal('${r.id}')">
-                        💸 Transfer & Selesaikan Klaim (Settlement)
-                      </button>
-                    ` : ''}
                   </div>
                 </div>
               `;
@@ -1650,6 +1670,159 @@ window.ApprovalCenterModule = {
         window.open(rmb.attachmentUrl, '_blank');
       } else {
         App.showToast('Lampiran bukti bayar tidak tersedia.', 'warn');
+      }
+    }
+  },
+
+  // =========================================================================
+  // SETTLEMENT INVOICE VENDOR MODAL & HANDLERS (FAT OFFICER)
+  // =========================================================================
+
+  currentDisbursingOrderId: null,
+  currentDisburseOrderProof: { url: null, name: null },
+
+  openDisburseOrderInvoiceModal: function(id) {
+    const prs = DB.getItemRequests() || [];
+    const pr = prs.find(p => p.id === id);
+    if (!pr) return;
+
+    this.currentDisbursingOrderId = id;
+    this.currentDisburseOrderProof = { url: null, name: null };
+    const amountToDisburse = Number(pr.totalPrice) || 0;
+
+    let modalEl = document.getElementById('modal-order-invoice-disburse');
+    if (!modalEl) {
+      modalEl = document.createElement('div');
+      modalEl.id = 'modal-order-invoice-disburse';
+      modalEl.className = 'modal-backdrop';
+      document.body.appendChild(modalEl);
+    }
+
+    modalEl.innerHTML = `
+      <div class="modal-box" style="max-width: 620px;">
+        <div class="modal-header">
+          <div>
+            <span class="text-mono-badge" style="color: #38BDF8;">Settlement Tagihan Vendor (FAT)</span>
+            <h3 class="modal-title" style="margin-top: 2px;">Transfer Dana & Settlement Pembayaran Vendor</h3>
+          </div>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-order-invoice-disburse')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <form onsubmit="ApprovalCenterModule.submitDisburseOrderInvoice(event)">
+          <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+            
+            <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="text-mono-badge" style="color: #60A5FA;">${pr.id}</span>
+                <span style="font-size: 11px; color: var(--text-muted);">${pr.orderInvoice?.submittedAt || pr.createdAt}</span>
+              </div>
+              <div style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">
+                ${pr.itemName} (${pr.quantity} Unit)
+              </div>
+              <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                Dapur: <strong>${pr.targetKitchen}</strong> · Pemohon: <strong>${pr.employeeName}</strong>
+              </div>
+              <div style="font-size: 20px; font-family: var(--font-mono); font-weight: 700; color: #34D399; margin-top: 8px;">
+                Total Tagihan Invoice: Rp ${amountToDisburse.toLocaleString('id-ID')}
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 16px;">
+              <div style="font-size: 12px; color: #CBD5E1;">
+                Berkas Invoice: <strong style="color: #60A5FA;">${pr.orderInvoice?.fileName || 'Invoice/Kuitansi'}</strong>
+              </div>
+              <button type="button" class="btn-nalar-secondary" style="padding: 4px 10px; font-size: 11px; color: #60A5FA; border-color: rgba(59,130,246,0.4);" onclick="ApprovalCenterModule.previewOrderInvoice('${pr.id}')">
+                📎 Lihat Invoice ↗
+              </button>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nomor Referensi Transfer Bank / Kasir FAT <span style="color: #F87171;">*</span></label>
+              <input type="text" id="disburse-order-ref" class="form-control" placeholder="Contoh: TRF-MANDIRI-883910" value="TRF-PO-${Date.now().toString().slice(-6)}" required style="font-family: var(--font-mono);">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Upload Bukti Transfer Bank (Opsional)</label>
+              <input type="file" id="disburse-order-proof-input" accept="image/png,image/jpeg,image/jpg,application/pdf" class="form-control" onchange="ApprovalCenterModule.handleOrderDisburseProofSelect(event)">
+              <div id="disburse-order-proof-status" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Pilih foto bukti transfer atau resi transfer bank ke vendor.</div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Catatan Pencairan FAT</label>
+              <input type="text" id="disburse-order-notes" class="form-control" value="Pembayaran tagihan invoice vendor telah berhasil ditransfer.">
+            </div>
+
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-order-invoice-disburse')">Batal</button>
+            <button type="submit" class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;">
+              💸 Konfirmasi Transfer & Settlement Selesai
+            </button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    App.openModal('modal-order-invoice-disburse');
+  },
+
+  handleOrderDisburseProofSelect: async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const maxSizeBytes = 2 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      App.showToast(`Ukuran bukti transfer (${(file.size / 1024 / 1024).toFixed(2)} MB) melebihi batas maksimal 2 MB!`, 'warn');
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      const res = await compressImageFile(file, 1200, 0.8);
+      this.currentDisburseOrderProof = {
+        url: res.url,
+        name: file.name
+      };
+      const statusEl = document.getElementById('disburse-order-proof-status');
+      if (statusEl) statusEl.innerHTML = `<span style="color: #34D399;">✓ Bukti transfer terlampir: ${file.name}</span>`;
+    } catch (err) {
+      console.warn('Disburse proof error:', err);
+    }
+  },
+
+  submitDisburseOrderInvoice: async function(e) {
+    if (e) e.preventDefault();
+    const id = this.currentDisbursingOrderId;
+    if (!id) return;
+
+    const bankRefNo = document.getElementById('disburse-order-ref')?.value || '';
+    const notes = document.getElementById('disburse-order-notes')?.value || '';
+
+    await DB.disburseOrderInvoice(id, {
+      bankRefNo,
+      transferProofUrl: this.currentDisburseOrderProof ? this.currentDisburseOrderProof.url : null,
+      transferProofName: this.currentDisburseOrderProof ? this.currentDisburseOrderProof.name : null,
+      notes
+    });
+
+    App.closeModal('modal-order-invoice-disburse');
+    App.showToast(`Pembayaran tagihan vendor PR ${id} telah ditransfer dan berstatus SETTLEMENT!`, 'success');
+    App.refreshCurrentTab();
+  },
+
+  previewOrderInvoice: function(id) {
+    if (window.PesananModule && typeof window.PesananModule.previewInvoice === 'function') {
+      window.PesananModule.previewInvoice(id);
+    } else {
+      const prs = DB.getItemRequests() || [];
+      const pr = prs.find(p => p.id === id);
+      if (pr && pr.orderInvoice && pr.orderInvoice.fileUrl) {
+        window.open(pr.orderInvoice.fileUrl, '_blank');
+      } else {
+        App.showToast('Lampiran invoice tidak tersedia.', 'warn');
       }
     }
   },

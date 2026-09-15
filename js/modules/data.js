@@ -4249,6 +4249,263 @@ class DatabaseManager {
   }
 
   // =========================================================================
+  // MODUL PESANAN (PO EXECUTION, TRACKING STATUS & FAT INVOICE SETTLEMENT)
+  // =========================================================================
+
+  getApprovedOrders() {
+    const prs = this.getItemRequests() || [];
+    return prs.filter(p => {
+      if (!p) return false;
+      const isApproved = (p.status === 'APPROVED' || p.stage === 'COMPLETED');
+      return isApproved;
+    }).map(p => {
+      if (!p.orderStatus) {
+        p.orderStatus = 'DALAM_ANTRIAN';
+      }
+      return p;
+    });
+  }
+
+  async updateOrderStatus(id, newStatus, notes = '') {
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === id);
+    if (!pr) return false;
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    pr.orderStatus = newStatus;
+    if (!Array.isArray(pr.orderTrackingHistory)) {
+      pr.orderTrackingHistory = [];
+    }
+
+    pr.orderTrackingHistory.push({
+      status: newStatus,
+      updatedBy: user ? user.id : 'SYSTEM',
+      updatedByName: user ? user.name : 'System',
+      role: user ? user.roleLabel : 'Operator',
+      timestamp: realTimestamp,
+      notes: notes || `Status pesanan diubah menjadi ${newStatus}`
+    });
+
+    this.addLog(`${user ? user.name : 'Operator'} memperbarui status pesanan ${id} (${pr.itemName}) menjadi "${newStatus}" pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    // Direct Cloud Sync to Supabase
+    await this.syncToSupabase('item_requests', {
+      id: pr.id,
+      order_status: pr.orderStatus,
+      order_tracking_history: pr.orderTrackingHistory,
+      order_invoice: pr.orderInvoice || null,
+      order_disbursement: pr.orderDisbursement || null
+    });
+
+    return true;
+  }
+
+  async submitOrderInvoice(id, invoiceData) {
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === id);
+    if (!pr) return false;
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    pr.orderStatus = 'INVOICE_SUBMITTED';
+    pr.orderInvoice = {
+      fileUrl: invoiceData.fileUrl,
+      fileName: invoiceData.fileName,
+      submittedBy: user ? user.name : 'Operator Pesanan',
+      submittedById: user ? user.id : 'SA-002',
+      submittedAt: realTimestamp,
+      notes: invoiceData.notes || 'Invoice vendor telah dilampirkan dan diteruskan ke FAT Officer untuk verifikasi pembayaran'
+    };
+
+    if (!Array.isArray(pr.orderTrackingHistory)) {
+      pr.orderTrackingHistory = [];
+    }
+
+    pr.orderTrackingHistory.push({
+      status: 'INVOICE_SUBMITTED',
+      updatedBy: user ? user.id : 'SYSTEM',
+      updatedByName: user ? user.name : 'System',
+      role: user ? user.roleLabel : 'Operator',
+      timestamp: realTimestamp,
+      notes: `Invoice tagihan vendor (${invoiceData.fileName || 'berkas lampiran'}) berhasil diunggah dan diteruskan ke FAT Officer`
+    });
+
+    this.addLog(`${user ? user.name : 'Operator'} mengunggah invoice vendor untuk ${id} (${pr.itemName}) dan meneruskan ke FAT Officer pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    // Direct Cloud Sync to Supabase
+    await this.syncToSupabase('item_requests', {
+      id: pr.id,
+      order_status: pr.orderStatus,
+      order_tracking_history: pr.orderTrackingHistory,
+      order_invoice: pr.orderInvoice,
+      order_disbursement: pr.orderDisbursement || null
+    });
+
+    // Notify FAT Officer via Email
+    const fatUser = this.getUsers().find(u => u.role === 'FAT_OFFICER' || u.id === 'FAT-001') || {
+      name: 'Muhammad Imam Adamy',
+      email: 'muhammadimam1108@gmail.com'
+    };
+
+    this.notifyEmail({
+      to: fatUser.email || 'muhammadimam1108@gmail.com',
+      recipientName: fatUser.name || 'Muhammad Imam Adamy (FAT Officer)',
+      subject: `Invoice Tagihan Vendor Siap Diproses Settlement (${pr.id})`,
+      notificationType: 'PR_INVOICE_SUBMITTED',
+      title: 'Invoice Tagihan Vendor Siap Diproses FAT',
+      summaryText: `Pesanan PR ${pr.id} (${pr.itemName}) telah diterima di lokasi dan invoice supplier telah dilampirkan oleh ${user ? user.name : 'Operator'}. Mohon lakukan verifikasi dan transfer settlement.`,
+      details: {
+        'No. Pesanan PR': pr.id,
+        'Nama Barang': pr.itemName,
+        'Nominal Tagihan': `Rp ${(Number(pr.totalPrice) || 0).toLocaleString('id-ID')}`,
+        'Lokasi Dapur': pr.targetKitchen,
+        'Pengunggah Invoice': `${user ? user.name : 'Operator'}`
+      }
+    });
+
+    return true;
+  }
+
+  async disburseOrderInvoice(id, disbursementData) {
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === id);
+    if (!pr) return false;
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    pr.orderStatus = 'SETTLEMENT';
+    pr.orderDisbursement = {
+      bankRefNo: disbursementData.bankRefNo || `TRF-PO-${Date.now().toString().slice(-6)}`,
+      paymentSource: disbursementData.paymentSource || 'Kas Operasional Yayasan MMS',
+      disbursedBy: user ? user.name : 'Muhammad Imam Adamy (FAT Officer)',
+      disbursedById: user ? user.id : 'FAT-001',
+      disbursedAt: realTimestamp,
+      transferProofUrl: disbursementData.transferProofUrl || null,
+      transferProofName: disbursementData.transferProofName || null,
+      notes: disbursementData.notes || 'Pembayaran invoice vendor telah lunas ditransfer oleh FAT Officer'
+    };
+
+    if (!Array.isArray(pr.orderTrackingHistory)) {
+      pr.orderTrackingHistory = [];
+    }
+
+    pr.orderTrackingHistory.push({
+      status: 'SETTLEMENT',
+      updatedBy: user ? user.id : 'FAT-001',
+      updatedByName: user ? user.name : 'FAT Officer',
+      role: 'FAT Officer',
+      timestamp: realTimestamp,
+      notes: `Pembayaran vendor LUNAS (Ref: ${pr.orderDisbursement.bankRefNo}). Bukti transfer bank telah dilampirkan.`
+    });
+
+    this.addLog(`${user ? user.name : 'FAT Officer'} menyelesaikan pencairan transfer invoice untuk ${id} (Ref: ${pr.orderDisbursement.bankRefNo}) pada ${realTimestamp}`, 'finance');
+    this.save();
+
+    // Direct Cloud Sync to Supabase
+    await this.syncToSupabase('item_requests', {
+      id: pr.id,
+      order_status: pr.orderStatus,
+      order_tracking_history: pr.orderTrackingHistory,
+      order_invoice: pr.orderInvoice,
+      order_disbursement: pr.orderDisbursement
+    });
+
+    // Notify Operator & Requester
+    const saUser = this.getUsers().find(u => u.id === 'SA-002') || { email: 'syafiq@mms.org', name: 'Muhammad Syafiq Al Ghifari' };
+    const soUser = this.getUsers().find(u => u.id === 'SO-004') || { email: 'syifa@mms.org', name: 'Syifa Izzatina' };
+
+    [saUser, soUser].forEach(op => {
+      if (op && op.email) {
+        this.notifyEmail({
+          to: op.email,
+          recipientName: op.name,
+          subject: `Settlement Pembayaran Vendor Selesai (${pr.id})`,
+          notificationType: 'PR_SETTLEMENT_COMPLETED',
+          title: 'Pembayaran Vendor Telah Lunas & Selesai',
+          summaryText: `FAT Officer telah mentransfer pembayaran invoice vendor untuk pesanan PR ${pr.id} (${pr.itemName}). Bukti transfer bank dapat dilihat di modul Pesanan.`,
+          details: {
+            'No. Pesanan PR': pr.id,
+            'Nama Barang': pr.itemName,
+            'Nominal Ditransfer': `Rp ${(Number(pr.totalPrice) || 0).toLocaleString('id-ID')}`,
+            'No. Referensi Bank': pr.orderDisbursement.bankRefNo,
+            'Diproses Oleh': `${user ? user.name : 'FAT Officer'}`
+          }
+        });
+      }
+    });
+
+    return true;
+  }
+
+  async fetchOrderInvoiceAttachment(prId) {
+    if (!prId) return null;
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === prId);
+    if (pr && pr.orderInvoice && pr.orderInvoice.fileUrl && pr.orderInvoice.fileUrl.length > 50) {
+      return pr.orderInvoice.fileUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return pr && pr.orderInvoice ? (pr.orderInvoice.fileUrl || null) : null;
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/item_requests?select=id,order_invoice&id=eq.${encodeURIComponent(prId)}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].order_invoice) {
+          if (pr) {
+            pr.orderInvoice = data[0].order_invoice;
+          }
+          return data[0].order_invoice.fileUrl || null;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat invoice pesanan on-demand dari Supabase:', e);
+    }
+    return pr && pr.orderInvoice ? (pr.orderInvoice.fileUrl || null) : null;
+  }
+
+  async fetchOrderTransferProof(prId) {
+    if (!prId) return null;
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === prId);
+    if (pr && pr.orderDisbursement && pr.orderDisbursement.transferProofUrl && pr.orderDisbursement.transferProofUrl.length > 50) {
+      return pr.orderDisbursement.transferProofUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return pr && pr.orderDisbursement ? (pr.orderDisbursement.transferProofUrl || null) : null;
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/item_requests?select=id,order_disbursement&id=eq.${encodeURIComponent(prId)}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].order_disbursement) {
+          if (pr) {
+            pr.orderDisbursement = data[0].order_disbursement;
+          }
+          return data[0].order_disbursement.transferProofUrl || null;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat bukti transfer pesanan on-demand dari Supabase:', e);
+    }
+    return pr && pr.orderDisbursement ? (pr.orderDisbursement.transferProofUrl || null) : null;
+  }
+
+  // =========================================================================
   // CASH ADVANCE (KASBON OPERASIONAL DIREKSI & FAT)
   // =========================================================================
 
@@ -5594,6 +5851,7 @@ class DatabaseManager {
     } else if (user.role === 'FAT_OFFICER') {
       count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
       count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FAT_DISBURSEMENT').length;
+      count += prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED').length;
     } else if (user.role === 'STAFF_AHLI_KEUANGAN') {
       count += prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION').length;
       count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FINANCE_VERIFICATION').length;
@@ -5602,6 +5860,7 @@ class DatabaseManager {
       count += prs.filter(p => p.status === 'PENDING').length;
       count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
       count += rmbs.filter(r => r.status === 'PENDING').length;
+      count += prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED').length;
     }
 
     return count;
@@ -6252,7 +6511,7 @@ class DatabaseManager {
       const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes, kdsRes, rmbRes] = await Promise.allSettled([
         fetch(`${url}/rest/v1/users?select=id,nika,name,email,phone,role,role_label,jabatan,department,level_grade,kode_jabatan,password,username,bank_name,rekening_no,rekening_name,quota_annual_leave,remaining_annual_leave,quota_personal_leave,remaining_personal_leave,nik,status_karyawan,status_pajak,pendidikan,no_kk,alamat_ktp,alamat_domisili,status_tempat_tinggal,no_npwp,alamat_npwp,no_bpjs_kesehatan,no_bpjs_tenaga_kerja,emergency_name,emergency_relation,emergency_phone,notes&limit=2000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/kitchens?select=id,id_sppg,nama_dapur,nama_yayasan,provinsi,kota_kabupaten,kecamatan,kelurahan,alamat_lengkap,location,maker_yayasan,perwakilan_yayasan,manager_area,status,kapasitas_porsi,created_at&limit=2000&offset=0`, { headers }),
-        fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,order_status,order_tracking_history,order_invoice,order_disbursement,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,va_bank_name,va_balance,notes,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc&limit=10000&offset=0`, { headers }),
@@ -6408,6 +6667,10 @@ class DatabaseManager {
               status: p.status,
               rejectionReason: p.rejection_reason,
               approvalHistory: p.approval_history || [],
+              orderStatus: p.order_status || (local && local.orderStatus) || (p.status === 'APPROVED' ? 'DALAM_ANTRIAN' : null),
+              orderTrackingHistory: p.order_tracking_history || (local && local.orderTrackingHistory) || [],
+              orderInvoice: p.order_invoice || (local && local.orderInvoice) || null,
+              orderDisbursement: p.order_disbursement || (local && local.orderDisbursement) || null,
               createdAt: p.created_at
             };
           });

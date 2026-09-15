@@ -871,6 +871,9 @@ window.App = {
         case 'reimburse':
           ReimburseModule.render(container);
           break;
+        case 'pesanan':
+          PesananModule.render(container);
+          break;
         case 'dapur':
           DapurYayasanModule.render(container);
           break;
@@ -981,18 +984,34 @@ window.App = {
   updateSidebarBadges: function() {
     const pendingCount = DB.getPendingApprovalsCount();
     
-    // Top Navbar Badge
+    // Top Navbar Badge Approval Hub
     const badge = document.getElementById('approval-badge-count');
     if (badge) {
       badge.textContent = pendingCount;
       badge.style.display = pendingCount > 0 ? 'inline-block' : 'none';
     }
 
-    // Mobile Drawer Badge
+    // Mobile Drawer Badge Approval Hub
     const mobileBadge = document.querySelector('.mobile-badge-count');
     if (mobileBadge) {
       mobileBadge.textContent = pendingCount;
       mobileBadge.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+    }
+
+    // Pesanan Badge (PR Orders Active / In-progress)
+    const approvedOrders = (typeof DB.getApprovedOrders === 'function') ? DB.getApprovedOrders() : [];
+    const activeOrdersCount = approvedOrders.filter(p => p.orderStatus !== 'SETTLEMENT').length;
+    
+    const pesananBadge = document.getElementById('badge-pesanan-count');
+    if (pesananBadge) {
+      pesananBadge.textContent = activeOrdersCount;
+      pesananBadge.style.display = activeOrdersCount > 0 ? 'inline-block' : 'none';
+    }
+
+    const mobilePesananBadge = document.getElementById('mobile-badge-pesanan-count');
+    if (mobilePesananBadge) {
+      mobilePesananBadge.textContent = activeOrdersCount;
+      mobilePesananBadge.style.display = activeOrdersCount > 0 ? 'inline-block' : 'none';
     }
   },
 
