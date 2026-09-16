@@ -1,0 +1,7556 @@
+/**
+ * ERP YAYASAN - Data Store & LocalStorage Persistence (V15 Architecture)
+ * Enterprise HRIS Master Profile (36 Fields), Admin Hub Master Dapur SPPG, Multi-Tier Approval Tracking & Real-Time Timestamps
+ */
+
+const STORAGE_KEY = 'ERP_YAYASAN_DB_V3_2_PROD';
+
+// Pembersihan otomatis cache database versi lama untuk memastikan database bersih 100% untuk pengujian data real
+try {
+  localStorage.removeItem('ERP_YAYASAN_DB_STABLE');
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && (k.startsWith('ERP_YAYASAN_DATABASE_V') || k === 'erpmms_v3_state' || k === 'ERP_YAYASAN_DB_STABLE')) {
+      localStorage.removeItem(k);
+    }
+  }
+} catch (e) {}
+
+// Utility: Format Tanggal Hari Ini Real-Time (YYYY-MM-DD)
+function getRealtimeDateStr() {
+  const now = new Date();
+  const YYYY = now.getFullYear();
+  const MM = String(now.getMonth() + 1).padStart(2, '0');
+  const DD = String(now.getDate()).padStart(2, '0');
+  return `${YYYY}-${MM}-${DD}`;
+}
+window.getRealtimeDateStr = getRealtimeDateStr;
+
+// Utility: Format Timestamp Real-Time (WIB / Tanggal & Jam Akurat sampai Detik)
+function getRealtimeTimestamp() {
+  const now = new Date();
+  const YYYY = now.getFullYear();
+  const MM = String(now.getMonth() + 1).padStart(2, '0');
+  const DD = String(now.getDate()).padStart(2, '0');
+  const HH = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  return `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}`;
+}
+window.getRealtimeTimestamp = getRealtimeTimestamp;
+
+// Utility: Kompresi Gambar Cerdas (<100 KB) & Pembaca Dokumen (PDF/DOC) untuk LocalStorage & Supabase
+function compressImageFile(file, maxWidth = 1000, quality = 0.7) {
+  return new Promise((resolve) => {
+    if (!file) {
+      resolve({ url: null, name: null });
+      return;
+    }
+
+    // Jika file bukan gambar (misal PDF, DOC, DOCX), baca langsung sebagai DataURL
+    if (!file.type || !file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        resolve({ url: e.target.result, name: file.name, type: file.type || 'application/octet-stream' });
+      };
+      reader.onerror = () => {
+        resolve({ url: null, name: file.name });
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // File gambar: lakukan kompresi cerdas via Canvas
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          let w = img.width;
+          let h = img.height;
+          if (w > maxWidth || h > maxWidth) {
+            if (w > h) {
+              h = Math.round((h * maxWidth) / w);
+              w = maxWidth;
+            } else {
+              w = Math.round((w * maxWidth) / h);
+              h = maxWidth;
+            }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve({ url: compressedDataUrl, name: file.name, type: 'image/jpeg' });
+        } catch (err) {
+          resolve({ url: e.target.result, name: file.name, type: file.type });
+        }
+      };
+      img.onerror = () => {
+        resolve({ url: e.target.result, name: file.name, type: file.type });
+      };
+      img.src = e.target.result;
+    };
+    reader.onerror = () => {
+      resolve({ url: null, name: file.name });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+window.compressImageFile = compressImageFile;
+
+// Utility: Hitung Masa Kerja Dinamis
+function calculateTenure(joinDateStr) {
+  if (!joinDateStr) return '-';
+  const start = new Date(joinDateStr);
+  const now = new Date();
+  if (isNaN(start.getTime())) return '-';
+
+  let years = now.getFullYear() - start.getFullYear();
+  let months = now.getMonth() - start.getMonth();
+  let days = now.getDate() - start.getDate();
+
+  if (days < 0) {
+    months -= 1;
+    const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    days += prevMonth.getDate();
+  }
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+
+  const parts = [];
+  if (years > 0) parts.push(`${years} Tahun`);
+  if (months > 0) parts.push(`${months} Bulan`);
+  if (days > 0 || parts.length === 0) parts.push(`${days} Hari`);
+  return parts.join(' ');
+}
+
+// Utility: Cek apakah masa kerja sudah >= 1 Tahun (365 hari)
+function hasWorkedOneYear(joinDateStr) {
+  if (!joinDateStr) return false;
+  const start = new Date(joinDateStr);
+  const now = new Date();
+  if (isNaN(start.getTime())) return false;
+  const diffTime = now.getTime() - start.getTime();
+  const diffDays = diffTime / (1000 * 3600 * 24);
+  return diffDays >= 365;
+}
+
+// Utility: Hitung Usia Dinamis
+function calculateAge(birthDateStr) {
+  if (!birthDateStr) return '-';
+  const birth = new Date(birthDateStr);
+  const now = new Date();
+  if (isNaN(birth.getTime())) return '-';
+
+  let age = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) {
+    age--;
+  }
+  return `${age} Tahun`;
+}
+
+// Utility: Resolusi Tipe Pemotongan Kuota Cuti secara Dinamis & Akurat
+function resolveLeaveDeductionType(leave, joinDateStr) {
+  if (leave && leave.quotaDeductionType && ['ANNUAL', 'PERSONAL', 'NONE'].includes(leave.quotaDeductionType)) {
+    return leave.quotaDeductionType;
+  }
+  const typeStr = (leave ? (leave.leaveType || leave.type || '') : '').toLowerCase();
+  if (typeStr.includes('pribadi') || typeStr.includes('personal')) {
+    return 'PERSONAL';
+  }
+  if (typeStr.includes('tahunan') || typeStr.includes('annual')) {
+    return 'ANNUAL';
+  }
+  // Cek jika cuti reguler (Pasal 14)
+  if (typeStr.includes('cuti') && !typeStr.includes('istirahat') && !typeStr.includes('izin')) {
+    if (joinDateStr && !hasWorkedOneYear(joinDateStr)) {
+      return 'PERSONAL';
+    }
+    return 'ANNUAL';
+  }
+  return 'NONE';
+}
+
+/// Seed Database
+const INITIAL_DATABASE = {
+  currentUser: {
+    id: 'ADM-001',
+    nika: 'ADM-2026-000',
+    name: 'Super Administrator',
+    role: 'SUPER_ADMIN',
+    roleLabel: 'Super Admin (Master)',
+    kodeJabatan: 'SYS-ADMIN-00',
+    jabatan: 'Super Administrator Master IT & System',
+    levelGrade: 'Master Tier / System Admin',
+    department: 'Information Technology & System Master',
+    avatarGrad: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)',
+    quotaAnnualLeave: 99,
+    remainingAnnualLeave: 99,
+    quotaPersonalLeave: 99,
+    remainingPersonalLeave: 99,
+    currentQuarter: 'Q3 (Juli–September 2026)',
+    joinDate: '2024-01-01',
+    birthPlace: 'Jakarta',
+    birthDate: '1990-01-01',
+    agama: 'Islam',
+    gender: 'Laki-laki',
+    phone: '0811-9988-7766',
+    email: 'admin@erpmms.co.id',
+    username: 'superadmin',
+    password: 'password123',
+    nik: '3171010101900001',
+    statusKaryawan: 'Tetap',
+    statusPajak: 'TK/0',
+    pendidikan: 'Magister (S2)',
+    noKK: '-',
+    alamatKTP: 'Kantor Pusat ERP Yayasan',
+    alamatDomisili: 'Kantor Pusat ERP Yayasan',
+    statusTempatTinggal: 'Milik Sendiri',
+    noNPWP: '-',
+    alamatNPWP: '-',
+    bankName: 'BCA (Bank Central Asia)',
+    rekeningNo: '8880001122',
+    rekeningName: 'Super Administrator',
+    noBPJSKesehatan: '-',
+    noBPJSTenagaKerja: '-',
+    emergencyName: '-',
+    emergencyRelation: '-',
+    emergencyPhone: '-',
+    resignDate: null,
+    resignReason: '-',
+    notes: 'Akun Master Super Admin dengan izin pengawasan penuh terhadap seluruh modul, akun, dan approval workflow.'
+  },
+
+  // Master Database Profil Karyawan & Akun Pengguna
+  users: [
+    {
+      id: 'ADM-001',
+      nika: 'ADM-2026-000',
+      name: 'Super Administrator',
+      role: 'SUPER_ADMIN',
+      roleLabel: 'Super Admin (Master)',
+      kodeJabatan: 'SYS-ADMIN-00',
+      jabatan: 'Super Administrator Master IT & System',
+      levelGrade: 'Master Tier / System Admin',
+      department: 'Information Technology & System Master',
+      avatarGrad: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)',
+      quotaAnnualLeave: 99,
+      remainingAnnualLeave: 99,
+      quotaPersonalLeave: 99,
+      remainingPersonalLeave: 99,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2024-01-01',
+      birthPlace: 'Jakarta',
+      birthDate: '1990-01-01',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0811-9988-7766',
+      email: 'admin@erpmms.co.id',
+      username: 'superadmin',
+      password: 'password123',
+      nik: '3171010101900001',
+      statusKaryawan: 'Tetap',
+      statusPajak: 'TK/0',
+      pendidikan: 'Magister (S2)',
+      noKK: '-',
+      alamatKTP: 'Kantor Pusat ERP Yayasan',
+      alamatDomisili: 'Kantor Pusat ERP Yayasan',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '8880001122',
+      rekeningName: 'Super Administrator',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Akun Master Super Admin dengan izin pengawasan penuh terhadap seluruh modul, akun, dan approval workflow.'
+    },
+    {
+      id: 'DU-001',
+      nika: 'K-2025-001',
+      name: 'Rochmad',
+      role: 'DIREKTUR_UTAMA',
+      roleLabel: 'Direktur Utama',
+      kodeJabatan: '1120.02',
+      jabatan: 'Direktur Utama',
+      levelGrade: 'Direksi / Tier 1',
+      department: 'Direksi Eksekutif',
+      avatarGrad: 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)',
+      quotaAnnualLeave: 18,
+      remainingAnnualLeave: 16,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2025-11-26',
+      birthPlace: '-',
+      birthDate: '-',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '-',
+      email: 'rochmad@erpmms.co.id',
+      username: 'rochmad',
+      password: 'password123',
+      nik: '-',
+      statusKaryawan: 'Tetap',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: '-',
+      alamatDomisili: '-',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Mandiri',
+      rekeningNo: '1370005301243',
+      rekeningName: 'Rochmad',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Direktur Utama memimpin strategi eksekutif dan tata kelola yayasan.'
+    },
+    {
+      id: 'DO-001',
+      nika: 'K-2025-002',
+      name: 'Muhammad Arrasyid',
+      role: 'KETUA_PEMBINA',
+      roleLabel: 'Ketua Pembina Yayasan',
+      kodeJabatan: '1110.01',
+      jabatan: 'Ketua Pembina Yayasan',
+      levelGrade: 'Pembina / Tier 1',
+      department: 'Pembina Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #6366F1 0%, #A855F7 100%)',
+      quotaAnnualLeave: 15,
+      remainingAnnualLeave: 15,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2025-12-08',
+      birthPlace: '-',
+      birthDate: '-',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '-',
+      email: 'arrasyid@erpmms.co.id',
+      username: 'arrasyid',
+      password: 'password123',
+      nik: '-',
+      statusKaryawan: 'Tetap',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: '-',
+      alamatDomisili: '-',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Jago Syariah',
+      rekeningNo: '505568418461',
+      rekeningName: 'Muhammad Arrasyid',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Ketua Pembina Yayasan mengawasi tata kelola strategis dan arah kebijakan yayasan.'
+    },
+    {
+      id: 'DK-001',
+      nika: 'K-2025-003',
+      name: 'Kody Suryo Nugroho',
+      role: 'DIREKTUR_KEUANGAN',
+      roleLabel: 'Direktur Keuangan',
+      kodeJabatan: '1120.03',
+      jabatan: 'Direktur Keuangan',
+      levelGrade: 'Direksi / Tier 2',
+      department: 'Direksi Keuangan',
+      avatarGrad: 'linear-gradient(135deg, #10B981 0%, #6EE7B7 100%)',
+      quotaAnnualLeave: 15,
+      remainingAnnualLeave: 14,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2025-11-26',
+      birthPlace: '-',
+      birthDate: '-',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '-',
+      email: 'kody.suryo@erpmms.co.id',
+      username: 'kody.suryo',
+      password: 'password123',
+      nik: '-',
+      statusKaryawan: 'Tetap',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: '-',
+      alamatDomisili: '-',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BSI (Bank Syariah Indonesia)',
+      rekeningNo: '5231222760',
+      rekeningName: 'Kody Suryo Nugroho',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Direktur Keuangan memimpin strategi penganggaran dan verifikasi permohonan dana.'
+    },
+    {
+      id: 'DO-002',
+      nika: 'K-2025-004',
+      name: 'Muhammad Alfaqih',
+      role: 'DIREKTUR_OPERASIONAL',
+      roleLabel: 'Direktur Operasional',
+      kodeJabatan: '1120.02',
+      jabatan: 'Direktur Operasional',
+      levelGrade: 'Direksi / Tier 2',
+      department: 'Direksi Operasional',
+      avatarGrad: 'linear-gradient(135deg, #F59E0B 0%, #FB923C 100%)',
+      quotaAnnualLeave: 15,
+      remainingAnnualLeave: 13,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2025-11-26',
+      birthPlace: 'Jakarta',
+      birthDate: '2001-08-11',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0878-2076-0675',
+      email: 'alfaqih1108@gmail.com',
+      username: 'alfaqih',
+      password: 'password123',
+      nik: '3175041108010000',
+      statusKaryawan: 'PKWTT',
+      statusPajak: 'K/1',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: '-',
+      alamatDomisili: '-',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Jago Syariah',
+      rekeningNo: '500531458355',
+      rekeningName: 'Muhammad Al Faqih',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Direktur Operasional fokus pada standardisasi teknis & ekspansi titik dapur SPPG.'
+    },
+    {
+      id: 'MK-001',
+      nika: 'K-2025-005',
+      name: 'Viona',
+      role: 'MANAGER_KEUANGAN',
+      roleLabel: 'Manager Keuangan',
+      kodeJabatan: '1211.99',
+      jabatan: 'Manager Keuangan',
+      levelGrade: 'Manajerial / Tier 3',
+      department: 'Finance & Accounting',
+      avatarGrad: 'linear-gradient(135deg, #06B6D4 0%, #67E8F9 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 11,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2025-11-26',
+      birthPlace: '-',
+      birthDate: '-',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '-',
+      email: 'viona@erpmms.co.id',
+      username: 'viona',
+      password: 'password123',
+      nik: '-',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: '-',
+      alamatDomisili: '-',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '-',
+      rekeningName: 'Viona',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Supervisi rekonsiliasi kasbon operasional, anggaran belanja, dan pembukuan yayasan.'
+    },
+    {
+      id: 'MA-001',
+      nika: 'K-2025-006',
+      name: 'Dian Ekawati',
+      role: 'MANAGER_AREA',
+      roleLabel: 'Manajer Area Jawa Tengah',
+      kodeJabatan: '1120.04',
+      jabatan: 'Manajer Area Jawa Tengah',
+      levelGrade: 'Manajerial / Tier 3',
+      department: 'Operasional Wilayah Jawa Tengah',
+      avatarGrad: 'linear-gradient(135deg, #3B82F6 0%, #93C5FD 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 10,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2025-12-08',
+      birthPlace: 'Yogyakarta',
+      birthDate: '1978-12-05',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0812-2752-6726',
+      email: 'dian.ekawati@erpmms.co.id',
+      username: 'dian.ekawati',
+      password: 'password123',
+      nik: '3471024512780000',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Jl. KH Hasyim Ashari Dusun Krajan RT 003 RW 001 Desa Pasekan Kecamatan Ambarawa Kabupaten Semarang Jawa Tengah',
+      alamatDomisili: 'Jl. KH Hasyim Ashari Dusun Krajan RT 003 RW 001 Desa Pasekan Kecamatan Ambarawa Kabupaten Semarang Jawa Tengah',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Mandiri',
+      rekeningNo: '1370010894349',
+      rekeningName: 'Dian Ekawati',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Manager Area koordinasi SPPG Jawa Tengah, supervisi kendala dapur dan approval PR.'
+    },
+    {
+      id: 'MA-002',
+      nika: 'K-2026-007',
+      name: 'Bivaldie A.R.',
+      role: 'MANAGER_AREA',
+      roleLabel: 'Manajer Area Jakarta',
+      kodeJabatan: '1120.04',
+      jabatan: 'Manajer Area Jakarta',
+      levelGrade: 'Manajerial / Tier 3',
+      department: 'Operasional Wilayah DKI Jakarta',
+      avatarGrad: 'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 11,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-04-25',
+      birthPlace: 'Pagar Alam',
+      birthDate: '1976-10-05',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0811-9003-1888',
+      email: 'bivaldie@erpmms.co.id',
+      username: 'bivaldie',
+      password: 'password123',
+      nik: '3175050510760000',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Jl. Gotong Royong No. 33 RT 007 RW 001 Kelurahan Baru Kecamatan Pasar Rebo Kota Administrasi Jakarta Timur',
+      alamatDomisili: 'Jl. Gotong Royong No. 33 RT 007 RW 001 Kelurahan Baru Kecamatan Pasar Rebo Kota Administrasi Jakarta Timur',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Mandiri',
+      rekeningNo: '1150011428853',
+      rekeningName: 'Bivaldie Ar',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Manager Area koordinasi wilayah Jakarta, pengawasan distribusi & operasional dapur.'
+    },
+    {
+      id: 'MA-003',
+      nika: 'K-2026-008',
+      name: 'Rendy Seftiana',
+      role: 'MANAGER_AREA',
+      roleLabel: 'Manajer Area Jakarta & Jawa Barat',
+      kodeJabatan: '1120.04',
+      jabatan: 'Manajer Area Jakarta & Jawa Barat',
+      levelGrade: 'Manajerial / Tier 3',
+      department: 'Operasional Wilayah Jakarta & Jabar',
+      avatarGrad: 'linear-gradient(135deg, #1D4ED8 0%, #93C5FD 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 11,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-04-30',
+      birthPlace: 'Ciamis',
+      birthDate: '1989-09-19',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0812-2822-9459',
+      email: 'rendy.seftiana@erpmms.co.id',
+      username: 'rendy.seftiana',
+      password: 'password123',
+      nik: '3175021909891000',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Rusun BSI Blok Melati 4/2/7 RT 019 RW 016 Kelurahan Cengkareng Timur Kecamatan Cengkareng Kota Administrasi Jakarta Barat',
+      alamatDomisili: 'Rusun BSI Blok Melati 4/2/7 RT 019 RW 016 Kelurahan Cengkareng Timur Kecamatan Cengkareng Kota Administrasi Jakarta Barat',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BSI (Bank Syariah Indonesia)',
+      rekeningNo: '3484245160',
+      rekeningName: 'Rendy Seftiana',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Manager Area koordinasi wilayah Jabar & Jakarta, pengawasan rantai pasok dapur.'
+    },
+    {
+      id: 'HC-001',
+      nika: 'K-2026-009',
+      name: 'Tazkia Aulia',
+      role: 'HUMAN_CAPITAL',
+      roleLabel: 'Human Capital',
+      kodeJabatan: 'WLKP-HC-01',
+      jabatan: 'Human Capital Officer',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Human Capital & GA',
+      avatarGrad: 'linear-gradient(135deg, #7C3AED 0%, #C4B5FD 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-06-08',
+      birthPlace: 'Pati',
+      birthDate: '2001-07-22',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0882-1424-6724',
+      email: 'tazkiaaulia227@gmail.com',
+      username: 'tazkia.aulia',
+      password: 'password123',
+      nik: '3318106707010000',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Dk. Gembleb RT 004 RW 002 Desa Kutoharjo Kecamatan Pati Kabupaten Pati Jawa Tengah',
+      alamatDomisili: 'Dk. Gembleb RT 004 RW 002 Desa Kutoharjo Kecamatan Pati Kabupaten Pati Jawa Tengah',
+      statusTempatTinggal: 'SEWA/KONTRAK',
+      noNPWP: '-',
+      alamatNPWP: 'Dk. Gembleb RT 004 RW 002 Desa Kutoharjo Kecamatan Pati Kabupaten Pati Jawa Tengah',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '980778827',
+      rekeningName: 'Tazkia Aulia',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Pengelolaan master data SDM, approval cuti, absensi timesheet, dan SOP perusahaan.'
+    },
+    {
+      id: 'SA-001',
+      nika: 'K-2026-010',
+      name: 'Sakhiyah Karomah Salam',
+      role: 'STAFF_AHLI_KEUANGAN',
+      roleLabel: 'Staf Ahli Administrasi dan Keuangan',
+      kodeJabatan: 'WLKP-SA-01',
+      jabatan: 'Staf Ahli Administrasi dan Keuangan',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Keuangan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-04-02',
+      birthPlace: 'Jakarta',
+      birthDate: '1995-04-17',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0878-8866-7007',
+      email: 'acisakhiyah@gmail.com',
+      username: 'sakhiyah',
+      password: 'password123',
+      nik: '3175055704951000',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'D’Lapan Townhouse Jl. Lapan 3 No.70 Kelurahan Pekayon Kecamatan Pasar Rebo Kota Administrasi Jakarta Timur',
+      alamatDomisili: 'D’Lapan Townhouse Jl. Lapan 3 No.70 Kelurahan Pekayon Kecamatan Pasar Rebo Kota Administrasi Jakarta Timur',
+      statusTempatTinggal: 'MILIK SENDIRI',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Jago Syariah',
+      rekeningNo: '504153687909',
+      rekeningName: 'Sakhiyah Karomah Salam',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: 'Faqih Hindami',
+      emergencyRelation: 'Suami',
+      emergencyPhone: '0812-9038-3083',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Verifikasi anggaran belanja pengadaan, administrasi finansial dan master dapur.'
+    },
+    {
+      id: 'SA-002',
+      nika: 'K-2026-011',
+      name: 'Muhammad Syafiq Al Ghifari',
+      role: 'STAFF_AHLI_KEUANGAN',
+      roleLabel: 'Staf Ahli Administrasi dan Keuangan',
+      kodeJabatan: 'WLKP-SA-02',
+      jabatan: 'Staf Ahli Administrasi dan Keuangan',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Keuangan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #4F46E5 0%, #A5B4FC 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-04-07',
+      birthPlace: 'Jakarta',
+      birthDate: '2001-12-28',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0812-1090-3683',
+      email: 'syafiq@erpmms.co.id',
+      username: 'syafiq',
+      password: 'password123',
+      nik: '3175042812010000',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Jl. Batu Ampar V No. 13 RT 007 RW 005 Kelurahan Batu Ampar Kecamatan Kramat Jati Kota Administrasi Jakarta Timur',
+      alamatDomisili: 'Jl. Batu Ampar V No. 13 RT 007 RW 005 Kelurahan Batu Ampar Kecamatan Kramat Jati Kota Administrasi Jakarta Timur',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '7275066567',
+      rekeningName: 'Muhammad Syafiq Al Ghifari',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Administrasi keuangan operasional lapangan, verifikasi dokumen dan pengadaan.'
+    },
+    {
+      id: 'FAT-001',
+      nika: 'K-2026-012',
+      name: 'Muhammad Imam Adamy',
+      role: 'FAT_OFFICER',
+      roleLabel: 'Finance Accounting and Tax',
+      kodeJabatan: 'WLKP-FIN-01',
+      jabatan: 'Finance Accounting and Tax',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Finance & Tax',
+      avatarGrad: 'linear-gradient(135deg, #D97706 0%, #FDE68A 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-05-19',
+      birthPlace: 'Jakarta',
+      birthDate: '2001-08-29',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0857-7835-7028',
+      email: 'imam.adamy@erpmms.co.id',
+      username: 'imam.adamy',
+      password: 'password123',
+      nik: '3175072908010000',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'K/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Kp Kapuk II No. 34 RT 003 RW 006 Kelurahan Klender Kecamatan Duren Sawit Kota Administrasi Jakarta Timur',
+      alamatDomisili: 'Kp Kapuk II No. 34 RT 003 RW 006 Kelurahan Klender Kecamatan Duren Sawit Kota Administrasi Jakarta Timur',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BSI (Bank Syariah Indonesia)',
+      rekeningNo: '8669287940',
+      rekeningName: 'Muhammad Imam Adamy',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: 'Kontak Keluarga',
+      emergencyRelation: 'Keluarga',
+      emergencyPhone: '0822-1784-7462',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Pencatatan perpajakan PPh, pencairan kasbon FAT, dan pembukuan harian.'
+    },
+    {
+      id: 'SO-001',
+      nika: 'K-2026-013',
+      name: 'Maulana Raka Pahlevi',
+      role: 'STAFF_OPERASIONAL',
+      roleLabel: 'Staff Operasional',
+      kodeJabatan: 'WLKP-OPS-01',
+      jabatan: 'Staff Operasional',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Operasional Lapangan',
+      avatarGrad: 'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-06-04',
+      birthPlace: 'Jakarta',
+      birthDate: '2000-02-15',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0858-1057-4877',
+      email: 'raka.pahlevi@erpmms.co.id',
+      username: 'raka.pahlevi',
+      password: 'password123',
+      nik: '3715041502000010',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'SMA / SMK',
+      noKK: '-',
+      alamatKTP: 'Jl. Baing RT 008 RW 009 Kelurahan Tengah Kecamatan Kramat Jati Kota Administrasi Jakarta Timur',
+      alamatDomisili: 'Jl. Baing RT 008 RW 009 Kelurahan Tengah Kecamatan Kramat Jati Kota Administrasi Jakarta Timur',
+      statusTempatTinggal: 'MILIK ORANG TUA',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '7275347183',
+      rekeningName: 'Maulana Raka Pahlevi',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: 'Purnawati Pamungkas',
+      emergencyRelation: 'Ibu Kandung',
+      emergencyPhone: '0821-2278-0812',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Monitoring titik dapur, input timesheet log harian dan pencatatan kendala operasional.'
+    },
+    {
+      id: 'SO-002',
+      nika: 'K-2026-014',
+      name: 'Irawan Dwi Laksono',
+      role: 'STAFF_OPERASIONAL',
+      roleLabel: 'Staff Operasional (Jawa Timur)',
+      kodeJabatan: 'WLKP-OPS-02',
+      jabatan: 'Staff Operasional',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Operasional Lapangan Jawa Timur',
+      avatarGrad: 'linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-06-07',
+      birthPlace: 'Solo',
+      birthDate: '1977-07-02',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0823-3480-7557',
+      email: 'irawan.dwi@erpmms.co.id',
+      username: 'irawan.dwi',
+      password: 'password123',
+      nik: '3574030207770000',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'SMA / SMK',
+      noKK: '-',
+      alamatKTP: 'Jl. Serma Abd Rahman RT 002 RW 004 Kel/Desa Wiroborang Kecamatan Mayangan Kota Probolinggo Jawa Timur',
+      alamatDomisili: 'Jl. Serma Abd Rahman RT 002 RW 004 Kel/Desa Wiroborang Kecamatan Mayangan Kota Probolinggo Jawa Timur',
+      statusTempatTinggal: 'RUMAH DINAS',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '3870223161',
+      rekeningName: 'Irawan Dwi Laksono',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Staff operasional lapangan wilayah Jawa Timur dan pemantauan fasilitas dapur.'
+    },
+    {
+      id: 'SO-003',
+      nika: 'K-2026-015',
+      name: 'Wawan Hermawan, S.Ag',
+      role: 'STAFF_OPERASIONAL',
+      roleLabel: 'Staff Operasional (Jawa Barat)',
+      kodeJabatan: 'WLKP-OPS-03',
+      jabatan: 'Staff Operasional',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Operasional Lapangan Jawa Barat',
+      avatarGrad: 'linear-gradient(135deg, #059669 0%, #34D399 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-06-07',
+      birthPlace: 'Ciamis',
+      birthDate: '1970-04-30',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0852-2351-4066',
+      email: 'wawan.hermawan@erpmms.co.id',
+      username: 'wawan.hermawan',
+      password: 'password123',
+      nik: '3207033004700000',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Dusun Sodong RT 007 RW 015 Kel/Desa Bojongmengger Kecamatan Cijeungjing Kabupaten Ciamis Jawa Barat',
+      alamatDomisili: 'Dusun Sodong RT 007 RW 015 Kel/Desa Bojongmengger Kecamatan Cijeungjing Kabupaten Ciamis Jawa Barat',
+      statusTempatTinggal: 'RUMAH DINAS',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BRI (Bank Rakyat Indonesia)',
+      rekeningNo: '10401072229509',
+      rekeningName: 'Wawan Hermawan',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Staff operasional lapangan wilayah Jawa Barat dan supervisi dapur binaan.'
+    },
+    {
+      id: 'SO-004',
+      nika: 'K-2026-016',
+      name: 'Syifa Izzatina',
+      role: 'STAFF_OPERASIONAL',
+      roleLabel: 'Staff Operasional',
+      kodeJabatan: 'WLKP-OPS-04',
+      jabatan: 'Staff Operasional',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Operasional Lapangan',
+      avatarGrad: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-08-10',
+      birthPlace: 'Jakarta',
+      birthDate: '2000-06-06',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0858-1018-6835',
+      email: 'syifa.izzatina@erpmms.co.id',
+      username: 'syifa.izzatina',
+      password: 'password123',
+      nik: '3175054606000000',
+      statusKaryawan: 'PKWT',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Jl. Mesjid VIII No 19 RT 002 RT 001 Kelurahan Gedong Kecamatan Pasar Rebo Kota Administrasi Jakarta Timur',
+      alamatDomisili: 'Jl. Mesjid VIII No 19 RT 002 RT 001 Kelurahan Gedong Kecamatan Pasar Rebo Kota Administrasi Jakarta Timur',
+      statusTempatTinggal: 'MILIK ORANG TUA',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '4850580893',
+      rekeningName: 'Syifa Izzatina',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: 'Leisya Fitriyanti',
+      emergencyRelation: 'Ibu Kandung',
+      emergencyPhone: '0857-5754-6827',
+      resignDate: null,
+      resignReason: '-',
+      notes: 'Staff operasional pelaporan kendala harian, monitoring kebersihan & operasional dapur.'
+    },
+    {
+      id: 'SV-001',
+      nika: 'K-2025-017',
+      name: 'Ajjief Damar Geovan Esrinanda',
+      role: 'SURVEYOR',
+      roleLabel: 'Surveyor (Alumnus)',
+      kodeJabatan: 'WLKP-SURV-01',
+      jabatan: 'Surveyor Lapangan',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Operasional Lapangan',
+      avatarGrad: 'linear-gradient(135deg, #FF4B01 0%, #FF8A4D 100%)',
+      quotaAnnualLeave: 0,
+      remainingAnnualLeave: 0,
+      quotaPersonalLeave: 0,
+      remainingPersonalLeave: 0,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2025-12-08',
+      birthPlace: 'Jakarta',
+      birthDate: '1991-12-14',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0851-6112-9414',
+      email: 'ajjief.damar@erpmms.co.id',
+      username: 'ajjief.damar',
+      password: 'password123',
+      nik: '3175051412910000',
+      statusKaryawan: 'BHL (Alumnus)',
+      statusPajak: 'TK/0',
+      pendidikan: 'SMA / SMK',
+      noKK: '-',
+      alamatKTP: 'Rawa Indah Jl. Kalisari Lapan Gg. Sawi No. 21 RT 005 RW 001 Kelurahan Pekayon Kecamatan Pasar Rebo Kota Administrasi Jakarta Timur',
+      alamatDomisili: 'Rawa Indah Jl. Kalisari Lapan Gg. Sawi No. 21 RT 005 RW 001 Kelurahan Pekayon Kecamatan Pasar Rebo Kota Administrasi Jakarta Timur',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BRI (Bank Rakyat Indonesia)',
+      rekeningNo: '34501024681505',
+      rekeningName: 'Ajjief Damar Geovan Esrinanda',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: '2026-07-24',
+      resignReason: 'Habis kontrak dan project selesai',
+      notes: 'Surveyor titik lokasi dapur, logistik fasilitas. Status: Habis kontrak 24 Juli 2026.'
+    },
+    {
+      id: 'SV-002',
+      nika: 'K-2025-018',
+      name: 'Hery Purwanto',
+      role: 'SURVEYOR',
+      roleLabel: 'Surveyor (Alumnus)',
+      kodeJabatan: 'WLKP-SURV-02',
+      jabatan: 'Surveyor Lapangan',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Operasional Lapangan',
+      avatarGrad: 'linear-gradient(135deg, #F97316 0%, #FDBA74 100%)',
+      quotaAnnualLeave: 0,
+      remainingAnnualLeave: 0,
+      quotaPersonalLeave: 0,
+      remainingPersonalLeave: 0,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2025-12-08',
+      birthPlace: 'Jakarta',
+      birthDate: '1976-10-06',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0821-1918-9682',
+      email: 'hery.purwanto@erpmms.co.id',
+      username: 'hery.purwanto',
+      password: 'password123',
+      nik: '3172030610760000',
+      statusKaryawan: 'BHL (Alumnus)',
+      statusPajak: 'TK/0',
+      pendidikan: 'SMA / SMK',
+      noKK: '-',
+      alamatKTP: 'Jl Cemara Blok I Gg. III No. 22 RT 007 RW 016 Kelurahan Lagoa Kecamatan Koja Kota Administrasi Jakarta Utara',
+      alamatDomisili: 'Jl Cemara Blok I Gg. III No. 22 RT 007 RW 016 Kelurahan Lagoa Kecamatan Koja Kota Administrasi Jakarta Utara',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BRI (Bank Rakyat Indonesia)',
+      rekeningNo: '708101012071537',
+      rekeningName: 'Hery Purwanto',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: '2026-07-24',
+      resignReason: 'Habis kontrak dan project selesai',
+      notes: 'Surveyor pemetaan dapur. Status: Habis kontrak 24 Juli 2026.'
+    },
+    {
+      id: 'SV-003',
+      nika: 'K-2025-019',
+      name: 'Teguh Widodo',
+      role: 'SURVEYOR',
+      roleLabel: 'Surveyor (Alumnus)',
+      kodeJabatan: 'WLKP-SURV-03',
+      jabatan: 'Surveyor Lapangan',
+      levelGrade: 'Staff / Grade 1',
+      department: 'Operasional Lapangan',
+      avatarGrad: 'linear-gradient(135deg, #EA580C 0%, #FB923C 100%)',
+      quotaAnnualLeave: 0,
+      remainingAnnualLeave: 0,
+      quotaPersonalLeave: 0,
+      remainingPersonalLeave: 0,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2025-12-10',
+      birthPlace: 'Gombong',
+      birthDate: '1977-02-25',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0813-8037-8425',
+      email: 'teguh.widodo@erpmms.co.id',
+      username: 'teguh.widodo',
+      password: 'password123',
+      nik: '3671052502770000',
+      statusKaryawan: 'BHL (Alumnus)',
+      statusPajak: 'TK/0',
+      pendidikan: 'SMA / SMK',
+      noKK: '-',
+      alamatKTP: 'Kalisari RT 012 RW 002 Kecamatan Pasar Rebo Kota Administrasi Jakarta Timur',
+      alamatDomisili: 'Kalisari RT 012 RW 002 Kecamatan Pasar Rebo Kota Administrasi Jakarta Timur',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '1663195615',
+      rekeningName: 'Siti AriFah Hidayati',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      resignDate: '2026-07-24',
+      resignReason: 'Habis kontrak dan project selesai',
+      notes: 'Surveyor pemetaan kelayakan titik dapur. Status: Habis kontrak 24 Juli 2026.'
+    },
+    {
+      id: 'PY-001',
+      nika: 'PY-2026-001',
+      name: 'Tri Utari',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-01',
+      jabatan: 'Perwakilan Yayasan - Akselerasi Bumi Indonesia',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #10B981 0%, #6EE7B7 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-06-02',
+      birthPlace: 'Depok',
+      birthDate: '1996-05-14',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0812-9011-001',
+      email: 'tri.utari@erpmms.co.id',
+      username: 'tri.utari',
+      password: 'password123',
+      nik: '3276015405960001',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Cilangkap, Kec. Tapos, Kota Depok, Jawa Barat',
+      alamatDomisili: 'Cilangkap, Kec. Tapos, Kota Depok, Jawa Barat',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Mandiri',
+      rekeningNo: '157-00-1122334-1',
+      rekeningName: 'Tri Utari',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'WFC2L9EH',
+      sppgName: 'SPPG Cilangkap - Tapos 1',
+      yayasanPartner: 'Akselerasi Bumi Indonesia',
+      notes: 'Perwakilan Yayasan Akselerasi Bumi Indonesia untuk SPPG Cilangkap - Tapos 1 (ID: WFC2L9EH). Mulai: 2 Juni 2026.'
+    },
+    {
+      id: 'PY-002',
+      nika: 'PY-2026-002',
+      name: 'Khoirudin',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-02',
+      jabatan: 'Perwakilan Yayasan - Adil Berdaya Insani',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #06B6D4 0%, #67E8F9 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-06-08',
+      birthPlace: 'Jakarta',
+      birthDate: '1994-08-20',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0812-9011-002',
+      email: 'khoirudin@erpmms.co.id',
+      username: 'khoirudin',
+      password: 'password123',
+      nik: '3175032008940002',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Cipinang Cempedak, Kec. Jatinegara, Jakarta Timur',
+      alamatDomisili: 'Cipinang Cempedak, Kec. Jatinegara, Jakarta Timur',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '682-019-2831',
+      rekeningName: 'Khoirudin',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'YPEHMDF0',
+      sppgName: 'SPPG Cipinang Cempedak',
+      yayasanPartner: 'Adil Berdaya Insani',
+      notes: 'Perwakilan Yayasan Adil Berdaya Insani untuk SPPG Cipinang Cempedak (ID: YPEHMDF0). Mulai: 8 Juni 2026.'
+    },
+    {
+      id: 'PY-003',
+      nika: 'PY-2026-003',
+      name: 'Tresna',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-03',
+      jabatan: 'Perwakilan Yayasan - Akselerasi Bumi Indonesia',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #3B82F6 0%, #93C5FD 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-04-08',
+      birthPlace: 'Pandeglang',
+      birthDate: '1995-11-12',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0812-9011-003',
+      email: 'tresna@erpmms.co.id',
+      username: 'tresna',
+      password: 'password123',
+      nik: '3601055211950003',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Citaman, Kec. Jiput, Kab. Pandeglang, Banten',
+      alamatDomisili: 'Citaman, Kec. Jiput, Kab. Pandeglang, Banten',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Mandiri',
+      rekeningNo: '157-00-2233445-2',
+      rekeningName: 'Tresna',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'THAH6JZO',
+      sppgName: 'SPPG Citaman',
+      yayasanPartner: 'Akselerasi Bumi Indonesia',
+      notes: 'Perwakilan Yayasan Akselerasi Bumi Indonesia untuk SPPG Citaman (ID: THAH6JZO). Mulai: 8 April 2026.'
+    },
+    {
+      id: 'PY-004',
+      nika: 'PY-2026-004',
+      name: 'Setiawati',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-04',
+      jabatan: 'Perwakilan Yayasan - Akselerasi Bumi Indonesia',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #8B5CF6 0%, #C4B5FD 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-05-04',
+      birthPlace: 'Depok',
+      birthDate: '1993-02-18',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0812-9011-004',
+      email: 'setiawati@erpmms.co.id',
+      username: 'setiawati',
+      password: 'password123',
+      nik: '3276025802930004',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Harjamukti, Kec. Cimanggis, Kota Depok, Jawa Barat',
+      alamatDomisili: 'Harjamukti, Kec. Cimanggis, Kota Depok, Jawa Barat',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BRI (Bank Rakyat Indonesia)',
+      rekeningNo: '0341-01-089765-50-2',
+      rekeningName: 'Setiawati',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'KJDSEBN6',
+      sppgName: 'SPPG Harjamukti',
+      yayasanPartner: 'Akselerasi Bumi Indonesia',
+      notes: 'Perwakilan Yayasan Akselerasi Bumi Indonesia untuk SPPG Harjamukti (ID: KJDSEBN6). Mulai: 4 Mei 2026.'
+    },
+    {
+      id: 'PY-005',
+      nika: 'PY-2026-005',
+      name: 'Astri Listia',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-05',
+      jabatan: 'Perwakilan Yayasan - Akselerasi Bumi Indonesia',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-04-06',
+      birthPlace: 'Bekasi',
+      birthDate: '1997-09-30',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0812-9011-005',
+      email: 'astri.listia@erpmms.co.id',
+      username: 'astri.listia',
+      password: 'password123',
+      nik: '3275087009970005',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Jatiwaringin, Kec. Pondok Gede, Kota Bekasi, Jawa Barat',
+      alamatDomisili: 'Jatiwaringin, Kec. Pondok Gede, Kota Bekasi, Jawa Barat',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '527-198-4433',
+      rekeningName: 'Astri Listia',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'NFXCJ3PI',
+      sppgName: 'SPPG Jatiwaringin',
+      yayasanPartner: 'Akselerasi Bumi Indonesia',
+      notes: 'Perwakilan Yayasan Akselerasi Bumi Indonesia untuk SPPG Jatiwaringin (ID: NFXCJ3PI). Mulai: 6 April 2026.'
+    },
+    {
+      id: 'PY-006',
+      nika: 'PY-2026-006',
+      name: 'Childa Susanti',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-06',
+      jabatan: 'Perwakilan Yayasan - Adil Berdaya Insani',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #F59E0B 0%, #FCD34D 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-06-15',
+      birthPlace: 'Jakarta',
+      birthDate: '1992-04-10',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0812-9011-006',
+      email: 'childa.susanti@erpmms.co.id',
+      username: 'childa.susanti',
+      password: 'password123',
+      nik: '3175015004920006',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Kayu Manis, Kec. Matraman, Jakarta Timur',
+      alamatDomisili: 'Kayu Manis, Kec. Matraman, Jakarta Timur',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Mandiri',
+      rekeningNo: '157-00-3344556-3',
+      rekeningName: 'Childa Susanti',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'HUBRVBTW',
+      sppgName: 'SPPG Kayu Manis',
+      yayasanPartner: 'Adil Berdaya Insani',
+      notes: 'Perwakilan Yayasan Adil Berdaya Insani untuk SPPG Kayu Manis (ID: HUBRVBTW). Mulai: 15 Juni 2026.'
+    },
+    {
+      id: 'PY-007',
+      nika: 'PY-2026-007',
+      name: 'Syahrir',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-07',
+      jabatan: 'Perwakilan Yayasan - Adil Berdaya Insani',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #14B8A6 0%, #5EEAD4 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-04-29',
+      birthPlace: 'Jakarta',
+      birthDate: '1989-12-05',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0812-9011-007',
+      email: 'syahrir@erpmms.co.id',
+      username: 'syahrir',
+      password: 'password123',
+      nik: '3175060512890007',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Kelapa Dua Wetan, Kec. Ciracas, Jakarta Timur',
+      alamatDomisili: 'Kelapa Dua Wetan, Kec. Ciracas, Jakarta Timur',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BRI (Bank Rakyat Indonesia)',
+      rekeningNo: '0341-01-098712-50-3',
+      rekeningName: 'Syahrir',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'VMQ6JXXM',
+      sppgName: 'SPPG Kelapa Dua Wetan',
+      yayasanPartner: 'Adil Berdaya Insani',
+      notes: 'Perwakilan Yayasan Adil Berdaya Insani untuk SPPG Kelapa Dua Wetan (ID: VMQ6JXXM). Mulai: 29 April 2026.'
+    },
+    {
+      id: 'PY-008',
+      nika: 'PY-2026-008',
+      name: 'Maman Sutarman',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-08',
+      jabatan: 'Perwakilan Yayasan - Akselerasi Bumi Indonesia',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #6366F1 0%, #A5B4FC 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-05-11',
+      birthPlace: 'Bandung',
+      birthDate: '1987-03-22',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0812-9011-008',
+      email: 'maman.sutarman@erpmms.co.id',
+      username: 'maman.sutarman',
+      password: 'password123',
+      nik: '3204122203870008',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Kendan, Kec. Nagreg, Kab. Bandung, Jawa Barat',
+      alamatDomisili: 'Kendan, Kec. Nagreg, Kab. Bandung, Jawa Barat',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '527-234-9811',
+      rekeningName: 'Maman Sutarman',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'XQQBILKQ',
+      sppgName: 'SPPG Kendan',
+      yayasanPartner: 'Akselerasi Bumi Indonesia',
+      notes: 'Perwakilan Yayasan Akselerasi Bumi Indonesia untuk SPPG Kendan (ID: XQQBILKQ). Mulai: 11 Mei 2026.'
+    },
+    {
+      id: 'PY-009',
+      nika: 'PY-2026-009',
+      name: 'Jusman Ziliwu',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-09',
+      jabatan: 'Perwakilan Yayasan - Akselerasi Bumi Indonesia',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-02-02',
+      birthPlace: 'Garut',
+      birthDate: '1991-07-15',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0812-9011-009',
+      email: 'jusman.ziliwu@erpmms.co.id',
+      username: 'jusman.ziliwu',
+      password: 'password123',
+      nik: '3205101507910009',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Leles, Kec. Leles, Kab. Garut, Jawa Barat',
+      alamatDomisili: 'Leles, Kec. Leles, Kab. Garut, Jawa Barat',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Mandiri',
+      rekeningNo: '157-00-4455667-4',
+      rekeningName: 'Jusman Ziliwu',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'MLRQXJ1K',
+      sppgName: 'SPPG Leles',
+      yayasanPartner: 'Akselerasi Bumi Indonesia',
+      notes: 'Perwakilan Yayasan Akselerasi Bumi Indonesia untuk SPPG Leles (ID: MLRQXJ1K). Mulai: 2 Februari 2026.'
+    },
+    {
+      id: 'PY-010',
+      nika: 'PY-2026-010',
+      name: 'Achmad Sofyan Permadi',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-10',
+      jabatan: 'Perwakilan Yayasan - Bekah Iman Nafi\'An',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #D97706 0%, #FDE68A 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-05-25',
+      birthPlace: 'Bandung',
+      birthDate: '1993-06-19',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0812-9011-010',
+      email: 'achmad.sofyan@erpmms.co.id',
+      username: 'achmad.sofyan',
+      password: 'password123',
+      nik: '3204091906930010',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Mandalamekar, Kec. Cimenyan, Kab. Bandung, Jawa Barat',
+      alamatDomisili: 'Mandalamekar, Kec. Cimenyan, Kab. Bandung, Jawa Barat',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BRI (Bank Rakyat Indonesia)',
+      rekeningNo: '0341-01-076543-50-4',
+      rekeningName: 'Achmad Sofyan Permadi',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: '1OAXCXMA',
+      sppgName: 'SPPG Mandalamekar',
+      yayasanPartner: 'Bekah Iman Nafi\'An',
+      notes: 'Perwakilan Yayasan Bekah Iman Nafi\'An untuk SPPG Mandalamekar (ID: 1OAXCXMA). Mulai: 25 Mei 2026.'
+    },
+    {
+      id: 'PY-011',
+      nika: 'PY-2026-011',
+      name: 'Imam Baiturohim',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-11',
+      jabatan: 'Perwakilan Yayasan - Bekah Iman Nafi\'An',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #059669 0%, #34D399 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-06-08',
+      birthPlace: 'Kuningan',
+      birthDate: '1995-01-27',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0812-9011-011',
+      email: 'imam.baiturohim@erpmms.co.id',
+      username: 'imam.baiturohim',
+      password: 'password123',
+      nik: '3208082701950011',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Mandirancan, Kec. Mandirancan, Kab. Kuningan, Jawa Barat',
+      alamatDomisili: 'Mandirancan, Kec. Mandirancan, Kab. Kuningan, Jawa Barat',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '527-345-8722',
+      rekeningName: 'Imam Baiturohim',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'PMXKYUEZ',
+      sppgName: 'SPPG Mandirancan',
+      yayasanPartner: 'Bekah Iman Nafi\'An',
+      notes: 'Perwakilan Yayasan Bekah Iman Nafi\'An untuk SPPG Mandirancan (ID: PMXKYUEZ). Mulai: 8 Juni 2026.'
+    },
+    {
+      id: 'PY-012',
+      nika: 'PY-2026-012',
+      name: 'Yulianti',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-12',
+      jabatan: 'Perwakilan Yayasan - Adil Berdaya Insani',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #9333EA 0%, #D8B4FE 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-07-13',
+      birthPlace: 'Jakarta',
+      birthDate: '1998-03-14',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0812-9011-012',
+      email: 'yulianti@erpmms.co.id',
+      username: 'yulianti',
+      password: 'password123',
+      nik: '3175015403980012',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Pisangan Baru, Kec. Matraman, Jakarta Timur',
+      alamatDomisili: 'Pisangan Baru, Kec. Matraman, Jakarta Timur',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Mandiri',
+      rekeningNo: '157-00-5566778-5',
+      rekeningName: 'Yulianti',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'WCJP3OPY',
+      sppgName: 'SPPG Pisangan Baru',
+      yayasanPartner: 'Adil Berdaya Insani',
+      notes: 'Perwakilan Yayasan Adil Berdaya Insani untuk SPPG Pisangan Baru (ID: WCJP3OPY). Mulai: 13 Juli 2026.'
+    },
+    {
+      id: 'PY-013',
+      nika: 'PY-2026-013',
+      name: 'Koko Kiswoko',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-13',
+      jabatan: 'Perwakilan Yayasan - Sinergi Kesehatan Negeri',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #EA580C 0%, #FDBA74 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-04-13',
+      birthPlace: 'Magelang',
+      birthDate: '1988-10-09',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0812-9011-013',
+      email: 'koko.kiswoko@erpmms.co.id',
+      username: 'koko.kiswoko',
+      password: 'password123',
+      nik: '3308090910880013',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Sriwedari, Kec. Salaman, Kab. Magelang, Jawa Tengah',
+      alamatDomisili: 'Sriwedari, Kec. Salaman, Kab. Magelang, Jawa Tengah',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BRI (Bank Rakyat Indonesia)',
+      rekeningNo: '0341-01-065432-50-5',
+      rekeningName: 'Koko Kiswoko',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: 'ZAJXQGBU',
+      sppgName: 'SPPG Salaman/Sriwedari',
+      yayasanPartner: 'Sinergi Kesehatan Negeri',
+      notes: 'Perwakilan Yayasan Sinergi Kesehatan Negeri untuk SPPG Salaman/Sriwedari (ID: ZAJXQGBU). Mulai: 13 April 2026.'
+    },
+    {
+      id: 'PY-014',
+      nika: 'PY-2026-014',
+      name: 'Farissa Cahyainka',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-14',
+      jabatan: 'Perwakilan Yayasan - Sinergi Kesehatan Negeri',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #DB2777 0%, #F472B6 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-07-13',
+      birthPlace: 'Semarang',
+      birthDate: '1997-12-01',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0812-9011-014',
+      email: 'farissa.cahyainka@erpmms.co.id',
+      username: 'farissa.cahyainka',
+      password: 'password123',
+      nik: '3322104112970014',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Tengaran, Kec. Tengaran, Kab. Semarang, Jawa Tengah',
+      alamatDomisili: 'Tengaran, Kec. Tengaran, Kab. Semarang, Jawa Tengah',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BCA (Bank Central Asia)',
+      rekeningNo: '527-456-7833',
+      rekeningName: 'Farissa Cahyainka',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: '5SGNUNP0',
+      sppgName: 'SPPG Tengaran',
+      yayasanPartner: 'Sinergi Kesehatan Negeri',
+      notes: 'Perwakilan Yayasan Sinergi Kesehatan Negeri untuk SPPG Tengaran (ID: 5SGNUNP0). Mulai: 13 Juli 2026.'
+    },
+    {
+      id: 'PY-015',
+      nika: 'PY-2026-015',
+      name: 'Titi Hardyati',
+      role: 'PERWAKILAN_YAYASAN',
+      roleLabel: 'Perwakilan Yayasan',
+      kodeJabatan: 'WLKP-PY-15',
+      jabatan: 'Perwakilan Yayasan - Adil Berdaya Insani',
+      levelGrade: 'Staff Mitra / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #0891B2 0%, #67E8F9 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-07-13',
+      birthPlace: 'Jakarta',
+      birthDate: '1994-05-24',
+      agama: 'Islam',
+      gender: 'Perempuan',
+      phone: '0812-9011-015',
+      email: 'titi.hardyati@erpmms.co.id',
+      username: 'titi.hardyati',
+      password: 'password123',
+      nik: '3175016405940015',
+      statusKaryawan: 'PKWT (Mitra Yayasan)',
+      statusPajak: 'TK/0',
+      pendidikan: 'Sarjana (S1)',
+      noKK: '-',
+      alamatKTP: 'Utan Kayu Selatan, Kec. Matraman, Jakarta Timur',
+      alamatDomisili: 'Utan Kayu Selatan, Kec. Matraman, Jakarta Timur',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'Bank Mandiri',
+      rekeningNo: '157-00-6677889-6',
+      rekeningName: 'Titi Hardyati',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      sppgId: '36UNM9F5',
+      sppgName: 'SPPG Utan Kayu Selatan',
+      yayasanPartner: 'Adil Berdaya Insani',
+      notes: 'Perwakilan Yayasan Adil Berdaya Insani untuk SPPG Utan Kayu Selatan (ID: 36UNM9F5). Mulai: 13 Juli 2026.'
+    },
+    {
+      id: 'MAKER-003',
+      nika: 'MKR-2026-003',
+      name: 'Fandru',
+      role: 'MAKER_YAYASAN',
+      roleLabel: 'Maker Yayasan',
+      kodeJabatan: 'WLKP-MKR-03',
+      jabatan: 'Maker Pengelola Dapur Yayasan',
+      levelGrade: 'Staff Pelaksana Dapur / Grade 1',
+      department: 'Kemitraan Yayasan',
+      avatarGrad: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+      quotaAnnualLeave: 12,
+      remainingAnnualLeave: 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: '2026-04-01',
+      birthPlace: 'Pandeglang',
+      birthDate: '1995-03-12',
+      agama: 'Islam',
+      gender: 'Laki-laki',
+      phone: '0813-8899-7711',
+      email: 'fandru@erpmms.co.id',
+      username: 'fandru',
+      password: 'password123',
+      nik: '3601051203950001',
+      statusKaryawan: 'PKWT (Maker Dapur)',
+      statusPajak: 'TK/0',
+      pendidikan: 'SMA / SMK',
+      noKK: '-',
+      alamatKTP: 'Citaman, Kec. Jiput, Kab. Pandeglang, Banten',
+      alamatDomisili: 'Citaman, Kec. Jiput, Kab. Pandeglang, Banten',
+      statusTempatTinggal: 'Milik Sendiri',
+      noNPWP: '-',
+      alamatNPWP: '-',
+      bankName: 'BSI (Bank Syariah Indonesia)',
+      rekeningNo: '7123984561',
+      rekeningName: 'Fandru',
+      noBPJSKesehatan: '-',
+      noBPJSTenagaKerja: '-',
+      emergencyName: '-',
+      emergencyRelation: '-',
+      emergencyPhone: '-',
+      notes: 'Maker Yayasan pengelola pelaporan transaksi dapur SPPG Citaman & SPPG Cilangkap.'
+    }
+  ],
+
+  // Master Database: Dokumen Sosialisasi & Panduan Yayasan (PDF & PPT) - Dikelola oleh Human Capital
+  guidelineDocuments: [
+    {
+      id: 'DOC-001',
+      title: 'Panduan Pelaksanaan & Standar Verifikasi Lapangan Program Yayasan 2026.pdf',
+      fileType: 'PDF',
+      category: 'SOP Lapangan & Verifikasi',
+      targetRole: 'PERWAKILAN_YAYASAN',
+      targetLabel: 'Khusus Perwakilan Yayasan',
+      fileSize: '3.8 MB',
+      description: 'Pedoman resmi alur survei calon penerima manfaat, koordinasi teknis dengan Manager Area, serta kepatuhan administrasi program kemitraan.',
+      uploadedBy: 'Tazkia Aulia (Human Capital)',
+      uploadDate: '2026-08-19'
+    },
+    {
+      id: 'DOC-002',
+      title: 'Materi Sosialisasi Kebijakan & Alur Pengajuan Program Kemitraan Sosial.pptx',
+      fileType: 'PPT',
+      category: 'Materi Sosialisasi & Presentasi',
+      targetRole: 'PERWAKILAN_YAYASAN',
+      targetLabel: 'Khusus Perwakilan Yayasan',
+      fileSize: '12.4 MB',
+      description: 'Slide presentasi resmi untuk sosialisasi program kemitraan sosial kepada tokoh masyarakat dan mitra lokal di wilayah kerja.',
+      uploadedBy: 'Tazkia Aulia (Human Capital)',
+      uploadDate: '2026-08-18'
+    },
+    {
+      id: 'DOC-003',
+      title: 'SOP Pengelolaan Bahan Baku, Standar Porsi Dapur & Akuntabilitas Virtual Account.pdf',
+      fileType: 'PDF',
+      category: 'SOP Dapur & Finansial VA',
+      targetRole: 'MAKER_YAYASAN',
+      targetLabel: 'Khusus Maker Yayasan',
+      fileSize: '4.5 MB',
+      description: 'Petunjuk teknis pencatatan transaksi harian bahan baku dapur, formula perhitungan harga efisiensi per porsi, dan rekonsiliasi saldo Virtual Account bank.',
+      uploadedBy: 'Tazkia Aulia (Human Capital)',
+      uploadDate: '2026-08-19'
+    },
+    {
+      id: 'DOC-004',
+      title: 'Sosialisasi Higienitas Dapur Komersial & Manajemen Stok Bahan Makanan Segar.pptx',
+      fileType: 'PPT',
+      category: 'Materi Sosialisasi & Training',
+      targetRole: 'MAKER_YAYASAN',
+      targetLabel: 'Khusus Maker Yayasan',
+      fileSize: '15.2 MB',
+      description: 'Slide edukasi standar sanitasi, keamanan pangan (food safety), dan rotasi bahan makanan (FIFO) di dapur program yayasan.',
+      uploadedBy: 'Tazkia Aulia (Human Capital)',
+      uploadDate: '2026-08-17'
+    },
+    {
+      id: 'DOC-005',
+      title: 'Buku Saku Kode Etik, Tata Kelola & Nilai Integritas Yayasan 2026.pdf',
+      fileType: 'PDF',
+      category: 'Corporate Governance & Etika',
+      targetRole: 'ALL_YAYASAN',
+      targetLabel: 'Seluruh Tim Yayasan',
+      fileSize: '2.1 MB',
+      description: 'Buku saku nilai integritas, transparansi penyaluran bantuan, dan perlindungan privasi data penerima manfaat.',
+      uploadedBy: 'Tazkia Aulia (Human Capital)',
+      uploadDate: '2026-08-15'
+    }
+  ],
+
+  // Master Database: Dapur Program Yayasan (Database SPPG Lengkap Real Spreadsheet)
+  kitchens: [
+    {
+      id: 'DAPUR-01',
+      idSppg: 'WFC2L9EH',
+      namaDapur: 'SPPG Cilangkap - Tapos 1',
+      namaYayasan: 'Akselerasi Bumi Indonesia',
+      name: 'SPPG Cilangkap - Tapos 1',
+      provinsi: 'Jawa Barat',
+      kotaKabupaten: 'Kota Depok',
+      kecamatan: 'Tapos',
+      kelurahan: 'Cilangkap',
+      alamatLengkap: 'Cilangkap, Kec. Tapos, Kota Depok, Jawa Barat',
+      location: 'Kota Depok, Jawa Barat',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Tri Utari (PY-001)',
+      managerArea: 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-02',
+      idSppg: 'YPEHMDF0',
+      namaDapur: 'SPPG Cipinang Cempedak',
+      namaYayasan: 'Adil Berdaya Insani',
+      name: 'SPPG Cipinang Cempedak',
+      provinsi: 'DKI Jakarta',
+      kotaKabupaten: 'Kota Jakarta Timur',
+      kecamatan: 'Jatinegara',
+      kelurahan: 'Cipinang Cempedak',
+      alamatLengkap: 'Cipinang Cempedak, Kec. Jatinegara, Kota Jakarta Timur, DKI Jakarta',
+      location: 'Kota Jakarta Timur, DKI Jakarta',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Khoirudin (PY-002)',
+      managerArea: 'Bivaldie A.R. (Manajer Area Jakarta)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-03',
+      idSppg: 'THAH6JZO',
+      namaDapur: 'SPPG Citaman',
+      namaYayasan: 'Akselerasi Bumi Indonesia',
+      name: 'SPPG Citaman',
+      provinsi: 'Banten',
+      kotaKabupaten: 'Kabupaten Pandeglang',
+      kecamatan: 'Jiput',
+      kelurahan: 'Citaman',
+      alamatLengkap: 'Citaman, Kec. Jiput, Kab. Pandeglang, Banten',
+      location: 'Kabupaten Pandeglang, Banten',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Tresna (PY-003)',
+      managerArea: 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-04',
+      idSppg: 'KJDSEBN6',
+      namaDapur: 'SPPG Harjamukti',
+      namaYayasan: 'Akselerasi Bumi Indonesia',
+      name: 'SPPG Harjamukti',
+      provinsi: 'Jawa Barat',
+      kotaKabupaten: 'Kota Depok',
+      kecamatan: 'Cimanggis',
+      kelurahan: 'Harjamukti',
+      alamatLengkap: 'Harjamukti, Kec. Cimanggis, Kota Depok, Jawa Barat',
+      location: 'Kota Depok, Jawa Barat',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Setiawati (PY-004)',
+      managerArea: 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-05',
+      idSppg: 'NFXCJ3PI',
+      namaDapur: 'SPPG Jatiwaringin',
+      namaYayasan: 'Akselerasi Bumi Indonesia',
+      name: 'SPPG Jatiwaringin',
+      provinsi: 'Jawa Barat',
+      kotaKabupaten: 'Kota Bekasi',
+      kecamatan: 'Pondok Gede',
+      kelurahan: 'Jatiwaringin',
+      alamatLengkap: 'Jatiwaringin, Kec. Pondok Gede, Kota Bekasi, Jawa Barat',
+      location: 'Kota Bekasi, Jawa Barat',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Astri Listia (PY-005)',
+      managerArea: 'Bivaldie A.R. (Manajer Area Jakarta)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-06',
+      idSppg: 'HUBRVBTW',
+      namaDapur: 'SPPG Kayu Manis',
+      namaYayasan: 'Adil Berdaya Insani',
+      name: 'SPPG Kayu Manis',
+      provinsi: 'DKI Jakarta',
+      kotaKabupaten: 'Kota Jakarta Timur',
+      kecamatan: 'Matraman',
+      kelurahan: 'Kayu Manis',
+      alamatLengkap: 'Kayu Manis, Kec. Matraman, Kota Jakarta Timur, DKI Jakarta',
+      location: 'Kota Jakarta Timur, DKI Jakarta',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Childa Susanti (PY-006)',
+      managerArea: 'Bivaldie A.R. (Manajer Area Jakarta)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-07',
+      idSppg: 'VMQ6JXXM',
+      namaDapur: 'SPPG Kelapa Dua Wetan',
+      namaYayasan: 'Adil Berdaya Insani',
+      name: 'SPPG Kelapa Dua Wetan',
+      provinsi: 'DKI Jakarta',
+      kotaKabupaten: 'Kota Jakarta Timur',
+      kecamatan: 'Ciracas',
+      kelurahan: 'Kelapa Dua Wetan',
+      alamatLengkap: 'Kelapa Dua Wetan, Kec. Ciracas, Kota Jakarta Timur, DKI Jakarta',
+      location: 'Kota Jakarta Timur, DKI Jakarta',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Syahrir (PY-007)',
+      managerArea: 'Bivaldie A.R. (Manajer Area Jakarta)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-08',
+      idSppg: 'XQQBILKQ',
+      namaDapur: 'SPPG Kendan',
+      namaYayasan: 'Akselerasi Bumi Indonesia',
+      name: 'SPPG Kendan',
+      provinsi: 'Jawa Barat',
+      kotaKabupaten: 'Kabupaten Bandung',
+      kecamatan: 'Nagreg',
+      kelurahan: 'Kendan',
+      alamatLengkap: 'Kendan, Kec. Nagreg, Kab. Bandung, Jawa Barat',
+      location: 'Kabupaten Bandung, Jawa Barat',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Maman Sutarman (PY-008)',
+      managerArea: 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-09',
+      idSppg: 'MLRQXJ1K',
+      namaDapur: 'SPPG Leles',
+      namaYayasan: 'Akselerasi Bumi Indonesia',
+      name: 'SPPG Leles',
+      provinsi: 'Jawa Barat',
+      kotaKabupaten: 'Kabupaten Garut',
+      kecamatan: 'Leles',
+      kelurahan: 'Leles',
+      alamatLengkap: 'Leles, Kec. Leles, Kab. Garut, Jawa Barat',
+      location: 'Kabupaten Garut, Jawa Barat',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Jusman Ziliwu (PY-009)',
+      managerArea: 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-10',
+      idSppg: '1OAXCXMA',
+      namaDapur: 'SPPG Mandalamekar',
+      namaYayasan: 'Bekah Iman Nafi\'An',
+      name: 'SPPG Mandalamekar',
+      provinsi: 'Jawa Barat',
+      kotaKabupaten: 'Kabupaten Bandung',
+      kecamatan: 'Cimenyan',
+      kelurahan: 'Mandalamekar',
+      alamatLengkap: 'Mandalamekar, Kec. Cimenyan, Kab. Bandung, Jawa Barat',
+      location: 'Kabupaten Bandung, Jawa Barat',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Achmad Sofyan Permadi (PY-010)',
+      managerArea: 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-11',
+      idSppg: 'PMXKYUEZ',
+      namaDapur: 'SPPG Mandirancan',
+      namaYayasan: 'Bekah Iman Nafi\'An',
+      name: 'SPPG Mandirancan',
+      provinsi: 'Jawa Barat',
+      kotaKabupaten: 'Kabupaten Kuningan',
+      kecamatan: 'Mandirancan',
+      kelurahan: 'Mandirancan',
+      alamatLengkap: 'Mandirancan, Kec. Mandirancan, Kab. Kuningan, Jawa Barat',
+      location: 'Kabupaten Kuningan, Jawa Barat',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Imam Baiturohim (PY-011)',
+      managerArea: 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-12',
+      idSppg: 'WCJP3OPY',
+      namaDapur: 'SPPG Pisangan Baru',
+      namaYayasan: 'Adil Berdaya Insani',
+      name: 'SPPG Pisangan Baru',
+      provinsi: 'DKI Jakarta',
+      kotaKabupaten: 'Kota Jakarta Timur',
+      kecamatan: 'Matraman',
+      kelurahan: 'Pisangan Baru',
+      alamatLengkap: 'Pisangan Baru, Kec. Matraman, Kota Jakarta Timur, DKI Jakarta',
+      location: 'Kota Jakarta Timur, DKI Jakarta',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Yulianti (PY-012)',
+      managerArea: 'Bivaldie A.R. (Manajer Area Jakarta)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-13',
+      idSppg: 'ZAJXQGBU',
+      namaDapur: 'SPPG Salaman/Sriwedari',
+      namaYayasan: 'Sinergi Kesehatan Negeri',
+      name: 'SPPG Salaman/Sriwedari',
+      provinsi: 'Jawa Tengah',
+      kotaKabupaten: 'Kabupaten Magelang',
+      kecamatan: 'Salaman',
+      kelurahan: 'Sriwedari',
+      alamatLengkap: 'Sriwedari, Kec. Salaman, Kab. Magelang, Jawa Tengah',
+      location: 'Kabupaten Magelang, Jawa Tengah',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Koko Kiswoko (PY-013)',
+      managerArea: 'Dian Ekawati (Manajer Area Jawa Tengah)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-14',
+      idSppg: '5SGNUNP0',
+      namaDapur: 'SPPG Tengaran',
+      namaYayasan: 'Sinergi Kesehatan Negeri',
+      name: 'SPPG Tengaran',
+      provinsi: 'Jawa Tengah',
+      kotaKabupaten: 'Kabupaten Semarang',
+      kecamatan: 'Tengaran',
+      kelurahan: 'Tengaran',
+      alamatLengkap: 'Tengaran, Kec. Tengaran, Kab. Semarang, Jawa Tengah',
+      location: 'Kabupaten Semarang, Jawa Tengah',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Farissa Cahyainka (PY-014)',
+      managerArea: 'Dian Ekawati (Manajer Area Jawa Tengah)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    },
+    {
+      id: 'DAPUR-15',
+      idSppg: '36UNM9F5',
+      namaDapur: 'SPPG Utan Kayu Selatan',
+      namaYayasan: 'Adil Berdaya Insani',
+      name: 'SPPG Utan Kayu Selatan',
+      provinsi: 'DKI Jakarta',
+      kotaKabupaten: 'Kota Jakarta Timur',
+      kecamatan: 'Matraman',
+      kelurahan: 'Utan Kayu Selatan',
+      alamatLengkap: 'Utan Kayu Selatan, Kec. Matraman, Kota Jakarta Timur, DKI Jakarta',
+      location: 'Kota Jakarta Timur, DKI Jakarta',
+      makerYayasan: 'Belum Ditetapkan',
+      perwakilanYayasan: 'Titi Hardyati (PY-015)',
+      managerArea: 'Bivaldie A.R. (Manajer Area Jakarta)',
+      status: 'AKTIF',
+      kapasitasPorsi: 500
+    }
+  ],
+
+  // Laporan Transaksi Dapur & Saldo VA (Dikelola oleh Maker Yayasan / Pengelola Dapur)
+  kitchenReports: [],
+
+  // Cuti & Izin Berdasarkan Pasal 14, 15, & 16 Peraturan Perusahaan
+  leaves: [],
+
+  // Default Activity Presets untuk Timesheet (Dikosongkan untuk input manual per user)
+  defaultActivities: [],
+
+  // Timesheets (Log Kerja Harian Mandiri)
+  timesheets: [],
+
+  // Purchase Requisition (PR - Pengadaan Barang & Fasilitas)
+  itemRequests: [],
+
+  // Cash Advance / Kasbon Operasional Data
+  cashAdvances: [],
+
+  // Reimbursement / Klaim Penggantian Biaya Operasional
+  reimbursements: [],
+
+
+  // Catalog Presets
+  catalog: [
+    { name: 'Laser Distance Meter 50M', estPrice: 1950000, category: 'Perangkat IT & Survei' },
+    { name: 'Heavy Duty Cooking Pot 50L', estPrice: 2200000, category: 'Fasilitas Kantor & Dapur' },
+    { name: 'Rice Cooker Komersial 20L', estPrice: 3400000, category: 'Fasilitas Kantor & Dapur' },
+    { name: 'Laptop ThinkPad L14 Gen 4', estPrice: 14500000, category: 'Perangkat IT' }
+  ],
+
+  // Laporan Kendala Harian Lapangan dari Perwakilan Yayasan
+  fieldIssues: [],
+
+  // Activity Log Stream
+  activityLogs: [
+    { id: 1, text: 'Sistem ERP Yayasan telah siap digunakan secara operasional.', time: '08:00', type: 'system' }
+  ],
+
+  // Interactive Org Structure (Tiers, Position Nodes, and Line Connections)
+  orgStructure: {
+    tiers: [
+      { id: 'tier-1', label: 'Tingkat 1: Direktur Utama (CEO)', color: '#EF4444', desc: 'Pucuk pimpinan tertinggi yayasan' },
+      { id: 'tier-2', label: 'Tingkat 2: Jajaran Direksi Operasional & Keuangan', color: '#F59E0B', desc: 'Direktur Operasional & Direktur Keuangan' },
+      { id: 'tier-3', label: 'Tingkat 3: Manajerial Wilayah & Keuangan', color: '#3B82F6', desc: 'Manager Area & Manager Keuangan' },
+      { id: 'tier-4', label: 'Tingkat 4: Human Capital, Staf Ahli & FAT', color: '#10B981', desc: 'Human Capital, Staf Ahli Administrasi Keuangan & FAT Officer' },
+      { id: 'tier-5', label: 'Tingkat 5: Staff Operasional Lapangan & Pelaksana', color: '#EC4899', desc: 'Staff Operasional Titik Dapur SPPG & Petugas Lapangan' }
+    ],
+    nodes: [
+      { id: 'org-du-001', userId: 'DU-001', name: 'Rochmad', role: 'DIREKTUR_UTAMA', roleLabel: 'Direktur Utama', department: 'Direksi Eksekutif', tierId: 'tier-1', avatarGrad: 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)' },
+      { id: 'org-do-001', userId: 'DO-001', name: 'Muhammad Arrasyid', role: 'DIREKTUR_OPERASIONAL', roleLabel: 'Direktur Operasional', department: 'Direksi Operasional', tierId: 'tier-2', avatarGrad: 'linear-gradient(135deg, #F59E0B 0%, #FCD34D 100%)' },
+      { id: 'org-dk-001', userId: 'DK-001', name: 'Kody Suryo Nugroho', role: 'DIREKTUR_KEUANGAN', roleLabel: 'Direktur Keuangan', department: 'Direksi Keuangan', tierId: 'tier-2', avatarGrad: 'linear-gradient(135deg, #10B981 0%, #6EE7B7 100%)' },
+      { id: 'org-do-002', userId: 'DO-002', name: 'Muhammad Alfaqih', role: 'DIREKTUR_OPERASIONAL', roleLabel: 'Direktur Operasional', department: 'Direksi Operasional', tierId: 'tier-2', avatarGrad: 'linear-gradient(135deg, #F59E0B 0%, #FB923C 100%)' },
+      { id: 'org-mk-001', userId: 'MK-001', name: 'Viona', role: 'MANAGER_KEUANGAN', roleLabel: 'Manager Keuangan', department: 'Finance & Accounting', tierId: 'tier-3', avatarGrad: 'linear-gradient(135deg, #06B6D4 0%, #67E8F9 100%)' },
+      { id: 'org-ma-001', userId: 'MA-001', name: 'Dian Ekawati', role: 'MANAGER_AREA', roleLabel: 'Manajer Area Jawa Tengah', department: 'Operasional Wilayah', tierId: 'tier-3', avatarGrad: 'linear-gradient(135deg, #3B82F6 0%, #93C5FD 100%)' },
+      { id: 'org-ma-002', userId: 'MA-002', name: 'Bivaldie A.R.', role: 'MANAGER_AREA', roleLabel: 'Manajer Area Jakarta', department: 'Operasional Wilayah', tierId: 'tier-3', avatarGrad: 'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)' },
+      { id: 'org-ma-003', userId: 'MA-003', name: 'Rendy Seftiana', role: 'MANAGER_AREA', roleLabel: 'Manajer Area Jkt & Jabar', department: 'Operasional Wilayah', tierId: 'tier-3', avatarGrad: 'linear-gradient(135deg, #1D4ED8 0%, #93C5FD 100%)' },
+      { id: 'org-hc-001', userId: 'HC-001', name: 'Tazkia Aulia', role: 'HUMAN_CAPITAL', roleLabel: 'Human Capital', department: 'Human Capital & GA', tierId: 'tier-4', avatarGrad: 'linear-gradient(135deg, #7C3AED 0%, #C4B5FD 100%)' },
+      { id: 'org-sa-001', userId: 'SA-001', name: 'Sakhiyah Karomah Salam', role: 'STAFF_AHLI_KEUANGAN', roleLabel: 'Staf Ahli Adm & Keuangan', department: 'Keuangan Yayasan', tierId: 'tier-4', avatarGrad: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)' },
+      { id: 'org-sa-002', userId: 'SA-002', name: 'Muhammad Syafiq Al Ghifari', role: 'STAFF_AHLI_KEUANGAN', roleLabel: 'Staf Ahli Adm & Keuangan', department: 'Keuangan Yayasan', tierId: 'tier-4', avatarGrad: 'linear-gradient(135deg, #4F46E5 0%, #A5B4FC 100%)' },
+      { id: 'org-fat-001', userId: 'FAT-001', name: 'Muhammad Imam Adamy', role: 'FAT_OFFICER', roleLabel: 'Finance & Tax', department: 'Finance & Tax', tierId: 'tier-4', avatarGrad: 'linear-gradient(135deg, #D97706 0%, #FDE68A 100%)' },
+      { id: 'org-so-001', userId: 'SO-001', name: 'Maulana Raka Pahlevi', role: 'STAFF_OPERASIONAL', roleLabel: 'Staff Operasional', department: 'Operasional Lapangan', tierId: 'tier-5', isRedBadge: true, avatarGrad: 'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)' },
+      { id: 'org-so-002', userId: 'SO-002', name: 'Irawan Dwi Laksono', role: 'STAFF_OPERASIONAL', roleLabel: 'Staff Operasional (Jatim)', department: 'Operasional Lapangan', tierId: 'tier-5', isRedBadge: true, avatarGrad: 'linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)' },
+      { id: 'org-so-003', userId: 'SO-003', name: 'Wawan Hermawan, S.Ag', role: 'STAFF_OPERASIONAL', roleLabel: 'Staff Operasional (Jabar)', department: 'Operasional Lapangan', tierId: 'tier-5', isRedBadge: true, avatarGrad: 'linear-gradient(135deg, #059669 0%, #34D399 100%)' },
+      { id: 'org-so-004', userId: 'SO-004', name: 'Syifa Izzatina', role: 'STAFF_OPERASIONAL', roleLabel: 'Staff Operasional', department: 'Operasional Lapangan', tierId: 'tier-5', isRedBadge: true, avatarGrad: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)' }
+    ],
+    connections: [
+      { id: 'conn-1', fromNodeId: 'org-du-001', toNodeId: 'org-do-001', type: 'SOLID', label: 'Garis Komando Direksi' },
+      { id: 'conn-2', fromNodeId: 'org-du-001', toNodeId: 'org-dk-001', type: 'SOLID', label: 'Garis Komando Direksi' },
+      { id: 'conn-3', fromNodeId: 'org-du-001', toNodeId: 'org-do-002', type: 'SOLID', label: 'Garis Komando Direksi' },
+      { id: 'conn-4', fromNodeId: 'org-do-001', toNodeId: 'org-ma-001', type: 'SOLID', label: 'Garis Komando Wilayah Jateng' },
+      { id: 'conn-5', fromNodeId: 'org-do-001', toNodeId: 'org-ma-002', type: 'SOLID', label: 'Garis Komando Wilayah Jakarta' },
+      { id: 'conn-6', fromNodeId: 'org-do-001', toNodeId: 'org-ma-003', type: 'SOLID', label: 'Garis Komando Wilayah Jabar' },
+      { id: 'conn-7', fromNodeId: 'org-do-001', toNodeId: 'org-hc-001', type: 'SOLID', label: 'Garis Komando SDM & GA' },
+      { id: 'conn-8', fromNodeId: 'org-dk-001', toNodeId: 'org-mk-001', type: 'SOLID', label: 'Garis Komando Keuangan' },
+      { id: 'conn-9', fromNodeId: 'org-mk-001', toNodeId: 'org-sa-001', type: 'SOLID', label: 'Supervisi Staf Ahli Keuangan' },
+      { id: 'conn-10', fromNodeId: 'org-mk-001', toNodeId: 'org-sa-002', type: 'SOLID', label: 'Supervisi Staf Ahli Administrasi' },
+      { id: 'conn-11', fromNodeId: 'org-mk-001', toNodeId: 'org-fat-001', type: 'SOLID', label: 'Supervisi Pembukuan & FAT' },
+      { id: 'conn-12', fromNodeId: 'org-ma-001', toNodeId: 'org-so-002', type: 'SOLID', label: 'Instruksi Lapangan Dapur' },
+      { id: 'conn-13', fromNodeId: 'org-ma-002', toNodeId: 'org-so-001', type: 'SOLID', label: 'Instruksi Lapangan Dapur' },
+      { id: 'conn-14', fromNodeId: 'org-ma-003', toNodeId: 'org-so-003', type: 'SOLID', label: 'Instruksi Lapangan Dapur' },
+      { id: 'conn-15', fromNodeId: 'org-ma-003', toNodeId: 'org-so-004', type: 'SOLID', label: 'Instruksi Lapangan Dapur' }
+    ]
+  },
+  kitchenDailyStatuses: []
+};
+
+// Database Management Class
+class DatabaseManager {
+  constructor() {
+    this.data = this.load();
+    this.lastPullTimestamp = 0;
+    this.CACHE_TTL = 3 * 60 * 1000; // 3 Menit Cache TTL untuk menekan request berulang & Egress
+    this.recalculateUserLeaveBalances();
+  }
+
+  load() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.users)) {
+          // Auto-sync missing users from INITIAL_DATABASE
+          INITIAL_DATABASE.users.forEach(initUser => {
+            if (!parsed.users.some(u => u.id === initUser.id)) {
+              parsed.users.push(initUser);
+            }
+          });
+
+          // Ensure all array collections are properly initialized and persistent
+          if (!Array.isArray(parsed.itemRequests)) parsed.itemRequests = [];
+          if (!Array.isArray(parsed.kitchenReports)) {
+            parsed.kitchenReports = [];
+          } else {
+            parsed.kitchenReports.forEach(kr => {
+              if (kr.spmAttachmentUrl && kr.spmAttachmentUrl.includes('unsplash.com')) {
+                kr.spmAttachmentUrl = null;
+              }
+              if (kr.spmFileName && kr.spmFileName.includes('unsplash')) {
+                kr.spmFileName = null;
+              }
+            });
+          }
+          if (Array.isArray(parsed.guidelineDocuments)) {
+            parsed.guidelineDocuments.forEach(gd => {
+              if (gd.fileData && gd.fileData.includes('unsplash.com')) {
+                gd.fileData = null;
+              }
+            });
+          }
+          if (!Array.isArray(parsed.kitchens)) parsed.kitchens = INITIAL_DATABASE.kitchens || [];
+          if (!Array.isArray(parsed.leaves)) {
+            parsed.leaves = [];
+          } else {
+            parsed.leaves.forEach(l => {
+              const u = parsed.users.find(usr => usr.id === l.employeeId || usr.name === l.employeeName);
+              l.quotaDeductionType = resolveLeaveDeductionType(l, u ? u.joinDate : null);
+              l.quotaDeducted = (l.quotaDeductionType === 'NONE') ? 0 : (Number(l.duration) || 1);
+            });
+          }
+          if (!Array.isArray(parsed.timesheets)) parsed.timesheets = [];
+          if (!Array.isArray(parsed.cashAdvances)) parsed.cashAdvances = [];
+          if (!Array.isArray(parsed.reimbursements)) parsed.reimbursements = [];
+          if (!Array.isArray(parsed.fieldIssues)) parsed.fieldIssues = [];
+          if (!Array.isArray(parsed.kitchenDailyStatuses)) parsed.kitchenDailyStatuses = [];
+
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat cache lokal, beralih ke inisialisasi default:', e);
+    }
+    this.save(INITIAL_DATABASE);
+    return JSON.parse(JSON.stringify(INITIAL_DATABASE));
+  }
+
+  // Hitung ulang saldo cuti setiap karyawan secara dinamis berdasarkan seluruh cuti yang berstatus APPROVED
+  recalculateUserLeaveBalances(targetUserId = null) {
+    if (!this.data || !Array.isArray(this.data.users)) return;
+    const leaves = (this.data && Array.isArray(this.data.leaves)) ? this.data.leaves : (INITIAL_DATABASE.leaves || []);
+    const usersToProcess = targetUserId ? this.data.users.filter(u => u.id === targetUserId) : this.data.users;
+
+    usersToProcess.forEach(u => {
+      const isSenior = hasWorkedOneYear(u.joinDate);
+      const userApprovedLeaves = leaves.filter(l => 
+        (l.employeeId === u.id || l.employeeName === u.name) && 
+        l.status === 'APPROVED'
+      );
+
+      let usedPersonal = 0;
+      let usedAnnual = 0;
+
+      userApprovedLeaves.forEach(l => {
+        const deductType = resolveLeaveDeductionType(l, u.joinDate);
+        l.quotaDeductionType = deductType;
+        l.quotaDeducted = (deductType === 'NONE') ? 0 : (Number(l.duration) || 1);
+        
+        const dur = Number(l.duration) || 1;
+        if (deductType === 'PERSONAL') {
+          usedPersonal += dur;
+        } else if (deductType === 'ANNUAL') {
+          usedAnnual += dur;
+        }
+      });
+
+      const quotaPersonal = (u.quotaPersonalLeave !== undefined) ? Number(u.quotaPersonalLeave) : 3;
+      const quotaAnnual = (u.quotaAnnualLeave !== undefined) ? Number(u.quotaAnnualLeave) : 12;
+
+      const newRemainingPersonal = Math.max(0, Math.round((quotaPersonal - usedPersonal) * 10) / 10);
+      const newRemainingAnnual = Math.max(0, Math.round((quotaAnnual - usedAnnual) * 10) / 10);
+
+      const changed = (u.remainingPersonalLeave !== newRemainingPersonal || u.remainingAnnualLeave !== newRemainingAnnual);
+      
+      u.remainingPersonalLeave = newRemainingPersonal;
+      u.remainingAnnualLeave = newRemainingAnnual;
+
+      if (this.data.currentUser && this.data.currentUser.id === u.id) {
+        this.data.currentUser.remainingPersonalLeave = newRemainingPersonal;
+        this.data.currentUser.remainingAnnualLeave = newRemainingAnnual;
+      }
+
+      if (changed && window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        this.syncToSupabase('users', {
+          id: u.id,
+          remaining_personal_leave: newRemainingPersonal,
+          remaining_annual_leave: newRemainingAnnual
+        }).catch(err => console.warn('Sync leave balance update notice:', err));
+      }
+    });
+
+    this.save();
+  }
+
+  save(data) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data || this.data));
+    } catch (e) {
+      console.warn('Gagal menyimpan ke localStorage (kemungkinan ukuran attachment besar), mencoba fallback tanpa binary data:', e);
+      try {
+        const copy = JSON.parse(JSON.stringify(data || this.data));
+        const stripHeavy = (obj) => {
+          if (!obj) return;
+          if (Array.isArray(obj)) {
+            obj.forEach(item => stripHeavy(item));
+          } else if (typeof obj === 'object') {
+            for (const k in obj) {
+              if (typeof obj[k] === 'string' && obj[k].length > 30000 && (k === 'fileData' || k === 'attachmentUrl' || k === 'spmAttachmentUrl' || obj[k].startsWith('data:image/'))) {
+                obj[k] = null;
+              }
+            }
+          }
+        };
+        if (Array.isArray(copy.guidelineDocuments)) stripHeavy(copy.guidelineDocuments);
+        if (Array.isArray(copy.itemRequests)) stripHeavy(copy.itemRequests);
+        if (Array.isArray(copy.leaves)) stripHeavy(copy.leaves);
+        if (Array.isArray(copy.cashAdvances)) stripHeavy(copy.cashAdvances);
+        if (Array.isArray(copy.reimbursements)) stripHeavy(copy.reimbursements);
+        if (Array.isArray(copy.kitchenReports)) stripHeavy(copy.kitchenReports);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
+      } catch (err2) {
+        console.error('Penyimpanan database fallback juga gagal:', err2);
+      }
+    }
+  }
+
+  reset() {
+    localStorage.removeItem(STORAGE_KEY);
+    this.data = JSON.parse(JSON.stringify(INITIAL_DATABASE));
+    this.save(this.data);
+    return this.data;
+  }
+
+  getCurrentUser() {
+    return (this.data && this.data.currentUser) ? this.data.currentUser : INITIAL_DATABASE.currentUser;
+  }
+
+  getUsers() {
+    return (this.data && Array.isArray(this.data.users)) ? this.data.users : INITIAL_DATABASE.users;
+  }
+
+  switchRole(userId) {
+    let user = this.getUsers().find(u => u.id === userId);
+    if (!user) {
+      // Fallback search in INITIAL_DATABASE
+      user = INITIAL_DATABASE.users.find(u => u.id === userId);
+      if (user && this.data && Array.isArray(this.data.users)) {
+        this.data.users.push(user);
+      }
+    }
+    if (user) {
+      this.data.currentUser = user;
+      try {
+        localStorage.setItem('erpmms_auth_user_id', user.id);
+      } catch (e) {}
+      this.recalculateUserLeaveBalances(user.id);
+      this.save();
+      return this.getCurrentUser();
+    }
+    return this.getCurrentUser();
+  }
+
+  // =========================================================================
+  // DOKUMEN PANDUAN & SOSIALISASI YAYASAN (PDF / PPT)
+  // =========================================================================
+
+  getGuidelineDocuments(targetRoleFilter = null) {
+    const docs = (this.data && Array.isArray(this.data.guidelineDocuments)) ? this.data.guidelineDocuments : INITIAL_DATABASE.guidelineDocuments;
+    if (!targetRoleFilter) return docs;
+    return docs.filter(d => d.targetRole === targetRoleFilter || d.targetRole === 'ALL_YAYASAN');
+  }
+
+  async addGuidelineDocument(docData) {
+    const docs = this.getGuidelineDocuments() || [];
+    let maxNum = 0;
+    docs.forEach(d => {
+      if (d.id) {
+        const match = d.id.match(/\d+/g);
+        if (match) {
+          const n = parseInt(match[match.length - 1], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const nextNum = Math.max(maxNum + 1, docs.length + 1);
+    const id = `DOC-${String(nextNum).padStart(3, '0')}`;
+
+    const newDoc = {
+      id,
+      title: docData.title,
+      fileType: docData.fileType || 'PDF',
+      category: docData.category || 'Panduan Operasional',
+      targetRole: docData.targetRole || 'ALL_YAYASAN',
+      targetLabel: docData.targetRole === 'PERWAKILAN_YAYASAN' ? 'Khusus Perwakilan Yayasan' : docData.targetRole === 'MAKER_YAYASAN' ? 'Khusus Maker Yayasan' : 'Seluruh Tim Yayasan',
+      fileSize: docData.fileSize || '3.5 MB',
+      description: docData.description || 'Dokumen panduan resmi operasional yayasan.',
+      fileData: docData.fileData || null,
+      uploadedBy: `${this.getCurrentUser().name} (${this.getCurrentUser().roleLabel})`,
+      uploadDate: new Date().toISOString().slice(0, 10)
+    };
+
+    if (!Array.isArray(this.data.guidelineDocuments)) this.data.guidelineDocuments = [];
+    this.data.guidelineDocuments.unshift(newDoc);
+    this.addLog(`Human Capital mengunggah dokumen panduan baru: "${newDoc.title}" (${newDoc.fileType})`, 'hc');
+    this.save();
+
+    this.syncToSupabase('guideline_documents', {
+      id: newDoc.id,
+      title: newDoc.title,
+      file_type: newDoc.fileType,
+      category: newDoc.category,
+      target_role: newDoc.targetRole,
+      target_label: newDoc.targetLabel,
+      file_size: newDoc.fileSize,
+      description: newDoc.description,
+      uploaded_by: newDoc.uploadedBy,
+      upload_date: newDoc.uploadDate,
+      file_data: newDoc.fileData
+    }).catch(e => console.warn('Sync add guideline_documents to Supabase warning:', e));
+
+    return newDoc;
+  }
+
+  async updateGuidelineDocument(docId, updatedFields) {
+    if (!Array.isArray(this.data.guidelineDocuments)) return false;
+    const doc = this.data.guidelineDocuments.find(d => d.id === docId);
+    if (!doc) return false;
+
+    if (updatedFields.title !== undefined) doc.title = updatedFields.title;
+    if (updatedFields.fileType !== undefined) doc.fileType = updatedFields.fileType;
+    if (updatedFields.category !== undefined) doc.category = updatedFields.category;
+    if (updatedFields.targetRole !== undefined) {
+      doc.targetRole = updatedFields.targetRole;
+      doc.targetLabel = updatedFields.targetRole === 'PERWAKILAN_YAYASAN' ? 'Khusus Perwakilan Yayasan' : updatedFields.targetRole === 'MAKER_YAYASAN' ? 'Khusus Maker Yayasan' : updatedFields.targetRole === 'STAFF_OPERASIONAL' ? 'Khusus Staff Operasional' : 'Seluruh Tim Yayasan';
+    }
+    if (updatedFields.fileSize !== undefined) doc.fileSize = updatedFields.fileSize;
+    if (updatedFields.description !== undefined) doc.description = updatedFields.description;
+    if (updatedFields.fileData !== undefined) doc.fileData = updatedFields.fileData;
+
+    this.addLog(`Human Capital memperbarui dokumen panduan: "${doc.title}"`, 'hc');
+    this.save();
+
+    this.syncToSupabase('guideline_documents', {
+      id: doc.id,
+      title: doc.title,
+      file_type: doc.fileType,
+      category: doc.category,
+      target_role: doc.targetRole,
+      target_label: doc.targetLabel,
+      file_size: doc.fileSize,
+      description: doc.description,
+      uploaded_by: doc.uploadedBy,
+      upload_date: doc.uploadDate,
+      file_data: doc.fileData
+    }).catch(e => console.warn('Sync update guideline_documents to Supabase warning:', e));
+
+    return doc;
+  }
+
+  async deleteGuidelineDocument(docId) {
+    if (!Array.isArray(this.data.guidelineDocuments)) return false;
+    const idx = this.data.guidelineDocuments.findIndex(d => d.id === docId);
+    if (idx !== -1) {
+      const deleted = this.data.guidelineDocuments.splice(idx, 1)[0];
+      this.addLog(`Human Capital menghapus dokumen panduan: "${deleted.title}"`, 'hc');
+      this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/guideline_documents?id=eq.${docId}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus dokumen dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
+  // HC HUB: STRUKTUR PERUSAHAAN, DATA KARYAWAN & PENGELOLAAN AKUN
+  // =========================================================================
+
+  updateUserRoleName(userId, newName, newRoleLabel) {
+    const user = this.getUsers().find(u => u.id === userId);
+    if (!user) return false;
+
+    const oldName = user.name;
+    user.name = newName;
+    if (newRoleLabel) {
+      user.roleLabel = newRoleLabel;
+      user.jabatan = newRoleLabel;
+    }
+
+    if (this.data.currentUser && this.data.currentUser.id === userId) {
+      this.data.currentUser.name = newName;
+      if (newRoleLabel) {
+        this.data.currentUser.roleLabel = newRoleLabel;
+        this.data.currentUser.jabatan = newRoleLabel;
+      }
+    }
+
+    this.addLog(`Human Capital memperbarui nama pejabat [${user.roleLabel}]: "${oldName}" menjadi "${newName}"`, 'hc');
+    this.save();
+    return true;
+  }
+
+  updateEmployeeData(userId, updatedFields) {
+    const user = this.getUsers().find(u => u.id === userId);
+    if (!user) return false;
+
+    Object.assign(user, updatedFields);
+
+    if (this.data.currentUser && this.data.currentUser.id === userId) {
+      Object.assign(this.data.currentUser, updatedFields);
+    }
+
+    this.addLog(`Human Capital memperbarui data lengkap HRIS: ${user.name} (${user.id})`, 'hc');
+    this.save();
+
+    // Sinkronkan data profil yang diperbarui ke Supabase table "users" secara real-time
+    this.syncToSupabase('users', {
+      id: user.id,
+      nika: user.nika || '',
+      name: user.name,
+      role: user.role,
+      role_label: user.roleLabel || user.jabatan || '',
+      kode_jabatan: user.kodeJabatan || '',
+      jabatan: user.jabatan || '',
+      level_grade: user.levelGrade || '',
+      department: user.department || '',
+      avatar_grad: user.avatarGrad || '',
+      quota_annual_leave: Number(user.quotaAnnualLeave) || 12,
+      remaining_annual_leave: Number(user.remainingAnnualLeave) || 12,
+      quota_personal_leave: Number(user.quotaPersonalLeave) || 3,
+      remaining_personal_leave: Number(user.remainingPersonalLeave) || 3,
+      current_quarter: user.currentQuarter || 'Q3 (Juli–September 2026)',
+      join_date: (user.joinDate && user.joinDate !== '-') ? user.joinDate : null,
+      birth_place: user.birthPlace || '',
+      birth_date: (user.birthDate && user.birthDate !== '-') ? user.birthDate : null,
+      agama: user.agama || 'Islam',
+      gender: user.gender || 'Laki-laki',
+      phone: user.phone || '',
+      email: user.email || '',
+      username: user.username || user.id.toLowerCase(),
+      password: user.password || 'password123',
+      nik: user.nik || '',
+      status_karyawan: user.statusKaryawan || 'Tetap',
+      status_pajak: user.statusPajak || 'TK/0',
+      pendidikan: user.pendidikan || 'Sarjana (S1)',
+      no_kk: user.noKK || '',
+      alamat_ktp: user.alamatKTP || '',
+      alamat_domisili: user.alamatDomisili || '',
+      status_tempat_tinggal: user.statusTempatTinggal || 'Milik Sendiri',
+      no_npwp: user.noNPWP || '',
+      alamat_npwp: user.alamatNPWP || '',
+      bank_name: user.bankName || '',
+      rekening_no: user.rekeningNo || '',
+      rekening_name: user.rekeningName || user.name,
+      no_bpjs_kesehatan: user.noBPJSKesehatan || '',
+      no_bpjs_tenaga_kerja: user.noBPJSTenagaKerja || '',
+      emergency_name: user.emergencyName || '',
+      emergency_relation: user.emergencyRelation || '',
+      emergency_phone: user.emergencyPhone || '',
+      notes: user.notes || ''
+    });
+
+    return true;
+  }
+
+  async addUserAccount(newUserData) {
+    const id = `EMP-${String(this.getUsers().length + 1).padStart(3, '0')}`;
+    const nika = newUserData.nika || `K-2026-${String(this.getUsers().length + 1).padStart(3, '0')}`;
+    const colors = [
+      'linear-gradient(135deg, #EC4899, #F472B6)',
+      'linear-gradient(135deg, #8B5CF6, #C4B5FD)',
+      'linear-gradient(135deg, #06B6D4, #67E8F9)',
+      'linear-gradient(135deg, #10B981, #6EE7B7)',
+      'linear-gradient(135deg, #F59E0B, #FDE68A)'
+    ];
+    const avatarGrad = colors[Math.floor(Math.random() * colors.length)];
+
+    const user = {
+      id,
+      nika,
+      name: newUserData.name,
+      role: newUserData.role || 'STAFF',
+      roleLabel: newUserData.roleLabel || 'Staff Karyawan',
+      kodeJabatan: newUserData.kodeJabatan || 'WLKP-STF-01',
+      jabatan: newUserData.jabatan || newUserData.roleLabel || 'Staff Operasional',
+      levelGrade: newUserData.levelGrade || 'Staff / Grade 1',
+      department: newUserData.department || 'Operasional Lapangan',
+      avatarGrad,
+      quotaAnnualLeave: Number(newUserData.quotaAnnualLeave) || 12,
+      remainingAnnualLeave: Number(newUserData.quotaAnnualLeave) || 12,
+      quotaPersonalLeave: 3,
+      remainingPersonalLeave: 3,
+      currentQuarter: 'Q3 (Juli–September 2026)',
+      joinDate: newUserData.joinDate || '2024-01-01',
+      username: newUserData.username || `user.${Date.now().toString().slice(-4)}`,
+      password: newUserData.password || 'password123',
+      nik: newUserData.nik || '3171000000000000',
+      birthPlace: newUserData.birthPlace || 'Jakarta',
+      birthDate: newUserData.birthDate || '1995-01-01',
+      agama: newUserData.agama || 'Islam',
+      gender: newUserData.gender || 'Laki-laki',
+      phone: newUserData.phone || '-',
+      email: newUserData.email || `${newUserData.username || 'user'}@yayasan.org`,
+      statusKaryawan: newUserData.statusKaryawan || 'PKWT',
+      statusPajak: newUserData.statusPajak || 'TK/0',
+      pendidikan: newUserData.pendidikan || 'Sarjana (S1)',
+      noKK: newUserData.noKK || '3171000000000001',
+      alamatKTP: newUserData.alamatKTP || 'Jl. Kantor Yayasan No. 1, Jakarta',
+      alamatDomisili: newUserData.alamatDomisili || 'Jl. Kantor Yayasan No. 1, Jakarta',
+      statusTempatTinggal: newUserData.statusTempatTinggal || 'Sewa / Kontrak',
+      noNPWP: newUserData.noNPWP || '-',
+      alamatNPWP: newUserData.alamatNPWP || '-',
+      bankName: newUserData.bankName || 'Bank Mandiri',
+      rekeningNo: newUserData.rekeningNo || '-',
+      rekeningName: newUserData.rekeningName || newUserData.name,
+      noBPJSKesehatan: newUserData.noBPJSKesehatan || '-',
+      noBPJSTenagaKerja: newUserData.noBPJSTenagaKerja || '-',
+      emergencyName: newUserData.emergencyName || '-',
+      emergencyRelation: newUserData.emergencyRelation || '-',
+      emergencyPhone: newUserData.emergencyPhone || '-',
+      resignDate: null,
+      resignReason: '-',
+      notes: newUserData.notes || 'Karyawan aktif.'
+    };
+
+    if (!Array.isArray(this.data.users)) this.data.users = [];
+    this.data.users.push(user);
+
+    this.addLog(`Human Capital membuat akun baru: ${user.name} (@${user.username})`, 'hc');
+    this.save();
+
+    // Sinkronkan user baru ke Supabase secara real-time
+    await this.syncToSupabase('users', {
+      id: user.id,
+      nika: user.nika || '',
+      name: user.name,
+      role: user.role,
+      role_label: user.roleLabel || user.jabatan || '',
+      kode_jabatan: user.kodeJabatan || '',
+      jabatan: user.jabatan || '',
+      level_grade: user.levelGrade || '',
+      department: user.department || '',
+      avatar_grad: user.avatarGrad || '',
+      quota_annual_leave: Number(user.quotaAnnualLeave) || 12,
+      remaining_annual_leave: Number(user.remainingAnnualLeave) || 12,
+      quota_personal_leave: Number(user.quotaPersonalLeave) || 3,
+      remaining_personal_leave: Number(user.remainingPersonalLeave) || 3,
+      current_quarter: user.currentQuarter || 'Q3 (Juli–September 2026)',
+      join_date: (user.joinDate && user.joinDate !== '-') ? user.joinDate : null,
+      birth_place: user.birthPlace || '',
+      birth_date: (user.birthDate && user.birthDate !== '-') ? user.birthDate : null,
+      agama: user.agama || 'Islam',
+      gender: user.gender || 'Laki-laki',
+      phone: user.phone || '',
+      email: user.email || '',
+      username: user.username,
+      password: user.password || 'password123',
+      nik: user.nik || '',
+      status_karyawan: user.statusKaryawan || 'Tetap',
+      status_pajak: user.statusPajak || 'TK/0',
+      pendidikan: user.pendidikan || 'Sarjana (S1)',
+      bank_name: user.bankName || '',
+      rekening_no: user.rekeningNo || '',
+      rekening_name: user.rekeningName || user.name,
+      notes: user.notes || ''
+    });
+
+    return user;
+  }
+
+  async deleteUserAccount(userId) {
+    if (!Array.isArray(this.data.users)) return false;
+    const idx = this.data.users.findIndex(u => u.id === userId);
+    if (idx !== -1) {
+      const deleted = this.data.users.splice(idx, 1)[0];
+      this.addLog(`Human Capital menonaktifkan akun: ${deleted.name} (${deleted.username})`, 'hc');
+      this.save();
+
+      // Hapus permanen dari Supabase Cloud
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/users?id=eq.${userId}`, {
+            method: 'DELETE',
+            headers: {
+              'apikey': key,
+              'Authorization': `Bearer ${key}`
+            }
+          });
+          console.log(`✅ [Supabase Delete] User ${userId} (${deleted.name}) berhasil dihapus dari database Supabase.`);
+        } catch (e) {
+          console.warn('Gagal menghapus user dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  async updateUserPassword(userId, newPassword) {
+    const user = this.getUsers().find(u => u.id === userId);
+    if (!user) return false;
+    user.password = newPassword;
+    this.addLog(`Human Capital me-reset password: ${user.name} (${user.username})`, 'hc');
+    this.save();
+
+    await this.syncToSupabase('users', {
+      id: user.id,
+      password: newPassword
+    });
+
+    return true;
+  }
+
+  resetToMasterAccounts() {
+    const allUsers = JSON.parse(JSON.stringify(INITIAL_DATABASE.users || []));
+    const curr = this.getCurrentUser();
+    const activeMaster = (curr && allUsers.find(u => u.id === curr.id)) || allUsers.find(u => u.role === 'SUPER_ADMIN') || allUsers[0];
+
+    this.data = {
+      currentUser: activeMaster,
+      users: allUsers,
+      leaves: [],
+      timesheets: [],
+      itemRequests: [],
+      cashAdvances: [],
+      kitchenReports: [],
+      fieldIssues: [],
+      guidelineDocs: (INITIAL_DATABASE.guidelineDocs || []).slice(0, 2),
+      catalog: INITIAL_DATABASE.catalog || [],
+      activityLogs: [
+        { id: Date.now(), text: 'System Master Reset: Database transaksi dibersihkan. Mempertahankan seluruh 20 Master Akun Organisasi Yayasan.', time: new Date().toTimeString().slice(0, 5), type: 'system' }
+      ],
+      orgStructure: JSON.parse(JSON.stringify(INITIAL_DATABASE.orgStructure))
+    };
+
+    this.save();
+    return true;
+  }
+
+  // =========================================================================
+  // DAPUR MASTER & REPORTS (ADMIN HUB DATABASE SPPG)
+  // =========================================================================
+
+  getKitchens() {
+    return (this.data && Array.isArray(this.data.kitchens)) ? this.data.kitchens : INITIAL_DATABASE.kitchens;
+  }
+
+  getKitchenById(id) {
+    return this.getKitchens().find(k => k.id === id || k.idSppg === id);
+  }
+
+  getKitchenDropdownOptions(user = null) {
+    const list = user ? this.getKitchensForUser(user) : this.getKitchens();
+    return list.map(k => {
+      const idSppg = k.idSppg || k.id;
+      const nama = k.namaDapur || k.name || 'Dapur Yayasan';
+      return {
+        id: k.id,
+        idSppg: idSppg,
+        namaDapur: nama,
+        label: `${idSppg} — ${nama}`
+      };
+    });
+  }
+
+  getKitchensForUser(user) {
+    const kitchens = this.getKitchens();
+    if (!user) return kitchens;
+    if (user.role === 'PERWAKILAN_YAYASAN') {
+      const filtered = kitchens.filter(k => {
+        if (!k) return false;
+        const matchPerwakilan = k.perwakilanYayasan && (
+          k.perwakilanYayasan.includes(user.name) ||
+          k.perwakilanYayasan.includes(user.id) ||
+          (user.name && k.perwakilanYayasan.toLowerCase().includes(user.name.toLowerCase()))
+        );
+        const matchSppg = user.sppgId && (k.idSppg === user.sppgId || k.id === user.sppgId);
+        const matchName = user.sppgName && (k.namaDapur === user.sppgName || k.name === user.sppgName);
+        const matchAssigned = user.assignedKitchen && (
+          user.assignedKitchen.includes(k.idSppg) ||
+          user.assignedKitchen.includes(k.namaDapur) ||
+          user.assignedKitchen.includes(k.id)
+        );
+        return matchPerwakilan || matchSppg || matchName || matchAssigned;
+      });
+      if (filtered.length > 0) return filtered;
+      if (user.sppgId) {
+        return [{
+          id: user.sppgId,
+          idSppg: user.sppgId,
+          namaDapur: user.sppgName || 'Dapur SPPG',
+          name: user.sppgName || 'Dapur SPPG'
+        }];
+      }
+      return kitchens;
+    }
+    return kitchens;
+  }
+
+  addKitchen(kitchenData) {
+    const kitchens = this.getKitchens();
+    const nextNum = kitchens.length + 1;
+    const id = `DAPUR-0${nextNum}`;
+    const idSppg = kitchenData.idSppg || `SPPG-MMS-${String(nextNum).padStart(2, '0')}`;
+    const namaDapur = kitchenData.namaDapur || kitchenData.name || 'Dapur Baru Yayasan';
+
+    const newKitchen = {
+      id,
+      idSppg,
+      namaDapur,
+      namaYayasan: kitchenData.namaYayasan || 'Yayasan Mitra Mandiri Sejahtera',
+      name: namaDapur,
+      provinsi: kitchenData.provinsi || 'DKI Jakarta',
+      kotaKabupaten: kitchenData.kotaKabupaten || '-',
+      kecamatan: kitchenData.kecamatan || '-',
+      kelurahan: kitchenData.kelurahan || '-',
+      alamatLengkap: kitchenData.alamatLengkap || '-',
+      location: `${kitchenData.kotaKabupaten || '-'}, ${kitchenData.provinsi || '-'}`,
+      makerYayasan: kitchenData.makerYayasan || 'Belum Ditetapkan',
+      perwakilanYayasan: kitchenData.perwakilanYayasan || 'Belum Ditetapkan',
+      managerArea: kitchenData.managerArea || 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+      status: kitchenData.status || 'AKTIF',
+      kapasitasPorsi: Number(kitchenData.kapasitasPorsi) || 500,
+      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+    };
+
+    if (!Array.isArray(this.data.kitchens)) this.data.kitchens = [...INITIAL_DATABASE.kitchens];
+    this.data.kitchens.push(newKitchen);
+    this.addLog(`Staf Ahli Keuangan & Administrasi mendaftarkan Dapur baru: ${newKitchen.idSppg} — ${newKitchen.namaDapur}`, 'admin');
+    this.save();
+
+    this.syncToSupabase('kitchens', {
+      id: newKitchen.id,
+      id_sppg: newKitchen.idSppg,
+      nama_dapur: newKitchen.namaDapur,
+      nama_yayasan: newKitchen.namaYayasan,
+      provinsi: newKitchen.provinsi,
+      kota_kabupaten: newKitchen.kotaKabupaten,
+      kecamatan: newKitchen.kecamatan,
+      kelurahan: newKitchen.kelurahan,
+      alamat_lengkap: newKitchen.alamatLengkap,
+      location: newKitchen.location,
+      maker_yayasan: newKitchen.makerYayasan,
+      perwakilan_yayasan: newKitchen.perwakilanYayasan,
+      manager_area: newKitchen.managerArea,
+      status: newKitchen.status,
+      kapasitas_porsi: newKitchen.kapasitasPorsi
+    });
+
+    return newKitchen;
+  }
+
+  updateKitchen(id, updatedData) {
+    if (!Array.isArray(this.data.kitchens)) this.data.kitchens = [...INITIAL_DATABASE.kitchens];
+    const kitchen = this.data.kitchens.find(k => k.id === id || k.idSppg === id);
+    if (!kitchen) return false;
+
+    Object.assign(kitchen, updatedData);
+    if (updatedData.namaDapur) kitchen.name = updatedData.namaDapur;
+    
+    this.addLog(`Data Dapur ${kitchen.idSppg} (${kitchen.namaDapur}) berhasil diperbarui oleh Staf Ahli Keuangan`, 'admin');
+    this.save();
+
+    // Sinkronkan perubahan dapur & delegasi Maker/Perwakilan Yayasan ke Supabase Cloud
+    this.syncToSupabase('kitchens', {
+      id: kitchen.id,
+      id_sppg: kitchen.idSppg || kitchen.id,
+      nama_dapur: kitchen.namaDapur || kitchen.name || 'Dapur SPPG',
+      nama_yayasan: kitchen.namaYayasan || 'Yayasan Mitra Mandiri Sejahtera',
+      provinsi: kitchen.provinsi || 'DKI Jakarta',
+      kota_kabupaten: kitchen.kotaKabupaten || '-',
+      kecamatan: kitchen.kecamatan || '-',
+      kelurahan: kitchen.kelurahan || '-',
+      alamat_lengkap: kitchen.alamatLengkap || '-',
+      location: kitchen.location || `${kitchen.kotaKabupaten || '-'}, ${kitchen.provinsi || '-'}`,
+      maker_yayasan: kitchen.makerYayasan || 'Belum Ditetapkan',
+      perwakilan_yayasan: kitchen.perwakilanYayasan || 'Belum Ditetapkan',
+      manager_area: kitchen.managerArea || 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+      status: kitchen.status || 'AKTIF',
+      kapasitas_porsi: Number(kitchen.kapasitasPorsi) || 500
+    });
+
+    return kitchen;
+  }
+
+  deleteKitchen(id) {
+    if (!Array.isArray(this.data.kitchens)) this.data.kitchens = [...INITIAL_DATABASE.kitchens];
+    const idx = this.data.kitchens.findIndex(k => k.id === id || k.idSppg === id);
+    if (idx !== -1) {
+      const deleted = this.data.kitchens.splice(idx, 1)[0];
+      this.addLog(`Dapur ${deleted.idSppg} — ${deleted.namaDapur} dinonaktifkan/dihapus dari database SPPG`, 'admin');
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  getKitchenReports() {
+    return (this.data && Array.isArray(this.data.kitchenReports)) ? this.data.kitchenReports : INITIAL_DATABASE.kitchenReports;
+  }
+
+  async addKitchenReport(report) {
+    const id = `KR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-0${this.getKitchenReports().length + 1}`;
+    const porsiBesar = Number(report.porsiBesar) || 0;
+    const porsiKecil = Number(report.porsiKecil) || 0;
+    const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (report.beneficiariesCount !== undefined ? (Number(report.beneficiariesCount) || 0) : 0);
+    const rawMaterialCost = Number(report.rawMaterialCost) || 0;
+    const operationalCost = Number(report.operationalCost) || 0;
+    const carRentalCost = Number(report.carRentalCost) || 0;
+    const foundationIncentive = Number(report.foundationIncentive) || 0;
+    const incentiveNotes = (report.incentiveNotes || '').trim();
+    const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost + foundationIncentive;
+
+    const targetBudget = (porsiBesar * 10000) + (porsiKecil * 8000);
+    const costPerPortion = beneficiariesCount > 0 ? Math.round(rawMaterialCost / beneficiariesCount) : 0;
+    const costPerPortionAllIn = beneficiariesCount > 0 ? Math.round(totalDailyExpense / beneficiariesCount) : 0;
+    
+    const newReport = {
+      id,
+      ...report,
+      rawMaterialCost,
+      operationalCost,
+      carRentalCost,
+      foundationIncentive,
+      incentiveNotes,
+      totalDailyExpense,
+      porsiBesar,
+      porsiKecil,
+      beneficiariesCount,
+      targetBudget,
+      costPerPortion,
+      costPerPortionAllIn,
+      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+    };
+
+    if (!Array.isArray(this.data.kitchenReports)) this.data.kitchenReports = [];
+    this.data.kitchenReports.unshift(newReport);
+
+    this.addLog(`${report.reporterName || this.getCurrentUser().name} melaporkan transaksi ${report.kitchenName}: ${beneficiariesCount} Porsi (Bahan: Rp ${rawMaterialCost.toLocaleString('id-ID')} + Ops: Rp ${operationalCost.toLocaleString('id-ID')}${carRentalCost > 0 ? ` + Sewa: Rp ${carRentalCost.toLocaleString('id-ID')}` : ''}${foundationIncentive > 0 ? ` + Insentif: Rp ${foundationIncentive.toLocaleString('id-ID')}` : ''} = Total: Rp ${totalDailyExpense.toLocaleString('id-ID')}) · Saldo VA Rp ${Number(report.vaBalance).toLocaleString('id-ID')}`, 'kitchen');
+    this.save();
+
+    // 1. Resolve Kitchen ID by matching SPPG code, ID, or name from newReport.kitchenName FIRST
+    let matchedKitchen = null;
+    if (newReport.kitchenName) {
+      const sppgMatch = newReport.kitchenName.match(/^([A-Z0-9]+)\s*[-—]/i);
+      const sppgCode = sppgMatch ? sppgMatch[1].trim() : null;
+      matchedKitchen = (this.getKitchens() || []).find(k => 
+        (sppgCode && (k.idSppg === sppgCode || k.id === sppgCode)) ||
+        (k.idSppg && newReport.kitchenName.includes(k.idSppg)) ||
+        (k.namaDapur && newReport.kitchenName.includes(k.namaDapur)) ||
+        (k.name && newReport.kitchenName.includes(k.name))
+      );
+    }
+    if (!matchedKitchen && newReport.kitchenId) {
+      matchedKitchen = (this.getKitchens() || []).find(k => k.id === newReport.kitchenId || k.idSppg === newReport.kitchenId);
+    }
+    const validKitchenId = matchedKitchen ? matchedKitchen.id : (newReport.kitchenId || 'DAPUR-01');
+    newReport.kitchenId = validKitchenId;
+
+    // 2. Resolve Reporter ID (Must match a valid user ID or be null)
+    let validReporterId = null;
+    const allUsers = this.getUsers() || [];
+    if (newReport.reporterId && allUsers.some(u => u.id === newReport.reporterId)) {
+      validReporterId = newReport.reporterId;
+    } else if (newReport.reporterName) {
+      const matchedUser = allUsers.find(u => u.name && (newReport.reporterName.includes(u.name) || u.name.includes(newReport.reporterName)));
+      if (matchedUser) validReporterId = matchedUser.id;
+    }
+    if (!validReporterId && this.getCurrentUser() && allUsers.some(u => u.id === this.getCurrentUser().id)) {
+      validReporterId = this.getCurrentUser().id;
+    }
+
+    const cleanSpmUrl = (newReport.spmAttachmentUrl && !newReport.spmAttachmentUrl.includes('unsplash.com')) ? newReport.spmAttachmentUrl : null;
+    const cleanSpmFileName = (cleanSpmUrl && (cleanSpmUrl.startsWith('http://') || cleanSpmUrl.startsWith('https://'))) 
+      ? 'Link Google Drive SPM' 
+      : (newReport.spmFileName || 'Link Google Drive SPM');
+
+    newReport.spmAttachmentUrl = cleanSpmUrl;
+    newReport.spmFileName = cleanSpmFileName;
+
+    await this.syncToSupabase('kitchen_reports', {
+      id: newReport.id,
+      kitchen_id: validKitchenId,
+      kitchen_name: newReport.kitchenName,
+      date: newReport.date || new Date().toISOString().slice(0, 10),
+      reporter_id: validReporterId,
+      reporter_name: newReport.reporterName || this.getCurrentUser().name,
+      raw_material_cost: Number(newReport.rawMaterialCost) || 0,
+      operational_cost: Number(newReport.operationalCost) || 0,
+      car_rental_cost: Number(newReport.carRentalCost) || 0,
+      foundation_incentive: Number(newReport.foundationIncentive) || 0,
+      incentive_notes: newReport.incentiveNotes || '',
+      total_daily_expense: Number(newReport.totalDailyExpense) || 0,
+      porsi_besar: Number(newReport.porsiBesar) || 0,
+      porsi_kecil: Number(newReport.porsiKecil) || 0,
+      beneficiaries_count: Number(newReport.beneficiariesCount) || 0,
+      target_budget: Number(newReport.targetBudget) || 0,
+      cost_per_portion: Number(newReport.costPerPortion) || 0,
+      cost_per_portion_all_in: Number(newReport.costPerPortionAllIn) || 0,
+      spm_file_name: cleanSpmFileName,
+      spm_attachment_url: cleanSpmUrl,
+      va_bank_name: newReport.vaBankName || 'Bank Mandiri',
+      va_balance: Number(newReport.vaBalance) || 0,
+      notes: newReport.notes || ''
+    }).catch(e => console.warn('Sync add kitchen_reports to Supabase warning:', e));
+
+    return newReport;
+  }
+
+  async updateKitchenReport(reportId, updatedData) {
+    if (!this.data || !Array.isArray(this.data.kitchenReports)) return false;
+    const idx = this.data.kitchenReports.findIndex(r => r.id === reportId);
+    if (idx === -1) return false;
+
+    const existing = this.data.kitchenReports[idx];
+    const porsiBesar = updatedData.porsiBesar !== undefined ? Number(updatedData.porsiBesar) : (Number(existing.porsiBesar) || 0);
+    const porsiKecil = updatedData.porsiKecil !== undefined ? Number(updatedData.porsiKecil) : (Number(existing.porsiKecil) || 0);
+    const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (updatedData.beneficiariesCount !== undefined ? (Number(updatedData.beneficiariesCount) || 0) : (Number(existing.beneficiariesCount) || 0));
+    const rawMaterialCost = updatedData.rawMaterialCost !== undefined ? Number(updatedData.rawMaterialCost) : (Number(existing.rawMaterialCost) || 0);
+    const operationalCost = updatedData.operationalCost !== undefined ? Number(updatedData.operationalCost) : (Number(existing.operationalCost) || 0);
+    const carRentalCost = updatedData.carRentalCost !== undefined ? Number(updatedData.carRentalCost) : (Number(existing.carRentalCost) || 0);
+    const foundationIncentive = updatedData.foundationIncentive !== undefined ? Number(updatedData.foundationIncentive) : (Number(existing.foundationIncentive) || 0);
+    const incentiveNotes = updatedData.incentiveNotes !== undefined ? (updatedData.incentiveNotes || '').trim() : (existing.incentiveNotes || '');
+    const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost + foundationIncentive;
+
+    const targetBudget = (porsiBesar * 10000) + (porsiKecil * 8000);
+    const costPerPortion = beneficiariesCount > 0 ? Math.round(rawMaterialCost / beneficiariesCount) : 0;
+    const costPerPortionAllIn = beneficiariesCount > 0 ? Math.round(totalDailyExpense / beneficiariesCount) : 0;
+
+    const cleanSpmUrl = (updatedData.spmAttachmentUrl !== undefined) 
+      ? ((updatedData.spmAttachmentUrl && !updatedData.spmAttachmentUrl.includes('unsplash.com')) ? updatedData.spmAttachmentUrl : null)
+      : ((existing.spmAttachmentUrl && !existing.spmAttachmentUrl.includes('unsplash.com')) ? existing.spmAttachmentUrl : null);
+    
+    const cleanSpmFileName = (cleanSpmUrl && (cleanSpmUrl.startsWith('http://') || cleanSpmUrl.startsWith('https://')))
+      ? 'Link Google Drive SPM'
+      : (updatedData.spmFileName || existing.spmFileName || 'Link Google Drive SPM');
+
+    const merged = {
+      ...existing,
+      ...updatedData,
+      rawMaterialCost,
+      operationalCost,
+      carRentalCost,
+      foundationIncentive,
+      incentiveNotes,
+      totalDailyExpense,
+      porsiBesar,
+      porsiKecil,
+      beneficiariesCount,
+      targetBudget,
+      costPerPortion,
+      costPerPortionAllIn,
+      spmAttachmentUrl: cleanSpmUrl,
+      spmFileName: cleanSpmFileName,
+      updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+    };
+
+    // 1. Resolve Kitchen ID by matching SPPG code, ID, or name from merged.kitchenName FIRST
+    let matchedKitchen = null;
+    if (merged.kitchenName) {
+      const sppgMatch = merged.kitchenName.match(/^([A-Z0-9]+)\s*[-—]/i);
+      const sppgCode = sppgMatch ? sppgMatch[1].trim() : null;
+      matchedKitchen = (this.getKitchens() || []).find(k => 
+        (sppgCode && (k.idSppg === sppgCode || k.id === sppgCode)) ||
+        (k.idSppg && merged.kitchenName.includes(k.idSppg)) ||
+        (k.namaDapur && merged.kitchenName.includes(k.namaDapur)) ||
+        (k.name && merged.kitchenName.includes(k.name))
+      );
+    }
+    if (!matchedKitchen && merged.kitchenId) {
+      matchedKitchen = (this.getKitchens() || []).find(k => k.id === merged.kitchenId || k.idSppg === merged.kitchenId);
+    }
+    const validKitchenId = matchedKitchen ? matchedKitchen.id : (merged.kitchenId || 'DAPUR-01');
+    merged.kitchenId = validKitchenId;
+
+    // 2. Resolve Reporter ID (Must match a valid user ID or be null)
+    let validReporterId = null;
+    const allUsers = this.getUsers() || [];
+    if (merged.reporterId && allUsers.some(u => u.id === merged.reporterId)) {
+      validReporterId = merged.reporterId;
+    } else if (merged.reporterName) {
+      const matchedUser = allUsers.find(u => u.name && (merged.reporterName.includes(u.name) || u.name.includes(merged.reporterName)));
+      if (matchedUser) validReporterId = matchedUser.id;
+    }
+    if (!validReporterId && this.getCurrentUser() && allUsers.some(u => u.id === this.getCurrentUser().id)) {
+      validReporterId = this.getCurrentUser().id;
+    }
+
+    this.data.kitchenReports[idx] = merged;
+    this.addLog(`${this.getCurrentUser().name} memperbarui laporan transaksi ${merged.kitchenName} (${merged.id})`, 'kitchen');
+    this.save();
+
+    await this.syncToSupabase('kitchen_reports', {
+      id: merged.id,
+      kitchen_id: validKitchenId,
+      kitchen_name: merged.kitchenName,
+      date: merged.date || new Date().toISOString().slice(0, 10),
+      reporter_id: validReporterId,
+      reporter_name: merged.reporterName || this.getCurrentUser().name,
+      raw_material_cost: Number(merged.rawMaterialCost) || 0,
+      operational_cost: Number(merged.operationalCost) || 0,
+      car_rental_cost: Number(merged.carRentalCost) || 0,
+      foundation_incentive: Number(merged.foundationIncentive) || 0,
+      incentive_notes: merged.incentiveNotes || '',
+      total_daily_expense: Number(merged.totalDailyExpense) || 0,
+      porsi_besar: Number(merged.porsiBesar) || 0,
+      porsi_kecil: Number(merged.porsiKecil) || 0,
+      beneficiaries_count: Number(merged.beneficiariesCount) || 0,
+      target_budget: Number(merged.targetBudget) || 0,
+      cost_per_portion: Number(merged.costPerPortion) || 0,
+      cost_per_portion_all_in: Number(merged.costPerPortionAllIn) || 0,
+      spm_file_name: cleanSpmFileName,
+      spm_attachment_url: cleanSpmUrl,
+      va_bank_name: merged.vaBankName || 'Bank Mandiri',
+      va_balance: Number(merged.vaBalance) || 0,
+      notes: merged.notes || ''
+    }).catch(syncErr => console.warn('Sync update kitchen_reports to Supabase warning:', syncErr));
+
+    return merged;
+  }
+
+  async deleteKitchenReport(reportId) {
+    if (!this.data || !Array.isArray(this.data.kitchenReports)) return false;
+    const idx = this.data.kitchenReports.findIndex(r => r.id === reportId);
+    if (idx !== -1) {
+      const deleted = this.data.kitchenReports.splice(idx, 1)[0];
+      this.addLog(`${this.getCurrentUser().name} menghapus laporan transaksi dapur: ${deleted.kitchenName} (${deleted.id})`, 'kitchen');
+      this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/kitchen_reports?id=eq.${reportId}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+          console.log(`✅ [Supabase DELETE] Berhasil menghapus laporan transaksi "${reportId}" dari Supabase.`);
+        } catch (e) {
+          console.warn('Gagal menghapus kitchen report dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
+  // KITCHEN DAILY OPERATIONAL STATUS (LAPORAN STATUS HARIAN DAPUR)
+  // =========================================================================
+
+  getKitchenDailyStatuses() {
+    if (!this.data) this.data = {};
+    if (!Array.isArray(this.data.kitchenDailyStatuses)) {
+      this.data.kitchenDailyStatuses = [];
+    }
+    return this.data.kitchenDailyStatuses;
+  }
+
+  getKitchenDailyStatusesForDate(dateStr) {
+    const all = this.getKitchenDailyStatuses();
+    return all.filter(s => s.date === dateStr);
+  }
+
+  getKitchenDailyStatus(dateStr, kitchenId) {
+    const all = this.getKitchenDailyStatuses();
+    return all.find(s => s.date === dateStr && (s.kitchenId === kitchenId || s.kitchenIdSppg === kitchenId)) || null;
+  }
+
+  async saveKitchenDailyStatuses(dateStr, statusesArray, user = null) {
+    if (!this.data) this.data = {};
+    if (!Array.isArray(this.data.kitchenDailyStatuses)) {
+      this.data.kitchenDailyStatuses = [];
+    }
+
+    const currentUser = user || this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+    const savedRecords = [];
+
+    const syncPromises = [];
+    for (const item of statusesArray) {
+      const kitchenId = item.kitchenId || item.id || 'DAPUR-01';
+      const kitchenName = item.kitchenName || item.namaDapur || 'Dapur SPPG';
+      const status = item.status === 'BERHENTI' ? 'BERHENTI' : 'BERJALAN';
+      const reason = status === 'BERHENTI' ? (item.reason || item.notes || '').trim() : '';
+      const recordId = `KDS-${dateStr.replace(/-/g, '')}-${kitchenId}`;
+
+      const record = {
+        id: recordId,
+        date: dateStr,
+        kitchenId: kitchenId,
+        kitchenName: kitchenName,
+        status: status,
+        reason: reason,
+        reportedById: currentUser.id,
+        reportedByName: currentUser.name,
+        updatedAt: realTimestamp,
+        createdAt: item.createdAt || realTimestamp
+      };
+
+      // Upsert into local state
+      const existingIdx = this.data.kitchenDailyStatuses.findIndex(s => s.date === dateStr && s.kitchenId === kitchenId);
+      if (existingIdx !== -1) {
+        this.data.kitchenDailyStatuses[existingIdx] = { ...this.data.kitchenDailyStatuses[existingIdx], ...record };
+      } else {
+        this.data.kitchenDailyStatuses.push(record);
+      }
+      savedRecords.push(record);
+
+      // Async sync to Supabase
+      syncPromises.push(
+        this.syncToSupabase('kitchen_daily_statuses', {
+          id: record.id,
+          date: record.date,
+          kitchen_id: record.kitchenId,
+          kitchen_name: record.kitchenName,
+          status: record.status,
+          reason: record.reason,
+          reported_by_id: record.reportedById,
+          reported_by_name: record.reportedByName,
+          updated_at: record.updatedAt
+        }).catch(err => console.warn('Sync kitchen_daily_statuses error:', err))
+      );
+    }
+
+    const stoppedCount = savedRecords.filter(r => r.status === 'BERHENTI').length;
+    this.addLog(`${currentUser.name} memperbarui status operasional ${savedRecords.length} dapur untuk tanggal ${dateStr} (${stoppedCount > 0 ? `${stoppedCount} Berhenti` : 'Semua Berjalan'})`, 'kitchen');
+    this.save();
+    await Promise.allSettled(syncPromises);
+    return savedRecords;
+  }
+
+  // =========================================================================
+  // LEAVES (CUTI & IZIN - PASAL 14, 15, 16)
+  // =========================================================================
+
+  getLeaves() {
+    return (this.data && Array.isArray(this.data.leaves)) ? this.data.leaves : INITIAL_DATABASE.leaves;
+  }
+
+  getUserApprovedLeaveOnDate(userId, dateStr) {
+    const leaves = this.getLeaves();
+    if (!leaves || !userId || !dateStr) return null;
+    return leaves.find(l => 
+      (l.employeeId === userId || l.employeeName === userId) &&
+      l.status === 'APPROVED' &&
+      dateStr >= l.startDate &&
+      dateStr <= l.endDate
+    ) || null;
+  }
+
+  async addLeave(leaveData) {
+    const user = this.getCurrentUser();
+    const allLeaves = this.getLeaves() || [];
+    let maxNum = 84;
+    allLeaves.forEach(l => {
+      if (l.id) {
+        const m = l.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `LV-2026-${String(maxNum + 1).padStart(3, '0')}`;
+    
+    let approvalFlow = 'MANAGER_AREA_TIER';
+    let stage = 'MANAGER_AREA_REVIEW';
+    let approver = 'Manager Area (Sesuai Wilayah)';
+
+    if (user.role === 'SURVEYOR' || user.role === 'PERWAKILAN_YAYASAN' || user.role === 'STAFF_OPERASIONAL' || user.role === 'MAKER_YAYASAN') {
+      approvalFlow = 'MANAGER_AREA_TIER';
+      stage = 'MANAGER_AREA_REVIEW';
+      approver = 'Manager Area (Sesuai Wilayah)';
+    } else if (user.role === 'FAT_OFFICER' || user.role === 'STAFF_AHLI_KEUANGAN') {
+      approvalFlow = 'DIRECTOR_TIER';
+      stage = 'DIR_OPS_OR_KEU_REVIEW';
+      approver = 'Kody Suryo Nugroho / Muhammad Arrasyid';
+    } else if (user.role === 'MANAGER_AREA' || user.role === 'MANAGER_KEUANGAN' || user.role === 'HUMAN_CAPITAL') {
+      approvalFlow = 'DIRECTOR_TIER';
+      stage = 'DIR_OPS_OR_KEU_REVIEW';
+      approver = 'Muhammad Arrasyid / Kody Suryo Nugroho';
+    }
+
+    const realTimestamp = getRealtimeTimestamp();
+
+    const deductType = resolveLeaveDeductionType(leaveData, user.joinDate);
+    const newLeave = {
+      id,
+      employeeId: user.id,
+      employeeName: user.name,
+      role: user.role,
+      department: user.department,
+      approvalFlow,
+      stage,
+      status: 'PENDING',
+      approver,
+      createdAt: realTimestamp,
+      quotaDeductionType: deductType,
+      quotaDeducted: deductType === 'NONE' ? 0 : (Number(leaveData.duration) || 1),
+      approvalHistory: [
+        {
+          stage: 'SUBMISSION',
+          level: 1,
+          action: 'SUBMITTED',
+          actorName: user.name,
+          actorRole: user.roleLabel || 'Karyawan',
+          timestamp: realTimestamp,
+          notes: `Permohonan ${leaveData.type} (${leaveData.duration} hari: ${leaveData.startDate} s.d ${leaveData.endDate}). Alasan: "${leaveData.reason || '-'}"`
+        }
+      ],
+      ...leaveData
+    };
+
+    if (!Array.isArray(this.data.leaves)) this.data.leaves = [];
+    this.data.leaves.unshift(newLeave);
+    this.addLog(`${user.name} mengajukan ${leaveData.type} (${leaveData.duration} hari) [Status: Menunggu ${approver}] pada ${realTimestamp}`, 'leave');
+    this.save();
+
+    // Direct Cloud Sync & Notifikasi Email (Awaited)
+    await this.syncToSupabase('leaves', {
+      id: newLeave.id,
+      employee_id: newLeave.employeeId,
+      employee_name: newLeave.employeeName,
+      role: newLeave.role,
+      department: newLeave.department,
+      leave_type: newLeave.leaveType || newLeave.type,
+      start_date: newLeave.startDate,
+      end_date: newLeave.endDate,
+      duration: newLeave.duration,
+      reason: newLeave.reason,
+      emergency_contact: newLeave.emergencyContact || null,
+      attachment_url: newLeave.attachmentUrl || null,
+      attachment_name: newLeave.attachmentName || null,
+      stage: newLeave.stage,
+      status: newLeave.status,
+      rejection_reason: null,
+      approval_history: newLeave.approvalHistory
+    });
+
+    // Cari approver dinamis dari database pengguna
+    let targetApprover = null;
+    if (approvalFlow === 'MANAGER_TIER') {
+      targetApprover = this.getUsers().find(u => (u.id === 'DO-002' || u.name.includes('Alfaqih')) && u.role === 'DIREKTUR_OPERASIONAL') ||
+                       this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL' && u.email && (!u.email.includes('@erpmms.co.id') || u.email.includes('@gmail'))) ||
+                       this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL') ||
+                       this.getUsers().find(u => u.role === 'DIREKTUR_KEUANGAN');
+    } else if (approvalFlow === 'FINANCE_TIER') {
+      targetApprover = this.getUsers().find(u => u.role === 'DIREKTUR_KEUANGAN');
+    } else {
+      targetApprover = this.getUsers().find(u => u.role === 'HUMAN_CAPITAL');
+    }
+
+    const toEmail = targetApprover ? targetApprover.email : 'alfaqih1108@gmail.com';
+    const toName = targetApprover ? targetApprover.name : 'Muhammad Alfaqih (Direktur Operasional)';
+
+    this.notifyEmail({
+      to: toEmail,
+      recipientName: toName,
+      subject: `Permohonan Cuti Baru (${newLeave.id} - ${user.name})`,
+      notificationType: 'LEAVE_SUBMITTED',
+      title: 'Pengajuan Cuti & Izin Karyawan Baru',
+      summaryText: `${user.name} (${user.roleLabel}) mengajukan permohonan ${newLeave.leaveType || newLeave.type} selama ${newLeave.duration} hari kerja (${newLeave.startDate} s.d ${newLeave.endDate}).`,
+      details: {
+        'No. Cuti': newLeave.id,
+        'Karyawan': `${user.name} (${user.roleLabel})`,
+        'Jenis Cuti': newLeave.leaveType || newLeave.type,
+        'Periode': `${newLeave.startDate} s.d ${newLeave.endDate} (${newLeave.duration} Hari)`,
+        'Alasan': newLeave.reason || '-'
+      }
+    });
+
+    return newLeave;
+  }
+
+  async advanceLeaveStage(id, nextStage, status = 'PENDING') {
+    const leave = this.getLeaves().find(l => l.id === id);
+    if (!leave) return false;
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+    if (!Array.isArray(leave.approvalHistory)) leave.approvalHistory = [];
+
+    const applicantUser = this.getUsers().find(usr => usr.id === leave.employeeId || usr.name === leave.employeeName);
+    leave.quotaDeductionType = resolveLeaveDeductionType(leave, applicantUser ? applicantUser.joinDate : null);
+    leave.quotaDeducted = (leave.quotaDeductionType === 'NONE') ? 0 : (Number(leave.duration) || 1);
+
+    // Pastikan Level 1 ada di riwayat
+    if (leave.approvalHistory.length === 0) {
+      leave.approvalHistory.push({
+        stage: 'SUBMISSION',
+        level: 1,
+        action: 'SUBMITTED',
+        actorName: leave.employeeName,
+        actorRole: leave.role ? leave.role.replace(/_/g, ' ') : 'Karyawan',
+        timestamp: leave.createdAt || realTimestamp,
+        notes: `Permohonan ${leave.type || leave.leaveType} (${leave.duration} hari: ${leave.startDate} s.d ${leave.endDate}). Alasan: "${leave.reason || '-'}"`
+      });
+    }
+
+    const isFinance = (leave.approvalFlow === 'FINANCE_TIER');
+
+    // Catat approval audit trail real-time
+    if (leave.stage === 'MANAGER_AREA_REVIEW') {
+      leave.approvalHistory.push({
+        stage: 'MANAGER_AREA_REVIEW',
+        level: 2,
+        action: status === 'REJECTED' ? 'REJECTED' : 'APPROVED',
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: status === 'REJECTED' 
+          ? `Pengajuan cuti ditolak oleh Manager Area (${user.name})` 
+          : `Persetujuan operasional lapangan diberikan oleh Manager Area (${user.name}) & diteruskan ke HC`
+      });
+    } else if (leave.stage === 'DIR_KEU_REVIEW' || leave.stage === 'DIR_OPS_OR_KEU_REVIEW' || leave.stage === 'MANAGER_REVIEW') {
+      leave.approvalHistory.push({
+        stage: leave.stage,
+        level: 2,
+        action: status === 'REJECTED' ? 'REJECTED' : 'APPROVED',
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: status === 'REJECTED' 
+          ? `Pengajuan cuti ditolak oleh ${user.name}` 
+          : (isFinance 
+              ? 'Persetujuan cuti diberikan oleh Direktur Keuangan & diteruskan ke HC' 
+              : 'Persetujuan cuti diberikan oleh Direksi & diteruskan ke HC')
+      });
+    } else if (leave.stage === 'HC_REVIEW' || leave.stage === 'HC_FINAL' || nextStage === 'APPROVED') {
+      const hcLevel = (leave.approvalFlow === 'HC_DIRECT') ? 2 : 3;
+      leave.approvalHistory.push({
+        stage: 'HC_FINAL',
+        level: hcLevel,
+        action: status === 'REJECTED' ? 'REJECTED' : 'APPROVED',
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: status === 'REJECTED' 
+          ? `Pengajuan cuti ditolak oleh Tim Human Capital` 
+          : (leave.quotaDeductionType === 'NONE' 
+             ? 'Disetujui penuh dengan Upah Penuh (Izin Khusus Pasal 15-16)' 
+             : `Disetujui penuh & Kuota ${leave.quotaDeductionType} otomatis dipotong -${leave.duration} hari.`)
+      });
+    }
+
+    leave.stage = nextStage;
+    leave.status = status;
+
+    if (nextStage === 'HC_REVIEW') {
+      leave.approver = 'Tazkia Aulia (Human Capital)';
+    } else if (status === 'APPROVED') {
+      leave.approver = `Disetujui Penuh (${user.name} - ${user.roleLabel})`;
+      this.recalculateUserLeaveBalances(leave.employeeId);
+    } else if (status === 'REJECTED') {
+      this.recalculateUserLeaveBalances(leave.employeeId);
+    }
+
+    this.addLog(`${user.name} (${user.roleLabel}) memproses Cuti ${id} [${status}] pada ${realTimestamp}`, 'leave');
+    this.save();
+
+    // Direct Cloud Sync ke Supabase (Kirim seluruh data agar pasti tersimpan tanpa error constraint)
+    await this.syncToSupabase('leaves', {
+      id: leave.id,
+      employee_id: leave.employeeId,
+      employee_name: leave.employeeName,
+      role: leave.role,
+      department: leave.department,
+      leave_type: leave.leaveType || leave.type,
+      start_date: leave.startDate,
+      end_date: leave.endDate,
+      duration: leave.duration,
+      reason: leave.reason,
+      emergency_contact: leave.emergencyContact || null,
+      attachment_url: leave.attachmentUrl || null,
+      attachment_name: leave.attachmentName || null,
+      stage: leave.stage,
+      status: leave.status,
+      rejection_reason: leave.rejectionReason || null,
+      approval_history: leave.approvalHistory
+    });
+
+    const applicant = this.getUsers().find(u => u.id === leave.employeeId);
+    const applicantEmail = applicant ? applicant.email : null;
+    if (applicantEmail) {
+      const isApproved = (status === 'APPROVED');
+      const isRejected = (status === 'REJECTED');
+      this.notifyEmail({
+        to: applicantEmail,
+        recipientName: leave.employeeName,
+        subject: `Status Permohonan Cuti (${leave.id}): ${isApproved ? 'DISETUJUI' : isRejected ? 'DITOLAK' : 'DIPROSES'}`,
+        notificationType: isApproved ? 'LEAVE_APPROVED' : isRejected ? 'LEAVE_REJECTED' : 'LEAVE_SUBMITTED',
+        title: `Permohonan Cuti Anda Telah ${isApproved ? 'Disetujui' : isRejected ? 'Ditolak' : 'Diverifikasi'}`,
+        summaryText: `Permohonan ${leave.leaveType || leave.type} (${leave.duration} hari: ${leave.startDate} s.d ${leave.endDate}) telah diproses oleh ${user.name} (${user.roleLabel}).`,
+        details: {
+          'No. Permohonan': leave.id,
+          'Jenis Cuti': leave.leaveType || leave.type,
+          'Status': leave.status,
+          'Diproses Oleh': `${user.name} (${user.roleLabel})`
+        }
+      });
+    }
+
+    return true;
+  }
+
+  async deleteLeave(id) {
+    if (!Array.isArray(this.data.leaves)) {
+      this.data.leaves = [...(INITIAL_DATABASE.leaves || [])];
+    }
+    const idx = this.data.leaves.findIndex(l => l.id === id);
+    if (idx !== -1) {
+      const deleted = this.data.leaves.splice(idx, 1)[0];
+      this.recalculateUserLeaveBalances(deleted.employeeId);
+      const user = this.getCurrentUser();
+      const realTimestamp = getRealtimeTimestamp();
+      this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus permohonan Cuti ${deleted.id} (${deleted.type || deleted.leaveType} · ${deleted.duration} hari) pada ${realTimestamp}`, 'leave');
+      this.save();
+
+      // Hapus permanen dari database cloud Supabase
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/leaves?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: {
+              'apikey': key,
+              'Authorization': `Bearer ${key}`
+            }
+          });
+          console.log(`✅ [Supabase Delete] Permohonan Cuti ${id} berhasil dihapus permanen dari Supabase.`);
+        } catch (e) {
+          console.warn('Gagal menghapus cuti dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
+  // TIMESHEETS
+  // =========================================================================
+
+  getTimesheets() {
+    return (this.data && Array.isArray(this.data.timesheets)) ? this.data.timesheets : INITIAL_DATABASE.timesheets;
+  }
+
+  getDefaultActivities() {
+    return (this.data && Array.isArray(this.data.defaultActivities)) ? this.data.defaultActivities : INITIAL_DATABASE.defaultActivities;
+  }
+
+  addDefaultActivity(name) {
+    if (!name || typeof name !== 'string') return false;
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    if (!Array.isArray(this.data.defaultActivities)) {
+      this.data.defaultActivities = [...INITIAL_DATABASE.defaultActivities];
+    }
+    if (!this.data.defaultActivities.includes(trimmed)) {
+      this.data.defaultActivities.push(trimmed);
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  deleteDefaultActivity(name) {
+    if (!name || typeof name !== 'string') return false;
+    const trimmed = name.trim();
+    if (!Array.isArray(this.data.defaultActivities)) {
+      this.data.defaultActivities = [...(INITIAL_DATABASE.defaultActivities || [])];
+    }
+    const idx = this.data.defaultActivities.indexOf(trimmed);
+    if (idx !== -1) {
+      this.data.defaultActivities.splice(idx, 1);
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  clearAllDefaultActivities() {
+    this.data.defaultActivities = [];
+    this.save();
+    return true;
+  }
+
+  checkTimesheetCollision(employeeId, date, startTime, endTime) {
+    if (!startTime || !endTime) return { collision: false };
+    const cleanDate = (date || '').slice(0, 10);
+    const normEmpId = (employeeId || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const allTs = this.getTimesheets().filter(t => {
+      if (!t) return false;
+      const tId = (t.employeeId || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const tDate = (t.date ? String(t.date).slice(0, 10) : '');
+      return tId === normEmpId && tDate === cleanDate;
+    });
+
+    const toMinutes = (timeStr) => {
+      const [h, m] = timeStr.split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+
+    const newStart = toMinutes(startTime);
+    const newEnd = toMinutes(endTime);
+
+    for (const ts of allTs) {
+      if (!ts.startTime || !ts.endTime) continue;
+      const existStart = toMinutes(ts.startTime);
+      const existEnd = toMinutes(ts.endTime);
+
+      if (Math.max(newStart, existStart) < Math.min(newEnd, existEnd)) {
+        return { collision: true, conflictingEntry: ts };
+      }
+    }
+    return { collision: false };
+  }
+
+  async addTimesheet(tsData) {
+    const user = this.getCurrentUser();
+    const allTs = this.getTimesheets() || [];
+    let maxNum = 0;
+    allTs.forEach(t => {
+      if (t.id) {
+        const m = t.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `TS-2026-${String(maxNum + 1).padStart(3, '0')}`;
+    const realTimestamp = getRealtimeTimestamp();
+    
+    const status = 'RECORDED';
+    const approver = 'Sistem (Direct Recorded)';
+
+    const newTs = {
+      id,
+      employeeId: user.id,
+      employeeName: user.name,
+      role: user.role,
+      department: user.department,
+      status,
+      approver,
+      createdAt: realTimestamp,
+      approvalHistory: [
+        {
+          stage: 'RECORDED',
+          level: 1,
+          action: 'RECORDED',
+          actorName: user.name,
+          actorRole: user.roleLabel || 'Karyawan',
+          timestamp: realTimestamp,
+          notes: `Aktivitas: "${tsData.activityPreset || tsData.activity}" (${tsData.hours} Jam: ${tsData.startTime} - ${tsData.endTime})`
+        }
+      ],
+      ...tsData
+    };
+
+    if (!Array.isArray(this.data.timesheets)) this.data.timesheets = [];
+    this.data.timesheets.unshift(newTs);
+    this.addLog(`${user.name} mencatat log kerja: ${tsData.activityPreset || 'Aktivitas'} (${tsData.hours} Jam) [RECORDED] pada ${realTimestamp}`, 'timesheet');
+    this.save();
+
+    await this.syncToSupabase('timesheets', {
+      id: newTs.id,
+      employee_id: newTs.employeeId,
+      employee_name: newTs.employeeName,
+      role: newTs.role,
+      date: newTs.date || new Date().toISOString().slice(0, 10),
+      start_time: newTs.startTime,
+      end_time: newTs.endTime,
+      activity: newTs.activity || newTs.activityPreset || 'Log Kehadiran',
+      activity_preset: newTs.activityPreset || null,
+      category: newTs.category || 'Operasional',
+      status: 'RECORDED'
+    });
+
+    return newTs;
+  }
+
+  updateTimesheetStatus(id, status) {
+    const ts = this.getTimesheets().find(t => t.id === id);
+    if (!ts) return false;
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+    if (!Array.isArray(ts.approvalHistory)) ts.approvalHistory = [];
+
+    if (ts.approvalHistory.length === 0) {
+      ts.approvalHistory.push({
+        stage: 'SUBMISSION',
+        level: 1,
+        action: 'SUBMITTED',
+        actorName: ts.employeeName,
+        actorRole: ts.role ? ts.role.replace(/_/g, ' ') : 'Karyawan',
+        timestamp: `${ts.date} ${ts.startTime || '08:00'}`,
+        notes: `Aktivitas: "${ts.activityPreset || ts.activity}" (${ts.hours} Jam Kerja: ${ts.startTime} - ${ts.endTime})`
+      });
+    }
+
+    ts.status = status;
+    ts.approver = `${user.name} (${user.roleLabel})`;
+
+    ts.approvalHistory.push({
+      stage: 'HC_VALIDATION',
+      level: 3,
+      action: status,
+      actorName: `${user.name} (${user.roleLabel})`,
+      actorRole: user.roleLabel,
+      timestamp: realTimestamp,
+      notes: status === 'APPROVED' ? `Presensi ${ts.hours} jam kerja resmi divalidasi dan disahkan.` : 'Log presensi ditolak oleh Human Capital.'
+    });
+
+    this.addLog(`${user.name} (${user.roleLabel}) memvalidasi timesheet ${id} [${status}] pada ${realTimestamp}`, 'timesheet');
+    this.save();
+    return true;
+  }
+
+  async deleteTimesheet(id) {
+    if (!Array.isArray(this.data.timesheets)) return false;
+    const idx = this.data.timesheets.findIndex(t => t.id === id);
+    if (idx !== -1) {
+      const deleted = this.data.timesheets.splice(idx, 1)[0];
+      this.addLog(`${this.getCurrentUser().name} menghapus log timesheet: ${deleted.activityPreset || deleted.activity} (${deleted.startTime} - ${deleted.endTime})`, 'timesheet');
+      this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/timesheets?id=eq.${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus timesheet dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
+  // PURCHASE REQUISITIONS (PR)
+  // =========================================================================
+
+  getItemRequests() {
+    return (this.data && Array.isArray(this.data.itemRequests)) ? this.data.itemRequests : INITIAL_DATABASE.itemRequests;
+  }
+
+  async addItemRequest(prData) {
+    const user = this.getCurrentUser();
+    const allPrs = this.getItemRequests() || [];
+    let maxNum = 44;
+    allPrs.forEach(p => {
+      if (p.id) {
+        const m = p.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `PR-2026-0${maxNum + 1}`;
+    const realTimestamp = getRealtimeTimestamp();
+    
+    let stage = 'MANAGER_APPROVAL';
+    if (user.role === 'FAT_OFFICER' || user.role === 'STAFF_AHLI_KEUANGAN') {
+      stage = 'DIRECTOR_APPROVAL'; // Level 1 langsung ke Direktur Keuangan / Direktur Operasional
+    } else if (user.role === 'MANAGER_AREA' || user.role === 'MANAGER_KEUANGAN' || user.role === 'HUMAN_CAPITAL') {
+      stage = 'FINANCE_VERIFICATION';
+    } else {
+      stage = 'MANAGER_APPROVAL';
+    }
+
+    const newPR = {
+      id,
+      employeeId: user.id,
+      employeeName: user.name,
+      role: user.role,
+      department: user.department,
+      targetKitchen: prData.targetKitchen || null,
+      stage,
+      status: 'PENDING',
+      createdAt: realTimestamp,
+      approvalHistory: [
+        {
+          stage: 'SUBMISSION',
+          level: 1,
+          action: 'SUBMITTED',
+          actorName: `${user.name} (${user.roleLabel})`,
+          actorRole: user.roleLabel || 'Pemohon',
+          timestamp: realTimestamp,
+          notes: `Kebutuhan: "${prData.itemName}" (${prData.quantity} unit @ Rp ${Number(prData.unitPrice).toLocaleString('id-ID')}) — ${prData.reason || 'Kebutuhan operasional'}`
+        }
+      ],
+      ...prData
+    };
+
+    if (!Array.isArray(this.data.itemRequests)) this.data.itemRequests = [];
+    this.data.itemRequests.unshift(newPR);
+    this.addLog(`${user.name} mengajukan Purchase Request ${newPR.id} (${newPR.itemName} · Rp ${Number(newPR.totalPrice).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    // Direct Cloud Sync & Notifikasi Email (Awaited)
+    await this.syncToSupabase('item_requests', {
+      id: newPR.id,
+      employee_id: newPR.employeeId,
+      employee_name: newPR.employeeName,
+      role: newPR.role,
+      department: newPR.department,
+      item_name: newPR.itemName,
+      category: newPR.category,
+      quantity: newPR.quantity,
+      unit_price: newPR.unitPrice,
+      total_price: newPR.totalPrice,
+      urgency: newPR.urgency,
+      reason: newPR.reason,
+      target_kitchen: newPR.targetKitchen,
+      attachment_url: newPR.attachmentUrl || null,
+      attachment_name: newPR.attachmentName || null,
+      stage: newPR.stage,
+      status: newPR.status,
+      rejection_reason: null,
+      approval_history: newPR.approvalHistory
+    });
+
+    // Kirim Notifikasi Email ke Manajer Area / Direksi secara dinamis
+    let approverUser = null;
+    if (isManagerArea) {
+      approverUser = this.getUsers().find(u => (u.id === 'DO-002' || u.name.includes('Alfaqih')) && u.role === 'DIREKTUR_OPERASIONAL') ||
+                     this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL') || 
+                     this.getUsers().find(u => u.role === 'DIREKTUR_KEUANGAN');
+    } else {
+      const kitchen = (this.data && this.data.kitchens) ? this.data.kitchens.find(k => (k.nama_dapur === newPR.targetKitchen || k.namaDapur === newPR.targetKitchen)) : null;
+      if (kitchen && kitchen.manager_area) {
+        approverUser = this.getUsers().find(u => kitchen.manager_area.includes(u.name));
+      }
+      if (!approverUser) {
+        approverUser = this.getUsers().find(u => u.role === 'MANAGER_AREA') || 
+                       this.getUsers().find(u => (u.id === 'DO-002' || u.name.includes('Alfaqih')) && u.role === 'DIREKTUR_OPERASIONAL') ||
+                       this.getUsers().find(u => u.role === 'DIREKTUR_OPERASIONAL');
+      }
+    }
+
+    const approverEmail = approverUser ? approverUser.email : 'alfaqih1108@gmail.com';
+    const approverName = approverUser ? approverUser.name : 'Muhammad Alfaqih (Direktur Operasional)';
+
+    this.notifyEmail({
+      to: approverEmail,
+      recipientName: approverName,
+      subject: `Permintaan Pengadaan Barang Baru (${newPR.id})`,
+      notificationType: 'PR_SUBMITTED',
+      title: 'Pengajuan Purchase Requisition (PR) Baru',
+      summaryText: `${user.name} (${user.roleLabel}) telah mengajukan pengadaan barang untuk ${newPR.targetKitchen}. Mohon untuk meninjau dan memvalidasi permintaan ini.`,
+      details: {
+        'No. Pengajuan': newPR.id,
+        'Pemohon': `${user.name} (${user.roleLabel})`,
+        'Nama Barang': newPR.itemName,
+        'Jumlah': `${newPR.quantity} Unit`,
+        'Estimasi Biaya': `Rp ${Number(newPR.totalPrice).toLocaleString('id-ID')}`,
+        'Target Dapur': newPR.targetKitchen,
+        'Tingkat Urgensi': newPR.urgency
+      }
+    });
+
+    return newPR;
+  }
+
+  async advanceItemRequestStage(id, nextStage, finalStatus = 'PENDING', adjustmentData = null) {
+    const pr = this.getItemRequests().find(p => p.id === id);
+    if (!pr) return false;
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+    if (!Array.isArray(pr.approvalHistory)) pr.approvalHistory = [];
+
+    // Pastikan Level 1 ada di riwayat
+    if (pr.approvalHistory.length === 0) {
+      pr.approvalHistory.push({
+        stage: 'SUBMISSION',
+        level: 1,
+        action: 'SUBMITTED',
+        actorName: pr.employeeName,
+        actorRole: pr.role ? pr.role.replace(/_/g, ' ') : 'Pemohon',
+        timestamp: pr.createdAt || realTimestamp,
+        notes: `Kebutuhan: "${pr.itemName}" (${pr.originalQuantity || pr.quantity} unit) — ${pr.reason || 'Kebutuhan operasional'}`
+      });
+    }
+
+    const isManagerRequester = (pr.role === 'MANAGER_AREA' || pr.role === 'MANAGER_KEUANGAN');
+
+    // Simpan data lama jika ada penyesuaian dari Approver
+    if (adjustmentData && (adjustmentData.newQty !== undefined || adjustmentData.newUnitPrice !== undefined)) {
+      const oldQty = pr.quantity;
+      const oldUnitPrice = pr.unitPrice;
+      const oldTotalPrice = pr.totalPrice;
+
+      const newQty = (adjustmentData.newQty !== undefined && adjustmentData.newQty > 0) ? Number(adjustmentData.newQty) : oldQty;
+      const newUnitPrice = (adjustmentData.newUnitPrice !== undefined && adjustmentData.newUnitPrice > 0) ? Number(adjustmentData.newUnitPrice) : oldUnitPrice;
+      const newTotalPrice = newQty * newUnitPrice;
+
+      pr.originalQuantity = pr.originalQuantity || oldQty;
+      pr.originalUnitPrice = pr.originalUnitPrice || oldUnitPrice;
+      pr.originalTotalPrice = pr.originalTotalPrice || oldTotalPrice;
+
+      pr.quantity = newQty;
+      pr.unitPrice = newUnitPrice;
+      pr.totalPrice = newTotalPrice;
+      pr.hasAdjustment = true;
+
+      if (!Array.isArray(pr.adjustments)) pr.adjustments = [];
+      pr.adjustments.push({
+        stage: pr.stage,
+        adjustedBy: user.name,
+        role: user.roleLabel,
+        date: realTimestamp,
+        oldQty,
+        newQty,
+        oldUnitPrice,
+        newUnitPrice,
+        oldTotalPrice,
+        newTotalPrice,
+        notes: adjustmentData.notes || 'Penyesuaian Qty dan Budget disetujui approver'
+      });
+
+      this.addLog(`${user.name} (${user.roleLabel}) menyetujui PR ${id} dengan penyesuaian: ${newQty} unit @ Rp ${newUnitPrice.toLocaleString('id-ID')} (Total: Rp ${newTotalPrice.toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    }
+
+    // Catat approval history dengan real-time timestamp akurat
+    if (pr.stage === 'MANAGER_APPROVAL') {
+      pr.approvalHistory.push({
+        stage: 'MANAGER_APPROVAL',
+        level: 2,
+        action: finalStatus === 'REJECTED' ? 'REJECTED' : 'APPROVED',
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: finalStatus === 'REJECTED' ? `Ditolak oleh ${user.name}` : 'Kebutuhan telah divalidasi & disetujui untuk diteruskan ke Keuangan'
+      });
+    } else if (pr.stage === 'FINANCE_VERIFICATION') {
+      pr.approvalHistory.push({
+        stage: 'FINANCE_VERIFICATION',
+        level: isManagerRequester ? 2 : 3,
+        action: finalStatus === 'REJECTED' ? 'REJECTED' : adjustmentData ? 'ADJUSTED_AND_APPROVED' : 'APPROVED',
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: finalStatus === 'REJECTED' 
+          ? `Ditolak oleh ${user.name}` 
+          : adjustmentData 
+          ? `✓ Disetujui dengan penyesuaian: ${pr.quantity} unit @ Rp ${pr.unitPrice.toLocaleString('id-ID')} (Total: Rp ${pr.totalPrice.toLocaleString('id-ID')}). Catatan: "${adjustmentData.notes}"` 
+          : 'Plafon anggaran terverifikasi sesuai pagu dana operasional',
+        adjustment: adjustmentData
+      });
+    } else if (pr.stage === 'DIRECTOR_APPROVAL') {
+      pr.approvalHistory.push({
+        stage: 'DIRECTOR_APPROVAL',
+        level: isManagerRequester ? 3 : 4,
+        action: finalStatus === 'REJECTED' ? 'REJECTED' : 'APPROVED',
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: finalStatus === 'REJECTED' 
+          ? `Ditolak oleh ${user.name}` 
+          : `Purchase Order resmi PO-${pr.id.replace('PR-', '')} telah diterbitkan dan siap dikirim ke vendor.`
+      });
+    }
+
+    pr.stage = nextStage;
+    pr.status = finalStatus;
+
+    if (finalStatus === 'APPROVED') {
+      this.addLog(`Purchase Order resmi diterbitkan untuk PR ${id} (${pr.itemName} - ${pr.quantity} Unit · Rp ${Number(pr.totalPrice).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    }
+    this.save();
+
+    // Direct Cloud Sync ke Supabase (Kirim seluruh data agar pasti tersimpan tanpa error constraint)
+    await this.syncToSupabase('item_requests', {
+      id: pr.id,
+      employee_id: pr.employeeId,
+      employee_name: pr.employeeName,
+      role: pr.role,
+      department: pr.department,
+      item_name: pr.itemName,
+      category: pr.category,
+      quantity: pr.quantity,
+      unit_price: pr.unitPrice,
+      total_price: pr.totalPrice,
+      urgency: pr.urgency,
+      reason: pr.reason,
+      target_kitchen: pr.targetKitchen,
+      attachment_url: pr.attachmentUrl || null,
+      attachment_name: pr.attachmentName || null,
+      stage: pr.stage,
+      status: pr.status,
+      rejection_reason: pr.rejectionReason || null,
+      approval_history: pr.approvalHistory
+    });
+
+    const applicant = this.getUsers().find(u => u.id === pr.employeeId);
+    const applicantEmail = applicant ? applicant.email : null;
+    if (applicantEmail) {
+      const isApproved = (finalStatus === 'APPROVED');
+      const isRejected = (finalStatus === 'REJECTED');
+      this.notifyEmail({
+        to: applicantEmail,
+        recipientName: pr.employeeName,
+        subject: `Update Status Pengadaan (${pr.id}): ${isApproved ? 'DISETUJUI' : isRejected ? 'DITOLAK' : 'PROSES APPROVAL'}`,
+        notificationType: isApproved ? 'PR_APPROVED' : isRejected ? 'PR_REJECTED' : 'PR_SUBMITTED',
+        title: `Status Pengajuan PR: ${isApproved ? 'Telah Disetujui Penuh' : isRejected ? 'Ditolak' : 'Diteruskan ke Tahap Selanjutnya'}`,
+        summaryText: `Pengajuan barang "${pr.itemName}" (${pr.quantity} unit) telah diproses oleh ${user.name} (${user.roleLabel}).`,
+        details: {
+          'No. Pengajuan': pr.id,
+          'Nama Barang': pr.itemName,
+          'Status': pr.status,
+          'Tahap Saat Ini': pr.stage,
+          'Diproses Oleh': `${user.name} (${user.roleLabel})`
+        }
+      });
+    }
+
+    return true;
+  }
+
+  isItemRequestEditable(pr) {
+    if (!pr || typeof pr !== 'object') return false;
+    if (pr.status !== 'PENDING') return false;
+    const history = Array.isArray(pr.approvalHistory) ? pr.approvalHistory : [];
+    const hasApproval = history.some(h => h.action === 'APPROVED' || h.action === 'ADJUSTED_AND_APPROVED');
+    if (hasApproval) return false;
+    return true;
+  }
+
+  async updateItemRequest(id, updatedData) {
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === id);
+    if (!pr) return false;
+
+    if (!this.isItemRequestEditable(pr)) {
+      console.warn(`[PR Update] Pengajuan ${id} tidak dapat diedit karena sudah diproses/disetujui.`);
+      return false;
+    }
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    if (updatedData.itemName !== undefined) pr.itemName = updatedData.itemName;
+    if (updatedData.category !== undefined) pr.category = updatedData.category;
+    if (updatedData.quantity !== undefined) pr.quantity = Number(updatedData.quantity) || 1;
+    if (updatedData.unitPrice !== undefined) pr.unitPrice = Number(updatedData.unitPrice) || 0;
+    pr.totalPrice = pr.quantity * pr.unitPrice;
+    if (updatedData.urgency !== undefined) pr.urgency = updatedData.urgency;
+    if (updatedData.reason !== undefined) pr.reason = updatedData.reason;
+    if (updatedData.targetKitchen !== undefined) pr.targetKitchen = updatedData.targetKitchen;
+    if (updatedData.attachmentUrl !== undefined) pr.attachmentUrl = updatedData.attachmentUrl;
+    if (updatedData.attachmentName !== undefined) pr.attachmentName = updatedData.attachmentName;
+
+    pr.updatedAt = realTimestamp;
+
+    if (Array.isArray(pr.approvalHistory) && pr.approvalHistory.length > 0) {
+      pr.approvalHistory[0].notes = `Kebutuhan: "${pr.itemName}" (${pr.quantity} unit @ Rp ${Number(pr.unitPrice).toLocaleString('id-ID')}) — ${pr.reason || 'Kebutuhan operasional'} (Diedit oleh pemohon pada ${realTimestamp})`;
+    }
+
+    this.addLog(`${user.name} memperbarui data pengajuan Purchase Request ${pr.id} (${pr.itemName} · ${pr.quantity} unit · Rp ${Number(pr.totalPrice).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    // Direct Cloud Sync to Supabase
+    await this.syncToSupabase('item_requests', {
+      id: pr.id,
+      employee_id: pr.employeeId,
+      employee_name: pr.employeeName,
+      role: pr.role,
+      department: pr.department,
+      item_name: pr.itemName,
+      category: pr.category,
+      quantity: pr.quantity,
+      unit_price: pr.unitPrice,
+      total_price: pr.totalPrice,
+      urgency: pr.urgency,
+      reason: pr.reason,
+      target_kitchen: pr.targetKitchen,
+      attachment_url: pr.attachmentUrl || null,
+      attachment_name: pr.attachmentName || null,
+      stage: pr.stage,
+      status: pr.status,
+      rejection_reason: pr.rejectionReason || null,
+      approval_history: pr.approvalHistory
+    });
+
+    return true;
+  }
+
+  deleteItemRequest(id) {
+    if (!Array.isArray(this.data.itemRequests)) {
+      this.data.itemRequests = [...(INITIAL_DATABASE.itemRequests || [])];
+    }
+    const idx = this.data.itemRequests.findIndex(p => p.id === id);
+    if (idx !== -1) {
+      const deletedPR = this.data.itemRequests.splice(idx, 1)[0];
+      const user = this.getCurrentUser();
+      const realTimestamp = getRealtimeTimestamp();
+      this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus pengajuan Purchase Request ${deletedPR.id} (${deletedPR.itemName} · ${deletedPR.quantity} unit) pada ${realTimestamp}`, 'procurement');
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
+  // MODUL PESANAN (PO EXECUTION, TRACKING STATUS & FAT INVOICE SETTLEMENT)
+  // =========================================================================
+
+  getApprovedOrders() {
+    const prs = this.getItemRequests() || [];
+    return prs.filter(p => {
+      if (!p) return false;
+      const isApproved = (p.status === 'APPROVED' || p.stage === 'COMPLETED');
+      return isApproved;
+    }).map(p => {
+      if (!p.orderStatus) {
+        p.orderStatus = 'DALAM_ANTRIAN';
+      }
+      return p;
+    });
+  }
+
+  async updateOrderStatus(id, newStatus, notes = '') {
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === id);
+    if (!pr) return false;
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    pr.orderStatus = newStatus;
+    if (!Array.isArray(pr.orderTrackingHistory)) {
+      pr.orderTrackingHistory = [];
+    }
+
+    pr.orderTrackingHistory.push({
+      status: newStatus,
+      updatedBy: user ? user.id : 'SYSTEM',
+      updatedByName: user ? user.name : 'System',
+      role: user ? user.roleLabel : 'Operator',
+      timestamp: realTimestamp,
+      notes: notes || `Status pesanan diubah menjadi ${newStatus}`
+    });
+
+    this.addLog(`${user ? user.name : 'Operator'} memperbarui status pesanan ${id} (${pr.itemName}) menjadi "${newStatus}" pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    // Direct Cloud Sync to Supabase
+    await this.syncToSupabase('item_requests', {
+      id: pr.id,
+      order_status: pr.orderStatus,
+      order_tracking_history: pr.orderTrackingHistory,
+      order_invoice: pr.orderInvoice || null,
+      order_disbursement: pr.orderDisbursement || null
+    });
+
+    return true;
+  }
+
+  async submitOrderInvoice(id, invoiceData) {
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === id);
+    if (!pr) return false;
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    pr.orderStatus = 'INVOICE_SUBMITTED';
+    pr.orderInvoice = {
+      fileUrl: invoiceData.fileUrl,
+      fileName: invoiceData.fileName,
+      submittedBy: user ? user.name : 'Operator Pesanan',
+      submittedById: user ? user.id : 'SA-002',
+      submittedAt: realTimestamp,
+      notes: invoiceData.notes || 'Invoice vendor telah dilampirkan dan diteruskan ke FAT Officer untuk verifikasi pembayaran'
+    };
+
+    if (!Array.isArray(pr.orderTrackingHistory)) {
+      pr.orderTrackingHistory = [];
+    }
+
+    pr.orderTrackingHistory.push({
+      status: 'INVOICE_SUBMITTED',
+      updatedBy: user ? user.id : 'SYSTEM',
+      updatedByName: user ? user.name : 'System',
+      role: user ? user.roleLabel : 'Operator',
+      timestamp: realTimestamp,
+      notes: `Invoice tagihan vendor (${invoiceData.fileName || 'berkas lampiran'}) berhasil diunggah dan diteruskan ke FAT Officer`
+    });
+
+    this.addLog(`${user ? user.name : 'Operator'} mengunggah invoice vendor untuk ${id} (${pr.itemName}) dan meneruskan ke FAT Officer pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    // Direct Cloud Sync to Supabase
+    await this.syncToSupabase('item_requests', {
+      id: pr.id,
+      order_status: pr.orderStatus,
+      order_tracking_history: pr.orderTrackingHistory,
+      order_invoice: pr.orderInvoice,
+      order_disbursement: pr.orderDisbursement || null
+    });
+
+    // Notify FAT Officer via Email
+    const fatUser = this.getUsers().find(u => u.role === 'FAT_OFFICER' || u.id === 'FAT-001') || {
+      name: 'Muhammad Imam Adamy',
+      email: 'muhammadimam1108@gmail.com'
+    };
+
+    this.notifyEmail({
+      to: fatUser.email || 'muhammadimam1108@gmail.com',
+      recipientName: fatUser.name || 'Muhammad Imam Adamy (FAT Officer)',
+      subject: `Invoice Tagihan Vendor Siap Diproses Settlement (${pr.id})`,
+      notificationType: 'PR_INVOICE_SUBMITTED',
+      title: 'Invoice Tagihan Vendor Siap Diproses FAT',
+      summaryText: `Pesanan PR ${pr.id} (${pr.itemName}) telah diterima di lokasi dan invoice supplier telah dilampirkan oleh ${user ? user.name : 'Operator'}. Mohon lakukan verifikasi dan transfer settlement.`,
+      details: {
+        'No. Pesanan PR': pr.id,
+        'Nama Barang': pr.itemName,
+        'Nominal Tagihan': `Rp ${(Number(pr.totalPrice) || 0).toLocaleString('id-ID')}`,
+        'Lokasi Dapur': pr.targetKitchen,
+        'Pengunggah Invoice': `${user ? user.name : 'Operator'}`
+      }
+    });
+
+    return true;
+  }
+
+  async disburseOrderInvoice(id, disbursementData) {
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === id);
+    if (!pr) return false;
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    pr.orderStatus = 'SETTLEMENT';
+    pr.orderDisbursement = {
+      bankRefNo: disbursementData.bankRefNo || `TRF-PO-${Date.now().toString().slice(-6)}`,
+      paymentSource: disbursementData.paymentSource || 'Kas Operasional Yayasan MMS',
+      disbursedBy: user ? user.name : 'Muhammad Imam Adamy (FAT Officer)',
+      disbursedById: user ? user.id : 'FAT-001',
+      disbursedAt: realTimestamp,
+      transferProofUrl: disbursementData.transferProofUrl || null,
+      transferProofName: disbursementData.transferProofName || null,
+      notes: disbursementData.notes || 'Pembayaran invoice vendor telah lunas ditransfer oleh FAT Officer'
+    };
+
+    if (!Array.isArray(pr.orderTrackingHistory)) {
+      pr.orderTrackingHistory = [];
+    }
+
+    pr.orderTrackingHistory.push({
+      status: 'SETTLEMENT',
+      updatedBy: user ? user.id : 'FAT-001',
+      updatedByName: user ? user.name : 'FAT Officer',
+      role: 'FAT Officer',
+      timestamp: realTimestamp,
+      notes: `Pembayaran vendor LUNAS (Ref: ${pr.orderDisbursement.bankRefNo}). Bukti transfer bank telah dilampirkan.`
+    });
+
+    this.addLog(`${user ? user.name : 'FAT Officer'} menyelesaikan pencairan transfer invoice untuk ${id} (Ref: ${pr.orderDisbursement.bankRefNo}) pada ${realTimestamp}`, 'finance');
+    this.save();
+
+    // Direct Cloud Sync to Supabase
+    await this.syncToSupabase('item_requests', {
+      id: pr.id,
+      order_status: pr.orderStatus,
+      order_tracking_history: pr.orderTrackingHistory,
+      order_invoice: pr.orderInvoice,
+      order_disbursement: pr.orderDisbursement
+    });
+
+    // Notify Operator & Requester
+    const saUser = this.getUsers().find(u => u.id === 'SA-002') || { email: 'syafiq@mms.org', name: 'Muhammad Syafiq Al Ghifari' };
+    const soUser = this.getUsers().find(u => u.id === 'SO-004') || { email: 'syifa@mms.org', name: 'Syifa Izzatina' };
+
+    [saUser, soUser].forEach(op => {
+      if (op && op.email) {
+        this.notifyEmail({
+          to: op.email,
+          recipientName: op.name,
+          subject: `Settlement Pembayaran Vendor Selesai (${pr.id})`,
+          notificationType: 'PR_SETTLEMENT_COMPLETED',
+          title: 'Pembayaran Vendor Telah Lunas & Selesai',
+          summaryText: `FAT Officer telah mentransfer pembayaran invoice vendor untuk pesanan PR ${pr.id} (${pr.itemName}). Bukti transfer bank dapat dilihat di modul Pesanan.`,
+          details: {
+            'No. Pesanan PR': pr.id,
+            'Nama Barang': pr.itemName,
+            'Nominal Ditransfer': `Rp ${(Number(pr.totalPrice) || 0).toLocaleString('id-ID')}`,
+            'No. Referensi Bank': pr.orderDisbursement.bankRefNo,
+            'Diproses Oleh': `${user ? user.name : 'FAT Officer'}`
+          }
+        });
+      }
+    });
+
+    return true;
+  }
+
+  async fetchOrderInvoiceAttachment(prId) {
+    if (!prId) return null;
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === prId);
+    if (pr && pr.orderInvoice && pr.orderInvoice.fileUrl && pr.orderInvoice.fileUrl.length > 50) {
+      return pr.orderInvoice.fileUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return pr && pr.orderInvoice ? (pr.orderInvoice.fileUrl || null) : null;
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/item_requests?select=id,order_invoice&id=eq.${encodeURIComponent(prId)}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].order_invoice) {
+          if (pr) {
+            pr.orderInvoice = data[0].order_invoice;
+          }
+          return data[0].order_invoice.fileUrl || null;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat invoice pesanan on-demand dari Supabase:', e);
+    }
+    return pr && pr.orderInvoice ? (pr.orderInvoice.fileUrl || null) : null;
+  }
+
+  async fetchOrderTransferProof(prId) {
+    if (!prId) return null;
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === prId);
+    if (pr && pr.orderDisbursement && pr.orderDisbursement.transferProofUrl && pr.orderDisbursement.transferProofUrl.length > 50) {
+      return pr.orderDisbursement.transferProofUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return pr && pr.orderDisbursement ? (pr.orderDisbursement.transferProofUrl || null) : null;
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/item_requests?select=id,order_disbursement&id=eq.${encodeURIComponent(prId)}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].order_disbursement) {
+          if (pr) {
+            pr.orderDisbursement = data[0].order_disbursement;
+          }
+          return data[0].order_disbursement.transferProofUrl || null;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat bukti transfer pesanan on-demand dari Supabase:', e);
+    }
+    return pr && pr.orderDisbursement ? (pr.orderDisbursement.transferProofUrl || null) : null;
+  }
+
+  // =========================================================================
+  // CASH ADVANCE (KASBON OPERASIONAL DIREKSI & FAT)
+  // =========================================================================
+
+  getCashAdvances() {
+    return (this.data && Array.isArray(this.data.cashAdvances)) ? this.data.cashAdvances : (INITIAL_DATABASE.cashAdvances || []);
+  }
+
+  getCashAdvanceById(id) {
+    return (this.getCashAdvances() || []).find(c => c.id === id);
+  }
+
+  async addCashAdvance(caData) {
+    const user = this.getCurrentUser();
+    const allCA = this.getCashAdvances() || [];
+    let maxNum = 15;
+    allCA.forEach(c => {
+      if (c.id) {
+        const m = c.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `CA-2026-${String(maxNum + 1).padStart(3, '0')}`;
+    const realTimestamp = getRealtimeTimestamp();
+
+    const newCA = {
+      id,
+      title: caData.title || 'Pengajuan Kasbon Operasional',
+      employeeId: user.id,
+      employeeName: user.name,
+      employeeNika: user.nika,
+      employeeRole: user.role,
+      department: user.department || 'Operasional Lapangan',
+      category: caData.category || 'Operasional Lapangan',
+      targetLocation: caData.targetLocation || 'Wilayah Operasional',
+      amountRequested: Number(caData.amountRequested) || 0,
+      amountApproved: Number(caData.amountRequested) || 0,
+      amountDisbursed: 0,
+      usagePlanDate: caData.usagePlanDate || realTimestamp.split(' ')[0],
+      settlementPlanDate: caData.settlementPlanDate || realTimestamp.split(' ')[0],
+      bankName: caData.bankName || user.bankName || 'Bank Mandiri',
+      bankAccountNo: caData.bankAccountNo || user.rekeningNo || '-',
+      bankAccountName: caData.bankAccountName || user.rekeningName || user.name,
+      reason: caData.reason || 'Kebutuhan dana tunai operasional mendesak',
+      stage: 'DIRECTOR_REVIEW',
+      status: 'PENDING',
+      createdAt: realTimestamp,
+      disbursementDetails: null,
+      settlement: null,
+      approvalHistory: [
+        {
+          stage: 'SUBMISSION',
+          level: 1,
+          action: 'SUBMITTED',
+          actorName: user.name,
+          actorRole: user.roleLabel,
+          timestamp: realTimestamp,
+          notes: `Pengajuan Kasbon: Rp ${Number(caData.amountRequested).toLocaleString('id-ID')} untuk "${caData.title}"`
+        }
+      ]
+    };
+
+    if (!Array.isArray(this.data.cashAdvances)) this.data.cashAdvances = [];
+    this.data.cashAdvances.unshift(newCA);
+    this.addLog(`${user.name} mengajukan Cash Advance ${id} (Rp ${Number(caData.amountRequested).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('cash_advances', {
+      id: newCA.id,
+      employee_id: newCA.employeeId,
+      employee_name: newCA.employeeName,
+      role: newCA.employeeRole,
+      department: newCA.department,
+      purpose: newCA.title || newCA.reason,
+      amount_requested: newCA.amountRequested,
+      amount_approved: newCA.amountApproved,
+      amount_disbursed: newCA.amountDisbursed,
+      target_kitchen: newCA.targetLocation,
+      bank_name: newCA.bankName,
+      rekening_no: newCA.bankAccountNo,
+      rekening_name: newCA.bankAccountName,
+      stage: newCA.stage,
+      status: newCA.status,
+      approval_history: newCA.approvalHistory
+    });
+
+    return newCA;
+  }
+
+  isCashAdvanceEditable(ca) {
+    if (!ca || typeof ca !== 'object') return false;
+    if (ca.status !== 'PENDING') return false;
+    if (ca.stage !== 'DIRECTOR_REVIEW') return false;
+    const history = Array.isArray(ca.approvalHistory) ? ca.approvalHistory : [];
+    const hasApproval = history.some(h => h.action === 'APPROVED' || h.action === 'ADJUSTED_AND_APPROVED');
+    if (hasApproval) return false;
+    return true;
+  }
+
+  async updateCashAdvance(id, updatedData) {
+    const ca = this.getCashAdvanceById(id);
+    if (!ca) return false;
+
+    if (!this.isCashAdvanceEditable(ca)) {
+      console.warn(`[CA Update] Kasbon ${id} tidak dapat diedit karena sudah diproses/disetujui.`);
+      return false;
+    }
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    if (updatedData.title !== undefined) ca.title = updatedData.title;
+    if (updatedData.category !== undefined) ca.category = updatedData.category;
+    if (updatedData.targetLocation !== undefined) ca.targetLocation = updatedData.targetLocation;
+    if (updatedData.amountRequested !== undefined) {
+      ca.amountRequested = Number(updatedData.amountRequested) || 0;
+      ca.amountApproved = ca.amountRequested;
+    }
+    if (updatedData.usagePlanDate !== undefined) ca.usagePlanDate = updatedData.usagePlanDate;
+    if (updatedData.settlementPlanDate !== undefined) ca.settlementPlanDate = updatedData.settlementPlanDate;
+    if (updatedData.bankName !== undefined) ca.bankName = updatedData.bankName;
+    if (updatedData.bankAccountNo !== undefined) ca.bankAccountNo = updatedData.bankAccountNo;
+    if (updatedData.bankAccountName !== undefined) ca.bankAccountName = updatedData.bankAccountName;
+    if (updatedData.reason !== undefined) ca.reason = updatedData.reason;
+
+    ca.updatedAt = realTimestamp;
+
+    if (Array.isArray(ca.approvalHistory) && ca.approvalHistory.length > 0) {
+      ca.approvalHistory[0].notes = `Pengajuan Kasbon: Rp ${Number(ca.amountRequested).toLocaleString('id-ID')} untuk "${ca.title}" (Diedit oleh pemohon pada ${realTimestamp})`;
+    }
+
+    this.addLog(`${user.name} memperbarui data Cash Advance ${id} (Rp ${Number(ca.amountRequested).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('cash_advances', {
+      id: ca.id,
+      employee_id: ca.employeeId,
+      employee_name: ca.employeeName,
+      role: ca.employeeRole,
+      department: ca.department,
+      purpose: ca.title || ca.reason,
+      amount_requested: ca.amountRequested,
+      amount_approved: ca.amountApproved,
+      amount_disbursed: ca.amountDisbursed,
+      target_kitchen: ca.targetLocation,
+      bank_name: ca.bankName,
+      rekening_no: ca.bankAccountNo,
+      rekening_name: ca.bankAccountName,
+      stage: ca.stage,
+      status: ca.status,
+      approval_history: ca.approvalHistory
+    });
+
+    return true;
+  }
+
+  async approveCashAdvanceDirector(id, decisionData = {}) {
+    const user = this.getCurrentUser();
+    const ca = this.getCashAdvanceById(id);
+    if (!ca) return false;
+
+    const realTimestamp = getRealtimeTimestamp();
+    const isApproved = decisionData.action === 'APPROVED';
+    const isAdjusted = Boolean(decisionData.adjustedAmount && Number(decisionData.adjustedAmount) !== Number(ca.amountRequested));
+
+    if (isApproved) {
+      if (isAdjusted) {
+        ca.amountApproved = Number(decisionData.adjustedAmount);
+      }
+      ca.stage = 'FAT_DISBURSEMENT';
+      ca.status = 'PENDING';
+
+      ca.approvalHistory.push({
+        stage: 'DIRECTOR_APPROVAL',
+        level: 2,
+        action: isAdjusted ? 'ADJUSTED_AND_APPROVED' : 'APPROVED',
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: isAdjusted 
+          ? `Disetujui dengan penyesuaian plafon: Rp ${Number(ca.amountApproved).toLocaleString('id-ID')} (Semula Rp ${Number(ca.amountRequested).toLocaleString('id-ID')}). Catatan: "${decisionData.notes || '-'}"`
+          : `Disetujui penuh oleh Direksi. Catatan: "${decisionData.notes || '-'}"`
+      });
+
+      this.addLog(`${user.name} menyetujui Cash Advance ${id} (Rp ${Number(ca.amountApproved).toLocaleString('id-ID')}) untuk pencairan FAT`, 'procurement');
+    } else {
+      ca.stage = 'REJECTED';
+      ca.status = 'REJECTED';
+
+      ca.approvalHistory.push({
+        stage: 'DIRECTOR_APPROVAL',
+        level: 2,
+        action: 'REJECTED',
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: `Ditolak oleh ${user.name}. Alasan: "${decisionData.notes || 'Kebutuhan belum memenuhi syarat pengajuan kasbon'}"`
+      });
+
+      this.addLog(`${user.name} menolak Cash Advance ${id} pada ${realTimestamp}`, 'procurement');
+    }
+
+    this.save();
+
+    await this.syncToSupabase('cash_advances', {
+      id: ca.id,
+      employee_id: ca.employeeId,
+      employee_name: ca.employeeName,
+      role: ca.employeeRole || ca.role,
+      department: ca.department,
+      purpose: ca.title || ca.purpose || ca.reason,
+      amount_requested: ca.amountRequested,
+      amount_approved: ca.amountApproved,
+      amount_disbursed: ca.amountDisbursed,
+      target_kitchen: ca.targetLocation,
+      bank_name: ca.bankName,
+      rekening_no: ca.bankAccountNo,
+      rekening_name: ca.bankAccountName,
+      stage: ca.stage,
+      status: ca.status,
+      settlement: ca.settlement || null,
+      approval_history: ca.approvalHistory
+    });
+
+    return true;
+  }
+
+  async disburseCashAdvanceFAT(id, disburseData = {}) {
+    const user = this.getCurrentUser();
+    const ca = this.getCashAdvanceById(id);
+    if (!ca) return false;
+
+    const realTimestamp = getRealtimeTimestamp();
+    const disbursedAmount = ca.amountApproved || ca.amountRequested;
+    ca.amountDisbursed = disbursedAmount;
+    ca.stage = 'DISBURSED';
+    ca.status = 'DISBURSED';
+
+    ca.disbursementDetails = {
+      disbursedAt: realTimestamp,
+      disbursedBy: `${user.name} (${user.roleLabel})`,
+      bankRefNo: disburseData.bankRefNo || `TRF-FAT-${Date.now().toString().slice(-6)}`,
+      proofUrl: disburseData.proofUrl || null,
+      notes: disburseData.notes || 'Dana berhasil ditransfer ke rekening pemohon.'
+    };
+
+    ca.approvalHistory.push({
+      stage: 'FAT_DISBURSEMENT',
+      level: 3,
+      action: 'DISBURSED',
+      actorName: `${user.name} (${user.roleLabel})`,
+      actorRole: user.roleLabel,
+      timestamp: realTimestamp,
+      notes: `Dana kasbon sebesar Rp ${Number(disbursedAmount).toLocaleString('id-ID')} telah ditransfer ke ${ca.bankName} (${ca.bankAccountNo} a.n ${ca.bankAccountName}). No. Ref: ${ca.disbursementDetails.bankRefNo}`
+    });
+
+    this.addLog(`FAT (${user.name}) mencairkan dana Cash Advance ${id} (Rp ${Number(disbursedAmount).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('cash_advances', {
+      id: ca.id,
+      employee_id: ca.employeeId,
+      employee_name: ca.employeeName,
+      role: ca.employeeRole || ca.role,
+      department: ca.department,
+      purpose: ca.title || ca.purpose || ca.reason,
+      amount_requested: ca.amountRequested,
+      amount_approved: ca.amountApproved,
+      amount_disbursed: ca.amountDisbursed,
+      target_kitchen: ca.targetLocation,
+      bank_name: ca.bankName,
+      rekening_no: ca.bankAccountNo,
+      rekening_name: ca.bankAccountName,
+      stage: ca.stage,
+      status: ca.status,
+      disbursed_at: realTimestamp,
+      settlement: ca.settlement || null,
+      approval_history: ca.approvalHistory
+    });
+
+    return true;
+  }
+
+  async submitCashAdvanceSettlement(id, settlementData) {
+    const user = this.getCurrentUser();
+    const ca = this.getCashAdvanceById(id);
+    if (!ca) return false;
+
+    const realTimestamp = getRealtimeTimestamp();
+    const items = Array.isArray(settlementData.items) ? settlementData.items : [];
+    const totalSpent = items.reduce((acc, item) => acc + (Number(item.qty || 1) * Number(item.unitPrice || 0)), 0);
+    const amountReceived = ca.amountDisbursed || ca.amountApproved || ca.amountRequested;
+    
+    // Perhitungan otomatis selisih dana
+    const refundAmount = Math.max(0, amountReceived - totalSpent); // Dana lebih yg harus dikembalikan ke Yayasan
+    const reimburseAmount = Math.max(0, totalSpent - amountReceived); // Dana kurang yg harus diganti Yayasan
+
+    ca.settlement = {
+      submittedAt: realTimestamp,
+      submittedBy: user.name,
+      totalSpent,
+      refundAmount,
+      reimburseAmount,
+      items,
+      proofFiles: settlementData.proofFiles || [],
+      refundProofUrl: settlementData.refundProofUrl || null,
+      notes: settlementData.notes || ''
+    };
+
+    ca.stage = 'SETTLEMENT_SUBMITTED';
+    ca.status = 'SETTLEMENT_PENDING';
+
+    let settlementSummary = `Realisasi Belanja: Rp ${totalSpent.toLocaleString('id-ID')} (${items.length} item). `;
+    if (refundAmount > 0) {
+      settlementSummary += `Dana sisa yang harus dikembalikan ke Yayasan: Rp ${refundAmount.toLocaleString('id-ID')}.`;
+    } else if (reimburseAmount > 0) {
+      settlementSummary += `Kekurangan dana (Reimbursement oleh Yayasan): Rp ${reimburseAmount.toLocaleString('id-ID')}.`;
+    } else {
+      settlementSummary += `Pengeluaran tepat sesuai kasbon (Rp 0 selisih).`;
+    }
+
+    ca.approvalHistory.push({
+      stage: 'SETTLEMENT_SUBMISSION',
+      level: 4,
+      action: 'SETTLEMENT_SUBMITTED',
+      actorName: user.name,
+      actorRole: user.roleLabel,
+      timestamp: realTimestamp,
+      notes: settlementSummary
+    });
+
+    this.addLog(`${user.name} mengirimkan laporan LPJ Realisasi Cash Advance ${id} (Total Belanja: Rp ${totalSpent.toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('cash_advances', {
+      id: ca.id,
+      employee_id: ca.employeeId,
+      employee_name: ca.employeeName,
+      role: ca.employeeRole || ca.role,
+      department: ca.department,
+      purpose: ca.title || ca.purpose || ca.reason,
+      amount_requested: ca.amountRequested,
+      amount_approved: ca.amountApproved,
+      amount_disbursed: ca.amountDisbursed,
+      target_kitchen: ca.targetLocation,
+      bank_name: ca.bankName,
+      rekening_no: ca.bankAccountNo,
+      rekening_name: ca.bankAccountName,
+      stage: ca.stage,
+      status: ca.status,
+      settlement: ca.settlement,
+      approval_history: ca.approvalHistory
+    });
+
+    return true;
+  }
+
+  async verifyCashAdvanceSettlementFAT(id, verifyData = {}) {
+    const user = this.getCurrentUser();
+    const ca = this.getCashAdvanceById(id);
+    if (!ca) return false;
+
+    const realTimestamp = getRealtimeTimestamp();
+    ca.stage = 'SETTLED';
+    ca.status = 'SETTLED';
+
+    ca.approvalHistory.push({
+      stage: 'SETTLEMENT_VERIFIED',
+      level: 4,
+      action: 'SETTLED',
+      actorName: `${user.name} (${user.roleLabel})`,
+      actorRole: user.roleLabel,
+      timestamp: realTimestamp,
+      notes: `Laporan Realisasi & Bukti Nota telah diverifikasi sah oleh Tim FAT. Transaksi Kasbon resmi ditutup (SETTLED). Catatan: "${verifyData.notes || 'Kwitansi dan sisa dana telah sesuai'}"`
+    });
+
+    this.addLog(`FAT (${user.name}) memverifikasi dan menutup transaksi Cash Advance ${id} (SETTLED) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('cash_advances', {
+      id: ca.id,
+      employee_id: ca.employeeId,
+      employee_name: ca.employeeName,
+      role: ca.employeeRole || ca.role,
+      department: ca.department,
+      purpose: ca.title || ca.purpose || ca.reason,
+      amount_requested: ca.amountRequested,
+      amount_approved: ca.amountApproved,
+      amount_disbursed: ca.amountDisbursed,
+      target_kitchen: ca.targetLocation,
+      bank_name: ca.bankName,
+      rekening_no: ca.bankAccountNo,
+      rekening_name: ca.bankAccountName,
+      stage: ca.stage,
+      status: ca.status,
+      settlement: ca.settlement || null,
+      approval_history: ca.approvalHistory
+    });
+
+    return true;
+  }
+
+  async deleteCashAdvance(id) {
+    if (!Array.isArray(this.data.cashAdvances)) {
+      this.data.cashAdvances = [...(INITIAL_DATABASE.cashAdvances || [])];
+    }
+    const idx = this.data.cashAdvances.findIndex(c => c.id === id);
+    if (idx !== -1) {
+      const deleted = this.data.cashAdvances.splice(idx, 1)[0];
+      const user = this.getCurrentUser();
+      const realTimestamp = getRealtimeTimestamp();
+      this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus Cash Advance ${deleted.id} pada ${realTimestamp}`, 'procurement');
+      this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/cash_advances?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus cash advance dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
+  // REIMBURSEMENT (KLAIM PENGGANTIAN BIAYA OPERASIONAL)
+  // =========================================================================
+
+  getReimbursements() {
+    return (this.data && Array.isArray(this.data.reimbursements)) ? this.data.reimbursements : (INITIAL_DATABASE.reimbursements || []);
+  }
+
+  getReimbursementById(id) {
+    return (this.getReimbursements() || []).find(r => r.id === id);
+  }
+
+  async addReimbursement(rmbData) {
+    const user = this.getCurrentUser();
+    const allRmb = this.getReimbursements() || [];
+    let maxNum = 0;
+    allRmb.forEach(r => {
+      if (r.id) {
+        const m = r.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `RMB-2026-${String(maxNum + 1).padStart(3, '0')}`;
+    const realTimestamp = getRealtimeTimestamp();
+
+    // Jalur 1: Mitra & Lapangan (Perwakilan Yayasan, Surveyor, Maker) -> Review Manager Area -> Verif Staf Ahli Keuangan -> Otorisasi Direksi -> Transfer FAT
+    // Jalur 2: Tim Kantor & Internal -> Otorisasi Direksi -> Transfer FAT
+    const isFieldJalur1 = ['PERWAKILAN_YAYASAN', 'SURVEYOR', 'MAKER_YAYASAN', 'MAKER'].includes(user.role);
+    const workflowType = isFieldJalur1 ? 'FIELD_JALUR_1' : 'INTERNAL_JALUR_2';
+    const initialStage = isFieldJalur1 ? 'MANAGER_APPROVAL' : 'DIRECTOR_APPROVAL';
+
+    const unitPrice = Number(rmbData.unitPrice) || 0;
+    const quantity = Number(rmbData.quantity) || 1;
+    const subtotal = Number(rmbData.subtotal) || (unitPrice * quantity);
+
+    const newRMB = {
+      id,
+      employeeId: user.id,
+      employeeName: user.name,
+      employeeNika: user.nika || '-',
+      employeeRole: user.role,
+      employeeRoleLabel: user.roleLabel || user.role,
+      department: user.department || 'Operasional Lapangan',
+      itemName: rmbData.itemName || 'Klaim Pengeluaran Biaya',
+      unitPrice: unitPrice,
+      quantity: quantity,
+      subtotal: subtotal,
+      originalSubtotal: subtotal,
+      purchaseDate: rmbData.purchaseDate || getRealtimeDateStr(),
+      category: rmbData.category || 'Bahan Baku & Dapur',
+      targetKitchen: rmbData.targetKitchen || '-',
+      isManualKitchen: Boolean(rmbData.isManualKitchen),
+      bankName: rmbData.bankName || user.bankName || 'Bank Mandiri',
+      bankAccountNo: rmbData.bankAccountNo || user.rekeningNo || '-',
+      bankAccountName: rmbData.bankAccountName || user.rekeningName || user.name,
+      attachmentUrl: rmbData.attachmentUrl || null,
+      attachmentName: rmbData.attachmentName || null,
+      notes: rmbData.notes || '',
+      workflowType: workflowType,
+      stage: initialStage,
+      status: 'PENDING',
+      createdAt: realTimestamp,
+      updatedAt: realTimestamp,
+      disbursementDetails: null,
+      rejectionReason: null,
+      approvalHistory: [
+        {
+          stage: 'SUBMISSION',
+          level: 1,
+          action: 'SUBMITTED',
+          actorName: user.name,
+          actorRole: user.roleLabel || user.role,
+          timestamp: realTimestamp,
+          notes: `Pengajuan Klaim Reimburse: "${rmbData.itemName}" (${quantity} unit @ Rp ${unitPrice.toLocaleString('id-ID')}, Subtotal: Rp ${subtotal.toLocaleString('id-ID')}) untuk "${rmbData.targetKitchen}"`
+        }
+      ]
+    };
+
+    if (!Array.isArray(this.data.reimbursements)) this.data.reimbursements = [];
+    this.data.reimbursements.unshift(newRMB);
+    this.addLog(`${user.name} mengajukan Klaim Reimburse ${id} (${rmbData.itemName} · Rp ${subtotal.toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('reimbursements', {
+      id: newRMB.id,
+      employee_id: newRMB.employeeId,
+      employee_name: newRMB.employeeName,
+      role: newRMB.employeeRole,
+      department: newRMB.department,
+      item_name: newRMB.itemName,
+      unit_price: newRMB.unitPrice,
+      quantity: newRMB.quantity,
+      subtotal: newRMB.subtotal,
+      purchase_date: newRMB.purchaseDate,
+      category: newRMB.category,
+      target_kitchen: newRMB.targetKitchen,
+      bank_name: newRMB.bankName,
+      bank_account_no: newRMB.bankAccountNo,
+      bank_account_name: newRMB.bankAccountName,
+      attachment_url: newRMB.attachmentUrl,
+      attachment_name: newRMB.attachmentName,
+      workflow_type: newRMB.workflowType,
+      stage: newRMB.stage,
+      status: newRMB.status,
+      approval_history: newRMB.approvalHistory
+    }).catch(e => console.warn('Sync reimburse notice:', e));
+
+    return newRMB;
+  }
+
+  isReimbursementEditable(rmb) {
+    if (!rmb || typeof rmb !== 'object') return false;
+    if (rmb.status !== 'PENDING') return false;
+    const history = Array.isArray(rmb.approvalHistory) ? rmb.approvalHistory : [];
+    const hasApproval = history.some(h => h.action === 'APPROVED' || h.action === 'ADJUSTED_AND_APPROVED');
+    if (hasApproval) return false;
+    const initialStage = (rmb.workflowType === 'FIELD_JALUR_1') ? 'MANAGER_APPROVAL' : 'DIRECTOR_APPROVAL';
+    if (rmb.stage !== initialStage) return false;
+    return true;
+  }
+
+  async updateReimbursement(id, updatedData) {
+    const rmb = this.getReimbursementById(id);
+    if (!rmb) return false;
+
+    if (!this.isReimbursementEditable(rmb)) {
+      console.warn(`[Reimburse Update] Klaim ${id} tidak dapat diedit karena sudah diproses/disetujui.`);
+      return false;
+    }
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    if (updatedData.itemName !== undefined) rmb.itemName = updatedData.itemName;
+    if (updatedData.unitPrice !== undefined) rmb.unitPrice = Number(updatedData.unitPrice) || 0;
+    if (updatedData.quantity !== undefined) rmb.quantity = Number(updatedData.quantity) || 1;
+    rmb.subtotal = Number(updatedData.subtotal) || (rmb.unitPrice * rmb.quantity);
+    rmb.originalSubtotal = rmb.subtotal;
+    if (updatedData.purchaseDate !== undefined) rmb.purchaseDate = updatedData.purchaseDate;
+    if (updatedData.category !== undefined) rmb.category = updatedData.category;
+    if (updatedData.targetKitchen !== undefined) rmb.targetKitchen = updatedData.targetKitchen;
+    if (updatedData.isManualKitchen !== undefined) rmb.isManualKitchen = Boolean(updatedData.isManualKitchen);
+    if (updatedData.bankName !== undefined) rmb.bankName = updatedData.bankName;
+    if (updatedData.bankAccountNo !== undefined) rmb.bankAccountNo = updatedData.bankAccountNo;
+    if (updatedData.bankAccountName !== undefined) rmb.bankAccountName = updatedData.bankAccountName;
+    if (updatedData.attachmentUrl !== undefined) rmb.attachmentUrl = updatedData.attachmentUrl;
+    if (updatedData.attachmentName !== undefined) rmb.attachmentName = updatedData.attachmentName;
+    if (updatedData.notes !== undefined) rmb.notes = updatedData.notes;
+
+    rmb.updatedAt = realTimestamp;
+
+    if (Array.isArray(rmb.approvalHistory) && rmb.approvalHistory.length > 0) {
+      rmb.approvalHistory[0].notes = `Pengajuan Klaim Reimburse: "${rmb.itemName}" (${rmb.quantity} unit @ Rp ${rmb.unitPrice.toLocaleString('id-ID')}, Subtotal: Rp ${rmb.subtotal.toLocaleString('id-ID')}) untuk "${rmb.targetKitchen}" (Diedit oleh pemohon pada ${realTimestamp})`;
+    }
+
+    this.addLog(`${user.name} memperbarui data Klaim Reimburse ${id} (${rmb.itemName} · Rp ${rmb.subtotal.toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('reimbursements', {
+      id: rmb.id,
+      employee_id: rmb.employeeId,
+      employee_name: rmb.employeeName,
+      role: rmb.employeeRole,
+      department: rmb.department,
+      item_name: rmb.itemName,
+      unit_price: rmb.unitPrice,
+      quantity: rmb.quantity,
+      subtotal: rmb.subtotal,
+      purchase_date: rmb.purchaseDate,
+      category: rmb.category,
+      target_kitchen: rmb.targetKitchen,
+      bank_name: rmb.bankName,
+      bank_account_no: rmb.bankAccountNo,
+      bank_account_name: rmb.bankAccountName,
+      attachment_url: rmb.attachmentUrl,
+      attachment_name: rmb.attachmentName,
+      workflow_type: rmb.workflowType,
+      stage: rmb.stage,
+      status: rmb.status,
+      approval_history: rmb.approvalHistory
+    }).catch(e => console.warn('Sync reimburse notice:', e));
+
+    return true;
+  }
+
+  async advanceReimbursementStage(id, nextStage, finalStatus, decisionData = {}) {
+    const user = this.getCurrentUser();
+    const rmb = this.getReimbursementById(id);
+    if (!rmb) return false;
+
+    const realTimestamp = getRealtimeTimestamp();
+    const currentStage = rmb.stage;
+    const isRejected = (finalStatus === 'REJECTED');
+
+    if (decisionData.adjustedSubtotal && Number(decisionData.adjustedSubtotal) > 0) {
+      rmb.subtotal = Number(decisionData.adjustedSubtotal);
+      rmb.hasAdjustment = true;
+    }
+
+    if (isRejected) {
+      rmb.stage = 'REJECTED';
+      rmb.status = 'REJECTED';
+      rmb.rejectionReason = decisionData.notes || 'Pengajuan klaim reimburse ditolak.';
+      
+      rmb.approvalHistory.push({
+        stage: currentStage,
+        action: 'REJECTED',
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: `Ditolak oleh ${user.name}. Alasan: "${rmb.rejectionReason}"`
+      });
+
+      this.addLog(`${user.name} (${user.roleLabel}) menolak Klaim Reimburse ${id} pada ${realTimestamp}`, 'procurement');
+    } else {
+      rmb.stage = nextStage;
+      rmb.status = 'PENDING';
+      rmb.updatedAt = realTimestamp;
+
+      let actionLabel = 'APPROVED';
+      let stageNote = `Disetujui oleh ${user.name} (${user.roleLabel}).`;
+
+      if (currentStage === 'MANAGER_APPROVAL') {
+        stageNote = decisionData.notes ? `Disetujui Manager Area: "${decisionData.notes}"` : 'Telah diverifikasi dan disetujui Manager Area, diteruskan ke Staf Ahli Keuangan.';
+      } else if (currentStage === 'FINANCE_VERIFICATION') {
+        stageNote = decisionData.notes ? `Verifikasi Keuangan Selesai: "${decisionData.notes}"` : 'Dokumen bukti bayar dan pagu anggaran terverifikasi sah oleh Staf Ahli Keuangan, diteruskan ke Direksi.';
+      } else if (currentStage === 'DIRECTOR_APPROVAL') {
+        stageNote = decisionData.notes ? `Otorisasi Direksi Selesai: "${decisionData.notes}"` : 'Otorisasi Direksi disetujui penuh, diteruskan ke FAT Officer untuk pencairan transfer.';
+      }
+
+      if (rmb.hasAdjustment) {
+        actionLabel = 'ADJUSTED_AND_APPROVED';
+        stageNote += ` [Penyesuaian Nominal: Rp ${Number(rmb.subtotal).toLocaleString('id-ID')}]`;
+      }
+
+      rmb.approvalHistory.push({
+        stage: currentStage,
+        action: actionLabel,
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: stageNote
+      });
+
+      this.addLog(`${user.name} (${user.roleLabel}) menyetujui Klaim Reimburse ${id} (Tahap: ${currentStage} ➔ ${nextStage}) pada ${realTimestamp}`, 'procurement');
+    }
+
+    this.save();
+
+    await this.syncToSupabase('reimbursements', {
+      id: rmb.id,
+      employee_id: rmb.employeeId,
+      employee_name: rmb.employeeName,
+      role: rmb.employeeRole,
+      department: rmb.department,
+      item_name: rmb.itemName,
+      unit_price: rmb.unitPrice,
+      quantity: rmb.quantity,
+      subtotal: rmb.subtotal,
+      purchase_date: rmb.purchaseDate,
+      category: rmb.category,
+      target_kitchen: rmb.targetKitchen,
+      bank_name: rmb.bankName,
+      bank_account_no: rmb.bankAccountNo,
+      bank_account_name: rmb.bankAccountName,
+      attachment_url: rmb.attachmentUrl,
+      attachment_name: rmb.attachmentName,
+      workflow_type: rmb.workflowType,
+      stage: rmb.stage,
+      status: rmb.status,
+      rejection_reason: rmb.rejectionReason,
+      approval_history: rmb.approvalHistory
+    }).catch(e => console.warn('Sync reimburse notice:', e));
+
+    return true;
+  }
+
+  async disburseReimbursement(id, disburseData = {}) {
+    const user = this.getCurrentUser();
+    const rmb = this.getReimbursementById(id);
+    if (!rmb) return false;
+
+    const realTimestamp = getRealtimeTimestamp();
+    rmb.stage = 'SETTLED';
+    rmb.status = 'SETTLED';
+    rmb.updatedAt = realTimestamp;
+
+    const bankRefNo = disburseData.bankRefNo || `TRF-RMB-${Date.now().toString().slice(-6)}`;
+    const proofUrl = disburseData.proofUrl || null;
+    const notes = disburseData.notes || 'Dana reimbursement telah berhasil ditransfer ke rekening pemohon.';
+
+    rmb.disbursementDetails = {
+      disbursedAt: realTimestamp,
+      disbursedBy: `${user.name} (${user.roleLabel})`,
+      bankRefNo: bankRefNo,
+      proofUrl: proofUrl,
+      notes: notes
+    };
+
+    rmb.approvalHistory.push({
+      stage: 'FAT_DISBURSEMENT',
+      action: 'SETTLED',
+      actorName: `${user.name} (${user.roleLabel})`,
+      actorRole: user.roleLabel,
+      timestamp: realTimestamp,
+      notes: `Pencairan dana transfer selesai sebesar Rp ${Number(rmb.subtotal).toLocaleString('id-ID')} ke rekening ${rmb.bankName} (${rmb.bankAccountNo} a.n ${rmb.bankAccountName}). No. Ref: ${bankRefNo}. Status: Settlement Selesai.`
+    });
+
+    this.addLog(`FAT Officer (${user.name}) mencairkan transfer Klaim Reimburse ${id} (Rp ${Number(rmb.subtotal).toLocaleString('id-ID')}) pada ${realTimestamp}. Status SETTLED.`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('reimbursements', {
+      id: rmb.id,
+      employee_id: rmb.employeeId,
+      employee_name: rmb.employeeName,
+      role: rmb.employeeRole,
+      department: rmb.department,
+      item_name: rmb.itemName,
+      unit_price: rmb.unitPrice,
+      quantity: rmb.quantity,
+      subtotal: rmb.subtotal,
+      purchase_date: rmb.purchaseDate,
+      category: rmb.category,
+      target_kitchen: rmb.targetKitchen,
+      bank_name: rmb.bankName,
+      bank_account_no: rmb.bankAccountNo,
+      bank_account_name: rmb.bankAccountName,
+      attachment_url: rmb.attachmentUrl,
+      attachment_name: rmb.attachmentName,
+      workflow_type: rmb.workflowType,
+      stage: rmb.stage,
+      status: rmb.status,
+      disbursement_details: rmb.disbursementDetails,
+      approval_history: rmb.approvalHistory
+    }).catch(e => console.warn('Sync reimburse notice:', e));
+
+    return true;
+  }
+
+  async deleteReimbursement(id) {
+    if (!Array.isArray(this.data.reimbursements)) {
+      this.data.reimbursements = [...(INITIAL_DATABASE.reimbursements || [])];
+    }
+    const idx = this.data.reimbursements.findIndex(r => r.id === id);
+    if (idx !== -1) {
+      const deleted = this.data.reimbursements.splice(idx, 1)[0];
+      const user = this.getCurrentUser();
+      const realTimestamp = getRealtimeTimestamp();
+      this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus Klaim Reimburse ${deleted.id} pada ${realTimestamp}`, 'procurement');
+      this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/reimbursements?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus reimburse dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
+  // LAPORAN KENDALA HARIAN LAPANGAN (PERWAKILAN YAYASAN -> MANAGER AREA)
+  // =========================================================================
+  getFieldIssues() {
+    const raw = (this.data && Array.isArray(this.data.fieldIssues)) ? this.data.fieldIssues : (INITIAL_DATABASE.fieldIssues || []);
+    return raw.map(issue => {
+      if (Array.isArray(issue.points)) {
+        issue.points = issue.points.map((pt, idx) => {
+          if (typeof pt === 'string') {
+            return {
+              id: `PT-${idx + 1}`,
+              text: pt,
+              status: issue.status === 'FOLLOWED_UP' ? 'SUDAH_SELESAI' : 'BELUM_DIRESPON',
+              response: issue.managerResponse || null,
+              respondedAt: issue.managerRespondedAt || null,
+              respondedBy: issue.managerRespondedBy || null
+            };
+          }
+          return pt;
+        });
+      }
+      return issue;
+    });
+  }
+
+  getFieldIssueById(id) {
+    return this.getFieldIssues().find(f => f.id === id);
+  }
+
+  getFieldIssuesForUser(userId) {
+    return this.getFieldIssues().filter(f => f.authorId === userId);
+  }
+
+  getFieldIssuesForDate(date) {
+    return this.getFieldIssues().filter(f => f.date === date);
+  }
+
+  addFieldIssue(issueData) {
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+    const allIssues = this.getFieldIssues() || [];
+    let maxNum = 0;
+    allIssues.forEach(i => {
+      if (i.id) {
+        const m = i.id.match(/\d+$/);
+        if (m) {
+          const n = parseInt(m[0], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const id = `KDL-2026-${String(maxNum + 1).padStart(3, '0')}`;
+
+    let points = [];
+    if (Array.isArray(issueData.points) && issueData.points.length > 0) {
+      points = issueData.points.map((p, idx) => {
+        if (typeof p === 'object' && p.text) {
+          return {
+            id: p.id || `PT-${idx + 1}`,
+            text: p.text.trim(),
+            status: p.status || 'BELUM_DIRESPON',
+            response: p.response || null,
+            respondedAt: p.respondedAt || null,
+            respondedBy: p.respondedBy || null
+          };
+        }
+        return {
+          id: `PT-${idx + 1}`,
+          text: String(p).trim(),
+          status: 'BELUM_DIRESPON',
+          response: null,
+          respondedAt: null,
+          respondedBy: null
+        };
+      }).filter(p => p.text.length > 0);
+    } else if (issueData.pointsText) {
+      points = issueData.pointsText
+        .split('\n')
+        .map(line => line.replace(/^[\s•\-\*\d\.\:\)]+/, '').trim())
+        .filter(p => p.length > 0)
+        .map((p, idx) => ({
+          id: `PT-${idx + 1}`,
+          text: p,
+          status: 'BELUM_DIRESPON',
+          response: null,
+          respondedAt: null,
+          respondedBy: null
+        }));
+    }
+
+    if (points.length === 0) {
+      points = [{
+        id: 'PT-1',
+        text: 'Kendala operasional dicatat oleh Perwakilan Yayasan di lapangan.',
+        status: 'BELUM_DIRESPON',
+        response: null,
+        respondedAt: null,
+        respondedBy: null
+      }];
+    }
+
+    const newIssue = {
+      id,
+      date: issueData.date || realTimestamp.split(' ')[0],
+      createdAt: realTimestamp,
+      authorId: user.id,
+      authorName: user.name,
+      authorRole: user.roleLabel || 'Perwakilan Yayasan',
+      department: user.department || 'Yayasan - Lapangan',
+      kitchenId: issueData.kitchenId || 'DAPUR-01',
+      kitchenIdSppg: issueData.kitchenIdSppg || 'SPPG-JKT-01',
+      kitchenName: issueData.kitchenName || 'Dapur Sentral Harmoni Tebet',
+      formatType: issueData.formatType || 'BULLET', // 'BULLET' or 'NUMBER'
+      points: points,
+      status: 'PENDING'
+    };
+
+    if (!Array.isArray(this.data.fieldIssues)) this.data.fieldIssues = [];
+    this.data.fieldIssues.unshift(newIssue);
+    this.addLog(`${user.name} melaporkan kendala lapangan ${id} (${points.length} Poin) untuk ${newIssue.kitchenName} pada ${realTimestamp}`, 'kitchen');
+    this.save();
+
+    this.syncToSupabase('field_issues', {
+      id: newIssue.id,
+      author_id: newIssue.authorId,
+      author_name: newIssue.authorName,
+      date: newIssue.date,
+      kitchen_id: newIssue.kitchenId,
+      kitchen_name: newIssue.kitchenName,
+      category: 'Operasional Dapur',
+      severity: 'MEDIUM',
+      issue_description: JSON.stringify(newIssue.points),
+      status: newIssue.status
+    });
+
+    return newIssue;
+  }
+
+  updateIssuePointStatus(issueId, pointId, newStatus, responseText = null) {
+    const user = this.getCurrentUser();
+    const issue = this.getFieldIssueById(issueId);
+    if (!issue || !Array.isArray(issue.points)) return false;
+
+    const point = issue.points.find(p => p.id === pointId || (typeof p === 'object' && p.id === pointId));
+    if (!point) return false;
+
+    const realTimestamp = getRealtimeTimestamp();
+    point.status = newStatus; // 'BELUM_DIRESPON', 'SUDAH_DIRESPON', 'SUDAH_DITANGGAPI', 'SUDAH_SELESAI'
+    if (responseText !== null && responseText !== undefined) {
+      point.response = responseText;
+    }
+    point.respondedAt = realTimestamp;
+    point.respondedBy = `${user.name} (${user.roleLabel})`;
+
+    // Re-evaluate overall issue status
+    const allDone = issue.points.every(p => p.status === 'SUDAH_SELESAI');
+    const anyAction = issue.points.some(p => p.status === 'SUDAH_DITANGGAPI' || p.status === 'SUDAH_DIRESPON' || p.status === 'SUDAH_SELESAI');
+
+    if (allDone) {
+      issue.status = 'FOLLOWED_UP';
+    } else if (anyAction) {
+      issue.status = 'IN_PROGRESS';
+    } else {
+      issue.status = 'PENDING';
+    }
+
+    const statusLabel = newStatus === 'SUDAH_SELESAI' ? 'Sudah Selesai' : newStatus === 'SUDAH_DITANGGAPI' ? 'Sudah Ditanggapi' : newStatus === 'SUDAH_DIRESPON' ? 'Sudah Direspon' : 'Belum Direspon';
+    this.addLog(`Manager Area (${user.name}) memperbarui status poin kendala di ${issue.kitchenName} menjadi "${statusLabel}" pada ${realTimestamp}`, 'kitchen');
+    this.save();
+
+    this.syncToSupabase('field_issues', {
+      id: issue.id,
+      issue_description: JSON.stringify(issue.points),
+      status: issue.status
+    });
+
+    return true;
+  }
+
+  respondFieldIssue(id, responseData = {}) {
+    const user = this.getCurrentUser();
+    const issue = this.getFieldIssueById(id);
+    if (!issue) return false;
+
+    const realTimestamp = getRealtimeTimestamp();
+    const response = responseData.response || responseData.notes || 'Telah ditinjau dan ditindaklanjuti oleh Manager Area.';
+    
+    // Mark all pending points as SUDAH_SELESAI or SUDAH_DITANGGAPI
+    if (Array.isArray(issue.points)) {
+      issue.points.forEach(p => {
+        if (p.status !== 'SUDAH_SELESAI') {
+          p.status = 'SUDAH_DITANGGAPI';
+          p.response = response;
+          p.respondedAt = realTimestamp;
+          p.respondedBy = `${user.name} (${user.roleLabel})`;
+        }
+      });
+    }
+
+    issue.status = 'IN_PROGRESS';
+    this.addLog(`Manager Area (${user.name}) memberikan tanggapan kendala lapangan ${id} (${issue.kitchenName}) pada ${realTimestamp}`, 'kitchen');
+    this.save();
+
+    this.syncToSupabase('field_issues', {
+      id: issue.id,
+      issue_description: JSON.stringify(issue.points),
+      action_taken: response,
+      status: issue.status
+    });
+
+    return true;
+  }
+
+  async deleteFieldIssue(id) {
+    if (!Array.isArray(this.data.fieldIssues)) return false;
+    const idx = this.data.fieldIssues.findIndex(f => f.id === id);
+    if (idx !== -1) {
+      this.data.fieldIssues.splice(idx, 1);
+      this.save();
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/field_issues?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus kendala lapangan dari Supabase:', e);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
+  // UNIVERSAL APPROVAL TRACKER & AUDIT TRAIL DETAILS
+  // =========================================================================
+  getApprovalTrackerDetails(type, id) {
+    if (!type || !id) return null;
+    const typeUpper = type.toUpperCase();
+
+    // 1. PENGADAAN BARANG (PR)
+    if (typeUpper === 'PR' || typeUpper === 'PENGAJUAN') {
+      const pr = this.getItemRequests().find(p => p.id === id);
+      if (!pr) return null;
+
+      const isFinanceStaff = (pr.role === 'FAT_OFFICER' || pr.role === 'STAFF_AHLI_KEUANGAN');
+      const isManagerOrHC = (pr.role === 'MANAGER_AREA' || pr.role === 'MANAGER_KEUANGAN' || pr.role === 'HUMAN_CAPITAL');
+      const history = Array.isArray(pr.approvalHistory) ? pr.approvalHistory : [];
+      const steps = [];
+
+      // Step 1: Submission
+      const hist1 = history.find(h => h.level === 1 || h.stage === 'SUBMISSION');
+      steps.push({
+        level: 1,
+        title: 'Pengajuan Purchase Requisition (PR)',
+        subtitle: 'Inisiasi Permintaan Barang',
+        actorName: hist1 ? hist1.actorName : pr.employeeName,
+        actorRole: hist1 ? hist1.actorRole : (pr.role ? pr.role.replace(/_/g, ' ') : 'Pemohon'),
+        department: pr.department,
+        timestamp: hist1 ? hist1.timestamp : pr.createdAt,
+        status: 'COMPLETED',
+        notes: hist1 ? hist1.notes : `Kebutuhan: "${pr.itemName}" (${pr.originalQuantity || pr.quantity} unit) — ${pr.reason || 'Kebutuhan operasional'}`
+      });
+
+      // Skenario A: Staf Keuangan (FAT & Staf Ahli) -> Langsung Direktur
+      if (isFinanceStaff) {
+        const histDir = history.find(h => h.stage === 'DIRECTOR_APPROVAL' || h.level === 2);
+        const isDirCurrent = (pr.stage === 'DIRECTOR_APPROVAL' && pr.status === 'PENDING');
+        const isDirRejected = (pr.stage === 'REJECTED' && !histDir);
+
+        steps.push({
+          level: 2,
+          title: 'Persetujuan Direksi & Penerbitan PO',
+          subtitle: 'Otorisasi Direktur Keuangan / Direktur Operasional & Penerbitan PO',
+          actorName: histDir ? histDir.actorName : 'Kody Suryo Nugroho (Direktur Keuangan) / Muhammad Arrasyid (Direktur Ops)',
+          actorRole: 'Direksi Eksekutif',
+          timestamp: histDir ? histDir.timestamp : isDirCurrent ? '⏳ Sedang Menunggu Persetujuan Direksi' : isDirRejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: histDir ? (histDir.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isDirRejected ? 'REJECTED' : isDirCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histDir ? histDir.notes : isDirCurrent ? 'Menunggu pengesahan Direktur' : 'Menunggu tahap sebelumnya'
+        });
+      }
+      // Skenario B: Manager & HC -> Verifikasi Keuangan -> Direktur
+      else if (isManagerOrHC) {
+        const histFin = history.find(h => h.stage === 'FINANCE_VERIFICATION' || (h.level === 2 && h.stage !== 'SUBMISSION'));
+        const isFinCurrent = (pr.stage === 'FINANCE_VERIFICATION' && pr.status === 'PENDING');
+        const isFinRejected = (pr.stage === 'REJECTED' && !histFin && pr.stage === 'FINANCE_VERIFICATION');
+
+        steps.push({
+          level: 2,
+          title: 'Verifikasi Anggaran Keuangan & FAT',
+          subtitle: 'Pengecekan Plafon Biaya, Budget Satuan & Ketersediaan Dana',
+          actorName: histFin ? histFin.actorName : 'Sakhiyah Karomah Salam (Staf Ahli Keuangan) / Muhammad Imam Adamy (FAT)',
+          actorRole: 'Staf Ahli Keuangan & FAT Officer',
+          timestamp: histFin ? histFin.timestamp : isFinCurrent ? '⏳ Sedang Menunggu Verifikasi Anggaran' : isFinRejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: histFin ? (histFin.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isFinRejected ? 'REJECTED' : isFinCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histFin ? histFin.notes : isFinCurrent ? 'Sedang diverifikasi ketersediaan dana kas operasional' : 'Menunggu tahap sebelumnya'
+        });
+
+        const histDir = history.find(h => h.stage === 'DIRECTOR_APPROVAL' || h.level === 3);
+        const isDirCurrent = (pr.stage === 'DIRECTOR_APPROVAL' && pr.status === 'PENDING');
+        const isDirRejected = (pr.stage === 'REJECTED' && !histDir && pr.stage === 'DIRECTOR_APPROVAL');
+
+        steps.push({
+          level: 3,
+          title: 'Persetujuan Direksi & Penerbitan PO',
+          subtitle: 'Otorisasi Final & Penerbitan Purchase Order Resmi',
+          actorName: histDir ? histDir.actorName : 'Kody Suryo Nugroho (Direktur Keuangan) / Rochmad (Direktur Utama)',
+          actorRole: 'Direksi Eksekutif',
+          timestamp: histDir ? histDir.timestamp : isDirCurrent ? '⏳ Sedang Menunggu Pengesahan Direksi' : isDirRejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: histDir ? (histDir.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isDirRejected ? 'REJECTED' : isDirCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histDir ? histDir.notes : isDirCurrent ? 'Menunggu pengesahan Direktur' : 'Menunggu tahap sebelumnya'
+        });
+      }
+      // Skenario C: Lapangan & Maker Dapur -> Manager Area -> Verifikasi Keuangan -> Direktur
+      else {
+        const hist2 = history.find(h => h.stage === 'MANAGER_APPROVAL' || (h.level === 2 && h.stage !== 'SUBMISSION'));
+        const isStep2Current = (pr.stage === 'MANAGER_APPROVAL' && pr.status === 'PENDING');
+        const isStep2Rejected = (pr.stage === 'REJECTED' && !hist2);
+
+        steps.push({
+          level: 2,
+          title: 'Review & Validasi Manager Area',
+          subtitle: 'Verifikasi Urgensi & Justifikasi Kebutuhan Lapangan / Dapur',
+          actorName: hist2 ? hist2.actorName : 'Manager Area Terkait (Rendy Seftiana / Bivaldie A.R. / Dian Ekawati)',
+          actorRole: 'Manager Area',
+          timestamp: hist2 ? hist2.timestamp : isStep2Current ? '⏳ Sedang Menunggu Review Manager Area' : isStep2Rejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: hist2 ? (hist2.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep2Rejected ? 'REJECTED' : isStep2Current ? 'ACTIVE' : 'UPCOMING',
+          notes: hist2 ? hist2.notes : isStep2Current ? 'Dalam antrean review Manager Area' : 'Menunggu tahap sebelumnya'
+        });
+
+        const hist3 = history.find(h => h.stage === 'FINANCE_VERIFICATION' || (h.level === 3 && h.stage !== 'SUBMISSION' && h.stage !== 'MANAGER_APPROVAL'));
+        const isStep3Current = (pr.stage === 'FINANCE_VERIFICATION' && pr.status === 'PENDING');
+        const isStep3Rejected = (pr.stage === 'REJECTED' && !hist3 && pr.stage === 'FINANCE_VERIFICATION');
+
+        steps.push({
+          level: 3,
+          title: 'Verifikasi Anggaran Keuangan & FAT',
+          subtitle: 'Pengecekan Plafon Biaya, Budget Satuan & Ketersediaan Dana',
+          actorName: hist3 ? hist3.actorName : 'Sakhiyah Karomah Salam (Staf Ahli Keuangan) / Muhammad Imam Adamy (FAT)',
+          actorRole: 'Staf Ahli Keuangan & FAT Officer',
+          timestamp: hist3 ? hist3.timestamp : isStep3Current ? '⏳ Sedang Menunggu Verifikasi Anggaran' : isStep3Rejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: hist3 ? (hist3.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep3Rejected ? 'REJECTED' : isStep3Current ? 'ACTIVE' : 'UPCOMING',
+          notes: hist3 ? hist3.notes : isStep3Current ? 'Sedang diverifikasi ketersediaan dana kas operasional' : 'Menunggu tahap sebelumnya'
+        });
+
+        const hist4 = history.find(h => h.stage === 'DIRECTOR_APPROVAL' || (h.level === 4 && h.stage !== 'SUBMISSION' && h.stage !== 'MANAGER_APPROVAL' && h.stage !== 'FINANCE_VERIFICATION'));
+        const isStep4Current = (pr.stage === 'DIRECTOR_APPROVAL' && pr.status === 'PENDING');
+        const isStep4Rejected = (pr.stage === 'REJECTED' && !hist4 && pr.stage === 'DIRECTOR_APPROVAL');
+
+        steps.push({
+          level: 4,
+          title: 'Persetujuan Direksi & Penerbitan PO',
+          subtitle: 'Otorisasi Final & Penerbitan Purchase Order Resmi',
+          actorName: hist4 ? hist4.actorName : 'Kody Suryo Nugroho (Direktur Keuangan) / Rochmad (Direktur Utama)',
+          actorRole: 'Direksi Eksekutif',
+          timestamp: hist4 ? hist4.timestamp : isStep4Current ? '⏳ Sedang Menunggu Pengesahan Direksi' : isStep4Rejected ? pr.createdAt : '⚪ Menunggu Giliran',
+          status: hist4 ? (hist4.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep4Rejected ? 'REJECTED' : isStep4Current ? 'ACTIVE' : 'UPCOMING',
+          notes: hist4 ? hist4.notes : isStep4Current ? 'Menunggu pengesahan Direktur' : 'Menunggu tahap sebelumnya'
+        });
+      }
+
+      if (pr.status === 'APPROVED') {
+        const trackHist = Array.isArray(pr.orderTrackingHistory) ? pr.orderTrackingHistory : [];
+        const isFailed = (pr.orderStatus === 'GAGAL_PENGIRIMAN');
+        const isReceived = (pr.orderStatus === 'SUDAH_DITERIMA' || pr.orderStatus === 'INVOICE_SUBMITTED' || pr.orderStatus === 'SETTLEMENT');
+        const latestTrack = trackHist.length > 0 ? trackHist[trackHist.length - 1] : null;
+
+        steps.push({
+          level: steps.length + 1,
+          title: 'Pengiriman & Penerimaan Barang (PO Delivery)',
+          subtitle: 'Proses Eksekusi Order, Pengiriman Supplier & Penerimaan Fisik di Lokasi',
+          actorName: latestTrack ? `${latestTrack.updatedByName || 'Operator PO'} (${latestTrack.role || 'Operator'})` : 'Muhammad Syafiq Al Ghifari & Syifa Izzatina (Operator PO)',
+          actorRole: 'Tim Eksekusi & Logistik PO',
+          timestamp: latestTrack ? latestTrack.timestamp : (isFailed ? '⚠️ Gagal Pengiriman' : '📦 Proses Pesanan Berjalan'),
+          status: isFailed ? 'REJECTED' : isReceived ? 'COMPLETED' : 'ACTIVE',
+          notes: latestTrack ? latestTrack.notes : (isFailed ? 'Barang mengalami kendala pengiriman / retur supplier.' : 'Dalam penanganan tim logistik & pengiriman.')
+        });
+      }
+
+      return {
+        type: 'PR',
+        id: pr.id,
+        title: pr.itemName,
+        category: pr.category,
+        urgency: pr.urgency,
+        quantity: pr.quantity,
+        unitPrice: pr.unitPrice,
+        totalPrice: pr.totalPrice,
+        originalQuantity: pr.originalQuantity,
+        originalUnitPrice: pr.originalUnitPrice,
+        originalTotalPrice: pr.originalTotalPrice,
+        hasAdjustment: pr.hasAdjustment || false,
+        adjustments: pr.adjustments || [],
+        targetKitchen: pr.targetKitchen,
+        requester: `${pr.employeeName} (${pr.department})`,
+        attachmentUrl: pr.attachmentUrl || null,
+        attachmentName: pr.attachmentName || null,
+        stage: (pr.orderStatus === 'GAGAL_PENGIRIMAN') ? 'GAGAL_PENGIRIMAN' : pr.stage,
+        status: (pr.orderStatus === 'GAGAL_PENGIRIMAN') ? 'GAGAL_PENGIRIMAN' : pr.status,
+        orderStatus: pr.orderStatus,
+        orderTrackingHistory: pr.orderTrackingHistory,
+        steps
+      };
+    }
+
+    // 2. CUTI & IZIN (LEAVE)
+    if (typeUpper === 'LEAVE' || typeUpper === 'CUTI') {
+      const leave = this.getLeaves().find(l => l.id === id);
+      if (!leave) return null;
+
+      const isManagerAreaTier = (leave.approvalFlow === 'MANAGER_AREA_TIER');
+      const history = Array.isArray(leave.approvalHistory) ? leave.approvalHistory : [];
+      const steps = [];
+
+      // Step 1: Submission (Semua Role)
+      const hist1 = history.find(h => h.level === 1 || h.stage === 'SUBMISSION');
+      steps.push({
+        level: 1,
+        title: 'Pengajuan Cuti / Izin Mandiri',
+        subtitle: 'Pengisian Formulir Karyawan Sesuai Ketentuan',
+        actorName: hist1 ? hist1.actorName : leave.employeeName,
+        actorRole: hist1 ? hist1.actorRole : (leave.role ? leave.role.replace(/_/g, ' ') : 'Karyawan'),
+        department: leave.department,
+        timestamp: hist1 ? hist1.timestamp : leave.createdAt,
+        status: 'COMPLETED',
+        notes: hist1 ? hist1.notes : `Permohonan: ${leave.type} (${leave.duration} hari kerja: ${leave.startDate} s.d ${leave.endDate}). Alasan: "${leave.reason || '-'}"`
+      });
+
+      // SKENARIO A: Tim Lapangan & Maker Dapur -> Manager Area -> HC
+      if (isManagerAreaTier) {
+        const hist2 = history.find(h => h.stage === 'MANAGER_AREA_REVIEW' || (h.level === 2 && h.stage !== 'SUBMISSION'));
+        const isStep2Current = (leave.stage === 'MANAGER_AREA_REVIEW' && leave.status === 'PENDING');
+        const isStep2Rejected = (leave.status === 'REJECTED' && !hist2 && leave.stage === 'MANAGER_AREA_REVIEW');
+
+        steps.push({
+          level: 2,
+          title: 'Review & Persetujuan Manager Area',
+          subtitle: 'Verifikasi Operasional Lapangan / Dapur Wilayah Terkait',
+          actorName: hist2 ? hist2.actorName : 'Manager Area Terkait (Rendy Seftiana / Bivaldie A.R. / Dian Ekawati)',
+          actorRole: 'Manager Area',
+          timestamp: hist2 ? hist2.timestamp : isStep2Current ? '⏳ Sedang Menunggu Persetujuan Manager Area' : isStep2Rejected ? leave.createdAt : '⚪ Menunggu Giliran',
+          status: hist2 ? (hist2.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep2Rejected ? 'REJECTED' : isStep2Current ? 'ACTIVE' : 'UPCOMING',
+          notes: hist2 ? hist2.notes : isStep2Current ? 'Dalam antrean review Manager Area' : 'Menunggu tahap sebelumnya'
+        });
+
+        const hist3 = history.find(h => h.stage === 'HC_FINAL' || h.stage === 'HC_REVIEW' || h.level === 3);
+        const isStep3Current = ((leave.stage === 'HC_FINAL' || leave.stage === 'HC_REVIEW') && leave.status === 'PENDING');
+        const isStep3Rejected = (leave.status === 'REJECTED' && (leave.stage === 'HC_FINAL' || leave.stage === 'HC_REVIEW'));
+
+        steps.push({
+          level: 3,
+          title: 'Pengesahan & Pemotongan Kuota Human Capital',
+          subtitle: 'Pencatatan HRIS, Kalender Kerja & Hak Cuti Normatif',
+          actorName: hist3 ? hist3.actorName : 'Tazkia Aulia (Human Capital & GA)',
+          actorRole: 'Human Capital & GA',
+          timestamp: hist3 ? hist3.timestamp : isStep3Current ? '⏳ Sedang Menunggu Validasi HC' : isStep3Rejected ? leave.createdAt : '⚪ Menunggu Giliran',
+          status: hist3 ? (hist3.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep3Rejected ? 'REJECTED' : isStep3Current ? 'ACTIVE' : 'UPCOMING',
+          notes: hist3 ? hist3.notes : isStep3Current ? 'Sedang divalidasi oleh Tim Human Capital' : 'Menunggu persetujuan Manager Area'
+        });
+      }
+      // SKENARIO B: Tim Keuangan, Manajerial, dan HC -> Direksi -> HC
+      else {
+        const hist2 = history.find(h => h.level === 2 || h.stage === 'DIR_OPS_OR_KEU_REVIEW' || h.stage === 'DIR_KEU_REVIEW');
+        const isStep2Current = ((leave.stage === 'DIR_OPS_OR_KEU_REVIEW' || leave.stage === 'DIR_KEU_REVIEW') && leave.status === 'PENDING');
+        const isStep2Rejected = (leave.status === 'REJECTED' && !hist2);
+
+        steps.push({
+          level: 2,
+          title: 'Persetujuan Direksi Terkait',
+          subtitle: 'Otorisasi Direktur Keuangan / Direktur Operasional',
+          actorName: hist2 ? hist2.actorName : 'Kody Suryo Nugroho (Direktur Keuangan) / Muhammad Arrasyid (Direktur Ops)',
+          actorRole: 'Direksi Eksekutif',
+          timestamp: hist2 ? hist2.timestamp : isStep2Current ? '⏳ Sedang Menunggu Persetujuan Direksi' : isStep2Rejected ? leave.createdAt : '⚪ Menunggu Giliran',
+          status: hist2 ? (hist2.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep2Rejected ? 'REJECTED' : isStep2Current ? 'ACTIVE' : 'UPCOMING',
+          notes: hist2 ? hist2.notes : isStep2Current ? 'Dalam antrean telaah Direksi Eksekutif' : 'Menunggu tahap sebelumnya'
+        });
+
+        const hist3 = history.find(h => h.level === 3 || h.stage === 'HC_FINAL' || h.stage === 'HC_REVIEW');
+        const isStep3Current = ((leave.stage === 'HC_FINAL' || leave.stage === 'HC_REVIEW') && leave.status === 'PENDING');
+        const isStep3Rejected = (leave.status === 'REJECTED' && (leave.stage === 'HC_FINAL' || leave.stage === 'HC_REVIEW'));
+
+        steps.push({
+          level: 3,
+          title: 'Pengesahan & Pencatatan Kalender Human Capital',
+          subtitle: 'Pembaruan Database HRIS & Rekapitulasi Presensi',
+          actorName: hist3 ? hist3.actorName : 'Tazkia Aulia (Human Capital & GA)',
+          actorRole: 'Human Capital & GA',
+          timestamp: hist3 ? hist3.timestamp : isStep3Current ? '⏳ Sedang Menunggu Validasi HC' : isStep3Rejected ? leave.createdAt : '⚪ Menunggu Giliran',
+          status: hist3 ? (hist3.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep3Rejected ? 'REJECTED' : isStep3Current ? 'ACTIVE' : 'UPCOMING',
+          notes: hist3 ? hist3.notes : isStep3Current ? 'Sedang divalidasi oleh Tim Human Capital' : 'Menunggu persetujuan Direksi'
+        });
+      }
+
+      return {
+        type: 'LEAVE',
+        id: leave.id,
+        title: leave.type,
+        duration: leave.duration,
+        startDate: leave.startDate,
+        endDate: leave.endDate,
+        quotaDeductionType: leave.quotaDeductionType,
+        requester: `${leave.employeeName} (${leave.department})`,
+        reason: leave.reason,
+        attachmentUrl: leave.attachmentUrl || null,
+        attachmentName: leave.attachmentName || null,
+        stage: leave.stage,
+        status: leave.status,
+        steps
+      };
+    }
+
+    // 3. TIMESHEET
+    if (typeUpper === 'TIMESHEET' || typeUpper === 'TS') {
+      const ts = this.getTimesheets().find(t => t.id === id);
+      if (!ts) return null;
+
+      const history = Array.isArray(ts.approvalHistory) ? ts.approvalHistory : [];
+      const hist1 = history.find(h => h.level === 1 || h.stage === 'RECORDED' || h.stage === 'SUBMISSION');
+
+      const steps = [
+        {
+          level: 1,
+          title: 'Pencatatan Log Kerja Mandiri',
+          subtitle: 'Pencatatan Aktivitas, Jam Efektif & Detail Tugas',
+          actorName: hist1 ? hist1.actorName : ts.employeeName,
+          actorRole: hist1 ? hist1.actorRole : (ts.role ? ts.role.replace(/_/g, ' ') : 'Karyawan'),
+          department: ts.department,
+          timestamp: hist1 ? hist1.timestamp : `${ts.date} ${ts.startTime || '08:00'}`,
+          status: 'COMPLETED',
+          notes: hist1 ? hist1.notes : `Aktivitas: "${ts.activityPreset || ts.activity}" (${ts.hours} Jam Kerja: ${ts.startTime} - ${ts.endTime}) [RECORDED]`
+        }
+      ];
+
+      return {
+        type: 'TIMESHEET',
+        id: ts.id,
+        title: ts.activityPreset || ts.activity,
+        date: ts.date,
+        hours: ts.hours,
+        startTime: ts.startTime,
+        endTime: ts.endTime,
+        requester: `${ts.employeeName} (${ts.department})`,
+        status: ts.status,
+        steps
+      };
+    }
+
+    // 4. CASH ADVANCE (KASBON OPERASIONAL & SETTLEMENT)
+    if (typeUpper === 'CA' || typeUpper === 'CASH_ADVANCE' || typeUpper === 'KASBON') {
+      const ca = this.getCashAdvances().find(c => c.id === id);
+      if (!ca) return null;
+
+      const history = Array.isArray(ca.approvalHistory) ? ca.approvalHistory : [];
+      const steps = [];
+
+      // Level 1: Submission
+      const hist1 = history.find(h => h.level === 1 || h.stage === 'SUBMISSION');
+      steps.push({
+        level: 1,
+        title: 'Pengajuan Permintaan Cash Advance',
+        subtitle: 'Inisiasi Kebutuhan Dana Kasbon Operasional',
+        actorName: hist1 ? hist1.actorName : ca.employeeName,
+        actorRole: hist1 ? hist1.actorRole : (ca.employeeRole ? ca.employeeRole.replace(/_/g, ' ') : 'Pemohon'),
+        department: ca.department,
+        timestamp: hist1 ? hist1.timestamp : ca.createdAt,
+        status: 'COMPLETED',
+        notes: hist1 ? hist1.notes : `Pengajuan Kasbon: Rp ${Number(ca.amountRequested).toLocaleString('id-ID')} untuk "${ca.title}". Target: ${ca.targetLocation}. Rekening: ${ca.bankName} ${ca.bankAccountNo} a.n ${ca.bankAccountName}`
+      });
+
+      // Level 2: Director Approval
+      const hist2 = history.find(h => h.level === 2 || h.stage === 'DIRECTOR_APPROVAL');
+      const isStep2Current = (ca.stage === 'DIRECTOR_REVIEW' && ca.status === 'PENDING');
+      const isStep2Rejected = (ca.stage === 'REJECTED' && !hist2);
+      steps.push({
+        level: 2,
+        title: 'Otorisasi & Persetujuan Direksi',
+        subtitle: 'Validasi Urgensi & Penetapan Plafon Kasbon oleh Direktur',
+        actorName: hist2 ? hist2.actorName : 'Muhammad Arrasyid (Direktur Ops) / Kody Suryo Nugroho (Direktur Keu)',
+        actorRole: 'Direktur Operasional / Keuangan',
+        timestamp: hist2 ? hist2.timestamp : isStep2Current ? '⏳ Sedang Menunggu Otorisasi Direksi' : isStep2Rejected ? ca.createdAt : '⚪ Menunggu Giliran',
+        status: hist2 ? (hist2.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep2Rejected ? 'REJECTED' : isStep2Current ? 'ACTIVE' : 'UPCOMING',
+        notes: hist2 ? hist2.notes : isStep2Current ? 'Sedang ditelaah oleh Jajaran Direksi' : 'Menunggu tahap sebelumnya'
+      });
+
+      // Level 3: FAT Disbursement / Transfer
+      const hist3 = history.find(h => h.level === 3 || h.stage === 'FAT_DISBURSEMENT');
+      const isStep3Current = (ca.stage === 'FAT_DISBURSEMENT' && ca.status === 'PENDING');
+      steps.push({
+        level: 3,
+        title: 'Pencairan & Transfer Dana Kas Operasional (FAT)',
+        subtitle: 'Eksekusi Transfer Bank ke Rekening Pemohon oleh Finance & Accounting',
+        actorName: hist3 ? hist3.actorName : 'Muhammad Imam Adamy (FAT Officer) / Sakhiyah Karomah Salam (Staf Ahli Keuangan)',
+        actorRole: 'FAT Officer & Keuangan',
+        timestamp: hist3 ? hist3.timestamp : isStep3Current ? '⏳ Menunggu Transfer Dana oleh FAT' : (ca.stage === 'REJECTED' ? '✕ Batal (Pengajuan Ditolak)' : '⚪ Menunggu Giliran'),
+        status: hist3 ? 'COMPLETED' : isStep3Current ? 'ACTIVE' : (ca.stage === 'REJECTED' ? 'REJECTED' : 'UPCOMING'),
+        notes: hist3 
+          ? hist3.notes 
+          : isStep3Current ? `Plafon Rp ${Number(ca.amountApproved || ca.amountRequested).toLocaleString('id-ID')} siap dicairkan ke rekening pemohon` : 'Menunggu otorisasi Direksi'
+      });
+
+      // Level 4: Settlement LPJ & Pengembalian Sisa Dana
+      const hist4Sub = history.find(h => h.stage === 'SETTLEMENT_SUBMISSION');
+      const hist4Ver = history.find(h => h.stage === 'SETTLEMENT_VERIFIED');
+      const isWaitingLPJ = (ca.stage === 'DISBURSED' && ca.status === 'DISBURSED');
+      const isLPJSubmitted = (ca.stage === 'SETTLEMENT_SUBMITTED' && ca.status === 'SETTLEMENT_PENDING');
+      const isSettled = (ca.stage === 'SETTLED' || ca.status === 'SETTLED');
+
+      let step4Notes = 'Menunggu pencairan kasbon';
+      if (isWaitingLPJ) {
+        step4Notes = 'Dana telah diterima pemohon. Menunggu penggunaan dana dan pengunggahan nota/kwitansi realisasi LPJ';
+      } else if (isLPJSubmitted) {
+        step4Notes = `Laporan LPJ dikirim oleh ${ca.settlement?.submittedBy || 'Pemohon'} (Total Realisasi: Rp ${Number(ca.settlement?.totalSpent || 0).toLocaleString('id-ID')}). Sedang diverifikasi Tim FAT.`;
+      } else if (isSettled) {
+        step4Notes = hist4Ver ? hist4Ver.notes : 'Laporan Realisasi & Nota Kwitansi Sah. Transaksi Kasbon Ditutup (Lunas & Selesai).';
+      }
+
+      steps.push({
+        level: 4,
+        title: 'Pelaporan Realisasi Belanja (LPJ) & Settlement Sisa Dana',
+        subtitle: 'Unggah Kwitansi / Struk Nota & Rekonsiliasi Pengembalian / Reimbursement',
+        actorName: isSettled ? (hist4Ver ? hist4Ver.actorName : 'FAT Officer') : (hist4Sub ? hist4Sub.actorName : `${ca.employeeName} (Pemohon)`),
+        actorRole: isSettled ? 'FAT Officer' : 'Pemohon & FAT',
+        timestamp: hist4Ver ? hist4Ver.timestamp : hist4Sub ? hist4Sub.timestamp : isWaitingLPJ ? '⏳ Menunggu Pemohon Mengunggah Nota LPJ' : '⚪ Menunggu Giliran',
+        status: isSettled ? 'COMPLETED' : (isLPJSubmitted || isWaitingLPJ) ? 'ACTIVE' : 'UPCOMING',
+        notes: step4Notes,
+        settlement: ca.settlement || null
+      });
+
+      return {
+        type: 'CA',
+        id: ca.id,
+        title: ca.title,
+        category: ca.category,
+        targetLocation: ca.targetLocation,
+        amountRequested: ca.amountRequested,
+        amountApproved: ca.amountApproved,
+        amountDisbursed: ca.amountDisbursed,
+        bankName: ca.bankName,
+        bankAccountNo: ca.bankAccountNo,
+        bankAccountName: ca.bankAccountName,
+        requester: `${ca.employeeName} (${ca.department})`,
+        reason: ca.reason,
+        stage: ca.stage,
+        status: ca.status,
+        settlement: ca.settlement,
+        steps
+      };
+    }
+
+    return null;
+  }
+
+  getCatalog() {
+    return (this.data && Array.isArray(this.data.catalog)) ? this.data.catalog : INITIAL_DATABASE.catalog;
+  }
+
+  getActivityLogs() {
+    return (this.data && Array.isArray(this.data.activityLogs)) ? this.data.activityLogs : INITIAL_DATABASE.activityLogs;
+  }
+
+  addLog(text, type = 'general') {
+    const time = new Date().toTimeString().slice(0, 5);
+    const newLog = {
+      id: Date.now(),
+      text,
+      time,
+      type
+    };
+    if (!Array.isArray(this.data.activityLogs)) this.data.activityLogs = [];
+    this.data.activityLogs.unshift(newLog);
+    if (this.data.activityLogs.length > 30) this.data.activityLogs.pop();
+    this.save();
+  }
+
+  getPendingApprovalsCount() {
+    const user = this.getCurrentUser();
+    const leaves = this.getLeaves() || [];
+    const prs = this.getItemRequests() || [];
+    const cas = this.getCashAdvances() || [];
+    const rmbs = this.getReimbursements() || [];
+
+    let count = 0;
+
+    if (user.role === 'HUMAN_CAPITAL') {
+      count += leaves.filter(l => l.status === 'PENDING' && (l.stage === 'HC_REVIEW' || l.stage === 'HC_FINAL')).length;
+    } else if (user.role === 'DIREKTUR_KEUANGAN' || user.role === 'DIREKTUR_OPERASIONAL') {
+      count += leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW')).length;
+      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL').length;
+      count += cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW').length;
+      count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'DIRECTOR_APPROVAL').length;
+    } else if (user.role === 'MANAGER_AREA') {
+      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'SURVEYOR' || p.role === 'PERWAKILAN_YAYASAN' || p.role === 'STAFF_OPERASIONAL' || p.role === 'MAKER_YAYASAN')).length;
+      count += leaves.filter(l => l.status === 'PENDING' && l.stage === 'MANAGER_AREA_REVIEW' && (l.role === 'SURVEYOR' || l.role === 'PERWAKILAN_YAYASAN' || l.role === 'STAFF_OPERASIONAL' || l.role === 'MAKER_YAYASAN')).length;
+      count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'MANAGER_APPROVAL' && r.workflowType === 'FIELD_JALUR_1').length;
+    } else if (user.role === 'MANAGER_KEUANGAN') {
+      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && p.role !== 'FAT_OFFICER' && p.role !== 'STAFF_AHLI_KEUANGAN').length;
+    } else if (user.role === 'FAT_OFFICER') {
+      count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
+      count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FAT_DISBURSEMENT').length;
+      count += prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED').length;
+    } else if (user.role === 'STAFF_AHLI_KEUANGAN') {
+      count += prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION').length;
+      count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FINANCE_VERIFICATION').length;
+    } else if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') {
+      count += leaves.filter(l => l.status === 'PENDING').length;
+      count += prs.filter(p => p.status === 'PENDING').length;
+      count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
+      count += rmbs.filter(r => r.status === 'PENDING').length;
+      count += prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED').length;
+    }
+
+    return count;
+  }
+
+  // =========================================================================
+  // ORGANIZATIONAL STRUCTURE (DRAG & DROP & CONNECTIONS)
+  // =========================================================================
+
+  getOrgStructure() {
+    if (this.data && this.data.orgStructure && Array.isArray(this.data.orgStructure.nodes) && Array.isArray(this.data.orgStructure.tiers)) {
+      return this.data.orgStructure;
+    }
+    return JSON.parse(JSON.stringify(INITIAL_DATABASE.orgStructure));
+  }
+
+  saveOrgStructure(structureData) {
+    if (!this.data) this.data = {};
+    this.data.orgStructure = structureData;
+    this.addLog('Human Capital menyimpan penyesuaian struktur organisasi & jalur koordinasi', 'hc');
+    this.save();
+    return true;
+  }
+
+  // =========================================================================
+  // SUPABASE CLOUD SYNC & GMAIL NOTIFICATION HELPERS
+  // =========================================================================
+
+  async syncToSupabase(table, data, isUpsert = true) {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      console.warn('[Supabase Sync] Supabase belum dikonfigurasi.');
+      return null;
+    }
+
+    const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+    const key = window.SupabaseConfig.getAnonKey();
+    const idVal = data.id || (data.id_sppg ? data.id_sppg : null);
+
+    try {
+      console.log(`[Supabase Sync] Mengirim data ke tabel "${table}"...`, idVal || '');
+
+      // 1. Jika data memiliki ID spesifik, gunakan PATCH terlebih dahulu untuk memperbarui sebagian kolom tanpa melanggar constraint NOT NULL
+      if (idVal) {
+        try {
+          const patchRes = await fetch(`${url}/rest/v1/${table}?id=eq.${encodeURIComponent(idVal)}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': key,
+              'Authorization': `Bearer ${key}`,
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify(data)
+          });
+
+          if (patchRes.ok) {
+            const patched = await patchRes.json();
+            if (Array.isArray(patched) && patched.length > 0) {
+              console.log(`✅ [Supabase PATCH] Berhasil memperbarui data di tabel "${table}" (ID: ${idVal})`);
+              return { success: true, data: patched };
+            }
+          } else {
+            const patchErrText = await patchRes.text();
+            console.warn(`[Supabase PATCH Non-OK] HTTP ${patchRes.status} pada tabel "${table}":`, patchErrText);
+            
+            // Retry PATCH with fallback foreign keys if constraint failed
+            if (table === 'kitchen_reports' && patchErrText.includes('foreign key constraint')) {
+              console.log(`[Supabase PATCH Retry] Mencoba fallback foreign key untuk "${table}"...`);
+              const retryData = { ...data, reporter_id: null, kitchen_id: 'DAPUR-01' };
+              const retryRes = await fetch(`${url}/rest/v1/${table}?id=eq.${encodeURIComponent(idVal)}`, {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'apikey': key,
+                  'Authorization': `Bearer ${key}`,
+                  'Prefer': 'return=representation'
+                },
+                body: JSON.stringify(retryData)
+              });
+              if (retryRes.ok) {
+                const retriedPatched = await retryRes.json();
+                if (Array.isArray(retriedPatched) && retriedPatched.length > 0) {
+                  console.log(`✅ [Supabase PATCH Retry] Berhasil dengan fallback foreign key!`);
+                  return { success: true, data: retriedPatched };
+                }
+              }
+            }
+          }
+        } catch (patchErr) {
+          console.warn(`[Supabase PATCH Warning] Fallback ke POST/Upsert:`, patchErr);
+        }
+      }
+
+      // 2. Direct HTTP REST PostgREST API (Insert / Full Upsert)
+      const headers = {
+        'Content-Type': 'application/json',
+        'apikey': key,
+        'Authorization': `Bearer ${key}`,
+        'Prefer': isUpsert ? 'resolution=merge-duplicates,return=representation' : 'return=representation'
+      };
+
+      const endpoint = `${url}/rest/v1/${table}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(data)
+      });
+
+      if (response.ok) {
+        console.log(`✅ [Supabase Sync REST] Berhasil sinkronisasi ke tabel "${table}":`, idVal || '');
+        return { success: true };
+      } else {
+        const errText = await response.text();
+        console.error(`❌ [Supabase Sync REST Error] HTTP ${response.status} pada tabel ${table}:`, errText);
+
+        // Retry POST with fallback foreign keys if constraint failed
+        if (table === 'kitchen_reports' && errText.includes('foreign key constraint')) {
+          console.log(`[Supabase POST Retry] Mencoba fallback POST foreign key untuk "${table}"...`);
+          const retryData = { ...data, reporter_id: null, kitchen_id: 'DAPUR-01' };
+          const retryRes = await fetch(endpoint, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(retryData)
+          });
+          if (retryRes.ok) {
+            console.log(`✅ [Supabase POST Retry] Berhasil dengan fallback foreign key!`);
+            return { success: true };
+          }
+        }
+
+        return { error: errText };
+      }
+    } catch (e) {
+      console.error(`❌ [Supabase Sync Exception] pada tabel ${table}:`, e);
+      return null;
+    }
+  }
+
+  // Sinkronkan Master Dapur ke Supabase agar foreign key valid dan nama dapur terupdate
+  async syncMasterKitchensToSupabase() {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+
+      const kitchensData = this.getKitchens().map(k => ({
+        id: k.id,
+        id_sppg: k.idSppg || k.id,
+        nama_dapur: k.namaDapur || k.name || 'Dapur SPPG',
+        nama_yayasan: k.namaYayasan || 'Yayasan Mitra Mandiri Sejahtera',
+        provinsi: k.provinsi || 'DKI Jakarta',
+        kota_kabupaten: k.kotaKabupaten || '-',
+        kecamatan: k.kecamatan || '-',
+        kelurahan: k.kelurahan || '-',
+        alamat_lengkap: k.alamatLengkap || '-',
+        location: k.location || `${k.kotaKabupaten || '-'}, ${k.provinsi || '-'}`,
+        maker_yayasan: k.makerYayasan || 'Belum Ditetapkan',
+        perwakilan_yayasan: k.perwakilanYayasan || 'Belum Ditetapkan',
+        manager_area: k.managerArea || 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+        status: k.status || 'AKTIF',
+        kapasitas_porsi: Number(k.kapasitasPorsi) || 500
+      }));
+
+      await fetch(`${url}/rest/v1/kitchens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': key,
+          'Authorization': `Bearer ${key}`,
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify(kitchensData)
+      });
+      console.log('✅ [Supabase Seed] Seluruh Master Dapur berhasil disinkronkan ke Supabase.');
+    } catch (e) {
+      console.warn('⚠️ Gagal sinkronisasi master kitchens ke Supabase:', e);
+    }
+  }
+
+  // Sinkronkan 36 Akun Master Users ke Supabase agar Foreign Key Cuti & PR tidak error
+  async syncMasterUsersToSupabase() {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+
+      console.log('[Supabase Sync] Menyinkronkan master akun pengguna ke tabel "users"...');
+      const usersData = this.getUsers().map(u => ({
+        id: u.id,
+        nika: u.nika || '',
+        name: u.name,
+        role: u.role,
+        role_label: u.roleLabel || '',
+        kode_jabatan: u.kodeJabatan || '',
+        jabatan: u.jabatan || '',
+        level_grade: u.levelGrade || '',
+        department: u.department || '',
+        avatar_grad: u.avatarGrad || '',
+        quota_annual_leave: Number(u.quotaAnnualLeave) || 12,
+        remaining_annual_leave: Number(u.remainingAnnualLeave) || 12,
+        quota_personal_leave: Number(u.quotaPersonalLeave) || 3,
+        remaining_personal_leave: Number(u.remainingPersonalLeave) || 3,
+        current_quarter: u.currentQuarter || 'Q3 (Juli–September 2026)',
+        join_date: (u.joinDate && u.joinDate !== '-') ? u.joinDate : null,
+        birth_place: u.birthPlace || '',
+        birth_date: (u.birthDate && u.birthDate !== '-') ? u.birthDate : null,
+        agama: u.agama || 'Islam',
+        gender: u.gender || 'Laki-laki',
+        phone: u.phone || '',
+        email: u.email || '',
+        username: u.username || u.id.toLowerCase(),
+        password: u.password || 'password123',
+        nik: u.nik || '',
+        status_karyawan: u.statusKaryawan || 'Tetap',
+        status_pajak: u.statusPajak || 'TK/0',
+        pendidikan: u.pendidikan || 'Sarjana (S1)',
+        no_kk: u.noKK || '',
+        alamat_ktp: u.alamatKTP || '',
+        alamat_domisili: u.alamatDomisili || '',
+        status_tempat_tinggal: u.statusTempatTinggal || 'Milik Sendiri',
+        no_npwp: u.noNPWP || '',
+        alamat_npwp: u.alamatNPWP || '',
+        bank_name: u.bankName || '',
+        rekening_no: u.rekeningNo || '',
+        rekening_name: u.rekeningName || u.name,
+        no_bpjs_kesehatan: u.noBPJSKesehatan || '',
+        no_bpjs_tenaga_kerja: u.noBPJSTenagaKerja || '',
+        emergency_name: u.emergencyName || '',
+        emergency_relation: u.emergencyRelation || '',
+        emergency_phone: u.emergencyPhone || '',
+        notes: u.notes || ''
+      }));
+
+      await fetch(`${url}/rest/v1/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': key,
+          'Authorization': `Bearer ${key}`,
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify(usersData)
+      });
+      console.log('✅ [Supabase Seed] 36 Akun Karyawan berhasil terdaftar di tabel "users" Supabase.');
+    } catch (e) {
+      console.warn('⚠️ Gagal sinkronisasi master users:', e);
+    }
+  }
+
+  // Push semua transaksi lokal yang ada ke Supabase
+  async pushAllLocalDataToSupabase() {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
+    
+    // 1. Sync seluruh profil master users lokal ke Supabase
+    const allUsers = this.getUsers();
+    for (const u of allUsers) {
+      await this.syncToSupabase('users', {
+        id: u.id,
+        nika: u.nika || '',
+        name: u.name,
+        role: u.role,
+        role_label: u.roleLabel || u.jabatan || '',
+        kode_jabatan: u.kodeJabatan || '',
+        jabatan: u.jabatan || '',
+        level_grade: u.levelGrade || '',
+        department: u.department || '',
+        avatar_grad: u.avatarGrad || '',
+        quota_annual_leave: Number(u.quotaAnnualLeave) || 12,
+        remaining_annual_leave: Number(u.remainingAnnualLeave) || 12,
+        quota_personal_leave: Number(u.quotaPersonalLeave) || 3,
+        remaining_personal_leave: Number(u.remainingPersonalLeave) || 3,
+        current_quarter: u.currentQuarter || 'Q3 (Juli–September 2026)',
+        join_date: (u.joinDate && u.joinDate !== '-') ? u.joinDate : null,
+        birth_place: u.birthPlace || '',
+        birth_date: (u.birthDate && u.birthDate !== '-') ? u.birthDate : null,
+        agama: u.agama || 'Islam',
+        gender: u.gender || 'Laki-laki',
+        phone: u.phone || '',
+        email: u.email || '',
+        username: u.username || u.id.toLowerCase(),
+        password: u.password || 'password123',
+        nik: u.nik || '',
+        status_karyawan: u.statusKaryawan || 'Tetap',
+        status_pajak: u.statusPajak || 'TK/0',
+        pendidikan: u.pendidikan || 'Sarjana (S1)',
+        no_kk: u.noKK || '',
+        alamat_ktp: u.alamatKTP || '',
+        alamat_domisili: u.alamatDomisili || '',
+        status_tempat_tinggal: u.statusTempatTinggal || 'Milik Sendiri',
+        no_npwp: u.noNPWP || '',
+        alamat_npwp: u.alamatNPWP || '',
+        bank_name: u.bankName || '',
+        rekening_no: u.rekeningNo || '',
+        rekening_name: u.rekeningName || u.name,
+        no_bpjs_kesehatan: u.noBPJSKesehatan || '',
+        no_bpjs_tenaga_kerja: u.noBPJSTenagaKerja || '',
+        emergency_name: u.emergencyName || '',
+        emergency_relation: u.emergencyRelation || '',
+        emergency_phone: u.emergencyPhone || '',
+        notes: u.notes || ''
+      });
+    }
+
+    // 2. Sync Cuti lokal
+    const leaves = this.getLeaves();
+    for (const l of leaves) {
+      await this.syncToSupabase('leaves', {
+        id: l.id,
+        employee_id: l.employeeId,
+        employee_name: l.employeeName,
+        role: l.role,
+        department: l.department,
+        leave_type: l.leaveType || l.type,
+        start_date: l.startDate,
+        end_date: l.endDate,
+        duration: l.duration,
+        reason: l.reason,
+        emergency_contact: l.emergencyContact,
+        attachment_url: l.attachmentUrl || null,
+        attachment_name: l.attachmentName || null,
+        stage: l.stage,
+        status: l.status,
+        approval_history: l.approvalHistory || []
+      });
+    }
+
+    // 3. Sync PR lokal
+    const prs = this.getItemRequests();
+    for (const p of prs) {
+      await this.syncToSupabase('item_requests', {
+        id: p.id,
+        employee_id: p.employeeId,
+        employee_name: p.employeeName,
+        role: p.role,
+        department: p.department,
+        item_name: p.itemName,
+        category: p.category,
+        quantity: p.quantity,
+        unit_price: p.unitPrice,
+        total_price: p.totalPrice,
+        urgency: p.urgency,
+        reason: p.reason,
+        target_kitchen: p.targetKitchen,
+        attachment_url: p.attachmentUrl || null,
+        attachment_name: p.attachmentName || null,
+        stage: p.stage,
+        status: p.status,
+        approval_history: p.approvalHistory || []
+      });
+    }
+
+    // 4. Sync Seluruh Dapur & Delegasi Maker/Perwakilan Yayasan ke Supabase
+    const kitchens = this.getKitchens();
+    for (const k of kitchens) {
+      await this.syncToSupabase('kitchens', {
+        id: k.id,
+        id_sppg: k.idSppg || k.id,
+        nama_dapur: k.namaDapur || k.name || 'Dapur SPPG',
+        nama_yayasan: k.namaYayasan || 'Yayasan Mitra Mandiri Sejahtera',
+        provinsi: k.provinsi || 'DKI Jakarta',
+        kota_kabupaten: k.kotaKabupaten || '-',
+        kecamatan: k.kecamatan || '-',
+        kelurahan: k.kelurahan || '-',
+        alamat_lengkap: k.alamatLengkap || '-',
+        location: k.location || `${k.kotaKabupaten || '-'}, ${k.provinsi || '-'}`,
+        maker_yayasan: k.makerYayasan || 'Belum Ditetapkan',
+        perwakilan_yayasan: k.perwakilanYayasan || 'Belum Ditetapkan',
+        manager_area: k.managerArea || 'Rendy Seftiana (Manajer Area Jakarta & Jabar)',
+        status: k.status || 'AKTIF',
+        kapasitas_porsi: Number(k.kapasitasPorsi) || 500
+      });
+    }
+
+    // 5. Sync Timesheet lokal ke Supabase
+    const timesheets = this.getTimesheets();
+    for (const ts of timesheets) {
+      await this.syncToSupabase('timesheets', {
+        id: ts.id,
+        employee_id: ts.employeeId,
+        employee_name: ts.employeeName,
+        role: ts.role,
+        date: ts.date,
+        start_time: ts.startTime,
+        end_time: ts.endTime,
+        activity: ts.activity || ts.activityPreset || 'Log Kehadiran',
+        activity_preset: ts.activityPreset || null,
+        category: ts.category || 'Operasional',
+        status: ts.status || 'COMPLETED'
+      });
+    }
+
+    // 6. Sync Laporan Transaksi Dapur (Kitchen Reports) ke Supabase
+    const reports = this.getKitchenReports();
+    for (const kr of reports) {
+      await this.syncToSupabase('kitchen_reports', {
+        id: kr.id,
+        kitchen_id: kr.kitchenId || kr.targetKitchenId || 'DAPUR-01',
+        kitchen_name: kr.kitchenName,
+        date: kr.date || new Date().toISOString().slice(0, 10),
+        reporter_id: kr.reporterId,
+        reporter_name: kr.reporterName,
+        raw_material_cost: Number(kr.rawMaterialCost) || 0,
+        operational_cost: Number(kr.operationalCost) || 0,
+        car_rental_cost: Number(kr.carRentalCost) || 0,
+        total_daily_expense: Number(kr.totalDailyExpense) || 0,
+        porsi_besar: Number(kr.porsiBesar) || 0,
+        porsi_kecil: Number(kr.porsiKecil) || 0,
+        beneficiaries_count: Number(kr.beneficiariesCount) || 0,
+        target_budget: Number(kr.targetBudget) || 0,
+        cost_per_portion: Number(kr.costPerPortion) || 0,
+        cost_per_portion_all_in: Number(kr.costPerPortionAllIn) || 0,
+        spm_file_name: kr.spmFileName || null,
+        spm_attachment_url: kr.spmAttachmentUrl || null,
+        va_bank_name: kr.vaBankName || 'Bank Mandiri',
+        va_balance: Number(kr.vaBalance) || 0,
+        notes: kr.notes || ''
+      });
+    }
+
+    // 7. Sync Cash Advances (Kasbon & LPJ) ke Supabase
+    const cashAdvances = this.getCashAdvances();
+    for (const ca of cashAdvances) {
+      await this.syncToSupabase('cash_advances', {
+        id: ca.id,
+        employee_id: ca.employeeId,
+        employee_name: ca.employeeName,
+        role: ca.employeeRole || ca.role,
+        department: ca.department,
+        purpose: ca.title || ca.reason || 'Kasbon Operasional',
+        amount_requested: Number(ca.amountRequested) || 0,
+        amount_approved: Number(ca.amountApproved) || 0,
+        amount_disbursed: Number(ca.amountDisbursed) || 0,
+        target_kitchen: ca.targetLocation || '',
+        bank_name: ca.bankName || '',
+        rekening_no: ca.bankAccountNo || '',
+        rekening_name: ca.bankAccountName || '',
+        stage: ca.stage,
+        status: ca.status,
+        disbursed_at: ca.disbursementDetails ? ca.disbursementDetails.disbursedAt : null,
+        settlement: ca.settlement || null,
+        approval_history: ca.approvalHistory || []
+      });
+    }
+
+    // 8. Sync Guideline Documents (Dokumen Panduan PDF/PPT) ke Supabase
+    const docs = this.getGuidelineDocuments();
+    for (const d of docs) {
+      await this.syncToSupabase('guideline_documents', {
+        id: d.id,
+        title: d.title,
+        file_type: d.fileType,
+        category: d.category,
+        target_role: d.targetRole,
+        target_label: d.targetLabel,
+        file_size: d.fileSize,
+        description: d.description,
+        uploaded_by: d.uploadedBy,
+        upload_date: d.uploadDate,
+        file_data: d.fileData || null
+      });
+    }
+
+    // 9. Sync Laporan Kendala Lapangan (Field Issues) ke Supabase
+    const issues = this.getFieldIssues();
+    for (const f of issues) {
+      await this.syncToSupabase('field_issues', {
+        id: f.id,
+        author_id: f.authorId,
+        author_name: f.authorName,
+        date: f.date,
+        kitchen_id: f.kitchenId,
+        kitchen_name: f.kitchenName,
+        category: 'Operasional Dapur',
+        severity: 'MEDIUM',
+        issue_description: JSON.stringify(f.points || []),
+        status: f.status
+      });
+    }
+
+    // 10. Sync Kitchen Daily Statuses ke Supabase
+    const kds = this.getKitchenDailyStatuses();
+    for (const s of kds) {
+      await this.syncToSupabase('kitchen_daily_statuses', {
+        id: s.id,
+        date: s.date,
+        kitchen_id: s.kitchenId,
+        kitchen_name: s.kitchenName,
+        status: s.status,
+        reason: s.reason || '',
+        reported_by_id: s.reportedById,
+        reported_by_name: s.reportedByName,
+        updated_at: s.updatedAt || s.createdAt || null
+      });
+    }
+
+    // 11. Sync Klaim Reimbursements ke Supabase
+    const rmbs = this.getReimbursements();
+    for (const r of rmbs) {
+      await this.syncToSupabase('reimbursements', {
+        id: r.id,
+        employee_id: r.employeeId,
+        employee_name: r.employeeName,
+        role: r.employeeRole || r.role,
+        department: r.department,
+        item_name: r.itemName,
+        unit_price: Number(r.unitPrice) || 0,
+        quantity: Number(r.quantity) || 1,
+        subtotal: Number(r.subtotal) || 0,
+        purchase_date: r.purchaseDate,
+        category: r.category,
+        target_kitchen: r.targetKitchen,
+        bank_name: r.bankName,
+        bank_account_no: r.bankAccountNo,
+        bank_account_name: r.bankAccountName,
+        attachment_url: r.attachmentUrl || null,
+        attachment_name: r.attachmentName || null,
+        workflow_type: r.workflowType || 'FIELD_JALUR_1',
+        stage: r.stage,
+        status: r.status,
+        rejection_reason: r.rejectionReason || null,
+        disbursement_details: r.disbursementDetails || null,
+        approval_history: r.approvalHistory || []
+      });
+    }
+  }
+
+  async pullUsersFromSupabase() {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return false;
+    const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+    const key = window.SupabaseConfig.getAnonKey();
+    try {
+      const usersRes = await fetch(`${url}/rest/v1/users?select=*`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (usersRes.ok) {
+        const dbUsers = await usersRes.json();
+        if (Array.isArray(dbUsers) && dbUsers.length > 0) {
+          for (const su of dbUsers) {
+            const localU = this.getUsers().find(u => u.id === su.id);
+            if (localU) {
+              if (su.email) localU.email = su.email;
+              if (su.name) localU.name = su.name;
+              if (su.phone) localU.phone = su.phone;
+              if (su.role) localU.role = su.role;
+              if (su.role_label) localU.roleLabel = su.role_label;
+              if (su.jabatan) localU.jabatan = su.jabatan;
+              if (su.department) localU.department = su.department;
+              if (su.level_grade) localU.levelGrade = su.level_grade;
+              if (su.kode_jabatan) localU.kodeJabatan = su.kode_jabatan;
+              if (su.password) localU.password = su.password;
+              if (su.username) localU.username = su.username;
+              if (su.bank_name) localU.bankName = su.bank_name;
+              if (su.rekening_no) localU.rekeningNo = su.rekening_no;
+              if (su.rekening_name) localU.rekeningName = su.rekening_name;
+              if (su.quota_annual_leave !== undefined && su.quota_annual_leave !== null) localU.quotaAnnualLeave = Number(su.quota_annual_leave);
+              if (su.remaining_annual_leave !== undefined && su.remaining_annual_leave !== null) localU.remainingAnnualLeave = Number(su.remaining_annual_leave);
+              if (su.quota_personal_leave !== undefined && su.quota_personal_leave !== null) localU.quotaPersonalLeave = Number(su.quota_personal_leave);
+              if (su.remaining_personal_leave !== undefined && su.remaining_personal_leave !== null) localU.remainingPersonalLeave = Number(su.remaining_personal_leave);
+              if (su.nik) localU.nik = su.nik;
+              if (su.status_karyawan) localU.statusKaryawan = su.status_karyawan;
+              if (su.status_pajak) localU.statusPajak = su.status_pajak;
+              if (su.pendidikan) localU.pendidikan = su.pendidikan;
+              if (su.no_kk) localU.noKK = su.no_kk;
+              if (su.alamat_ktp) localU.alamatKTP = su.alamat_ktp;
+              if (su.alamat_domisili) localU.alamatDomisili = su.alamat_domisili;
+              if (su.status_tempat_tinggal) localU.statusTempatTinggal = su.status_tempat_tinggal;
+              if (su.no_npwp) localU.noNPWP = su.no_npwp;
+              if (su.alamat_npwp) localU.alamatNPWP = su.alamat_npwp;
+              if (su.no_bpjs_kesehatan) localU.noBPJSKesehatan = su.no_bpjs_kesehatan;
+              if (su.no_bpjs_tenaga_kerja) localU.noBPJSTenagaKerja = su.no_bpjs_tenaga_kerja;
+              if (su.emergency_name) localU.emergencyName = su.emergency_name;
+              if (su.emergency_relation) localU.emergencyRelation = su.emergency_relation;
+              if (su.emergency_phone) localU.emergencyPhone = su.emergency_phone;
+              if (su.notes) localU.notes = su.notes;
+            } else {
+              this.data.users.push({
+                id: su.id,
+                nika: su.nika || su.id,
+                name: su.name,
+                role: su.role,
+                roleLabel: su.role_label || su.jabatan || 'Staff',
+                kodeJabatan: su.kode_jabatan || '',
+                jabatan: su.jabatan || '',
+                levelGrade: su.level_grade || '',
+                department: su.department || '',
+                avatarGrad: su.avatar_grad || 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+                quotaAnnualLeave: Number(su.quota_annual_leave) || 12,
+                remainingAnnualLeave: Number(su.remaining_annual_leave) || 12,
+                quotaPersonalLeave: Number(su.quota_personal_leave) || 3,
+                remainingPersonalLeave: Number(su.remaining_personal_leave) || 3,
+                currentQuarter: su.current_quarter || 'Q3 (Juli–September 2026)',
+                joinDate: su.join_date || '2024-01-01',
+                birthPlace: su.birth_place || '',
+                birthDate: su.birth_date || '',
+                agama: su.agama || 'Islam',
+                gender: su.gender || 'Laki-laki',
+                phone: su.phone || '',
+                email: su.email || '',
+                username: su.username || su.id.toLowerCase(),
+                password: su.password || 'password123',
+                nik: su.nik || '',
+                statusKaryawan: su.status_karyawan || 'Tetap',
+                statusPajak: su.status_pajak || 'TK/0',
+                pendidikan: su.pendidikan || 'Sarjana (S1)',
+                noKK: su.no_kk || '',
+                alamatKTP: su.alamat_ktp || '',
+                alamatDomisili: su.alamat_domisili || '',
+                statusTempatTinggal: su.status_tempat_tinggal || 'Milik Sendiri',
+                noNPWP: su.no_npwp || '',
+                alamatNPWP: su.alamat_npwp || '',
+                bankName: su.bank_name || 'Bank Mandiri',
+                rekeningNo: su.rekening_no || '-',
+                rekeningName: su.rekening_name || su.name,
+                noBPJSKesehatan: su.no_bpjs_kesehatan || '',
+                noBPJSTenagaKerja: su.no_bpjs_tenaga_kerja || '',
+                emergencyName: su.emergency_name || '',
+                emergencyRelation: su.emergency_relation || '',
+                emergencyPhone: su.emergency_phone || '',
+                notes: su.notes || ''
+              });
+            }
+          }
+          this.recalculateUserLeaveBalances();
+          this.save();
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('Pull users error:', e);
+    }
+    return false;
+  }
+
+  async pullLatestFromSupabase(force = false) {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
+
+    const now = Date.now();
+    if (!force && this.lastPullTimestamp && (now - this.lastPullTimestamp < this.CACHE_TTL)) {
+      console.log(`⚡ [Supabase Cache Hit] Menggunakan data lokal (TTL ${Math.round((this.CACHE_TTL - (now - this.lastPullTimestamp)) / 1000)}s tersisa)`);
+      return true;
+    }
+
+    const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+    const key = window.SupabaseConfig.getAnonKey();
+    const headers = { 
+      'apikey': key, 
+      'Authorization': `Bearer ${key}`
+    };
+
+    try {
+      console.log('⚡ [Supabase Pull] Memuat data dengan Slim Column Queries & Smart Merge...');
+
+      // Jalankan seluruh 11 endpoint dengan Slim Column Queries & Safe Realistic Limits
+      const [usersRes, kRes, prRes, leaveRes, krRes, tsRes, caRes, docRes, issueRes, kdsRes, rmbRes] = await Promise.allSettled([
+        fetch(`${url}/rest/v1/users?select=id,nika,name,email,phone,role,role_label,jabatan,department,level_grade,kode_jabatan,password,username,bank_name,rekening_no,rekening_name,quota_annual_leave,remaining_annual_leave,quota_personal_leave,remaining_personal_leave,nik,status_karyawan,status_pajak,pendidikan,no_kk,alamat_ktp,alamat_domisili,status_tempat_tinggal,no_npwp,alamat_npwp,no_bpjs_kesehatan,no_bpjs_tenaga_kerja,emergency_name,emergency_relation,emergency_phone,notes&limit=200&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/kitchens?select=id,id_sppg,nama_dapur,nama_yayasan,provinsi,kota_kabupaten,kecamatan,kelurahan,alamat_lengkap,location,maker_yayasan,perwakilan_yayasan,manager_area,status,kapasitas_porsi,created_at&limit=100&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,order_status,order_tracking_history,order_invoice,order_disbursement,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,spm_attachment_url,va_bank_name,va_balance,notes,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/timesheets?select=id,employee_id,employee_name,role,date,start_time,end_time,activity,activity_preset,category,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,title,purpose,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,stage,status,settlement,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc&limit=200&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/field_issues?select=id,author_id,author_name,date,kitchen_id,kitchen_name,issue_description,status,created_at&order=created_at.desc&limit=300&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_daily_statuses?select=id,date,kitchen_id,kitchen_name,status,reason,reported_by_id,reported_by_name,created_at,updated_at&order=date.desc&limit=200&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/reimbursements?select=id,employee_id,employee_name,role,department,item_name,unit_price,quantity,subtotal,purchase_date,category,target_kitchen,bank_name,bank_account_no,bank_account_name,attachment_name,workflow_type,stage,status,rejection_reason,disbursement_details,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers })
+      ]);
+
+      // 1. Process Users
+      if (usersRes.status === 'fulfilled' && usersRes.value.ok) {
+        const dbUsers = await usersRes.value.json();
+        if (Array.isArray(dbUsers) && dbUsers.length > 0) {
+          for (const su of dbUsers) {
+            const localU = this.getUsers().find(u => u.id === su.id);
+            if (localU) {
+              if (su.email) localU.email = su.email;
+              if (su.name) localU.name = su.name;
+              if (su.phone) localU.phone = su.phone;
+              if (su.role) localU.role = su.role;
+              if (su.role_label) localU.roleLabel = su.role_label;
+              if (su.jabatan) localU.jabatan = su.jabatan;
+              if (su.department) localU.department = su.department;
+              if (su.level_grade) localU.levelGrade = su.level_grade;
+              if (su.kode_jabatan) localU.kodeJabatan = su.kode_jabatan;
+              if (su.password) localU.password = su.password;
+              if (su.username) localU.username = su.username;
+              if (su.bank_name) localU.bankName = su.bank_name;
+              if (su.rekening_no) localU.rekeningNo = su.rekening_no;
+              if (su.rekening_name) localU.rekeningName = su.rekening_name;
+              if (su.quota_annual_leave !== undefined && su.quota_annual_leave !== null) localU.quotaAnnualLeave = Number(su.quota_annual_leave);
+              if (su.remaining_annual_leave !== undefined && su.remaining_annual_leave !== null) localU.remainingAnnualLeave = Number(su.remaining_annual_leave);
+              if (su.quota_personal_leave !== undefined && su.quota_personal_leave !== null) localU.quotaPersonalLeave = Number(su.quota_personal_leave);
+              if (su.remaining_personal_leave !== undefined && su.remaining_personal_leave !== null) localU.remainingPersonalLeave = Number(su.remaining_personal_leave);
+              if (su.nik) localU.nik = su.nik;
+              if (su.status_karyawan) localU.statusKaryawan = su.status_karyawan;
+              if (su.status_pajak) localU.statusPajak = su.status_pajak;
+              if (su.pendidikan) localU.pendidikan = su.pendidikan;
+              if (su.no_kk) localU.noKK = su.no_kk;
+              if (su.alamat_ktp) localU.alamatKTP = su.alamat_ktp;
+              if (su.alamat_domisili) localU.alamatDomisili = su.alamat_domisili;
+              if (su.status_tempat_tinggal) localU.statusTempatTinggal = su.status_tempat_tinggal;
+              if (su.no_npwp) localU.noNPWP = su.no_npwp;
+              if (su.alamat_npwp) localU.alamatNPWP = su.alamat_npwp;
+              if (su.no_bpjs_kesehatan) localU.noBPJSKesehatan = su.no_bpjs_kesehatan;
+              if (su.no_bpjs_tenaga_kerja) localU.noBPJSTenagaKerja = su.no_bpjs_tenaga_kerja;
+              if (su.emergency_name) localU.emergencyName = su.emergency_name;
+              if (su.emergency_relation) localU.emergencyRelation = su.emergency_relation;
+              if (su.emergency_phone) localU.emergencyPhone = su.emergency_phone;
+              if (su.notes) localU.notes = su.notes;
+            } else {
+              this.data.users.push({
+                id: su.id,
+                nika: su.nika || su.id,
+                name: su.name,
+                role: su.role,
+                roleLabel: su.role_label || su.jabatan || 'Staff',
+                kodeJabatan: su.kode_jabatan || '',
+                jabatan: su.jabatan || '',
+                levelGrade: su.level_grade || '',
+                department: su.department || '',
+                avatarGrad: su.avatar_grad || 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+                quotaAnnualLeave: Number(su.quota_annual_leave) || 12,
+                remainingAnnualLeave: Number(su.remaining_annual_leave) || 12,
+                quotaPersonalLeave: Number(su.quota_personal_leave) || 3,
+                remainingPersonalLeave: Number(su.remaining_personal_leave) || 3,
+                currentQuarter: su.current_quarter || 'Q3 (Juli–September 2026)',
+                joinDate: su.join_date || '2024-01-01',
+                birthPlace: su.birth_place || '',
+                birthDate: su.birth_date || '',
+                agama: su.agama || 'Islam',
+                gender: su.gender || 'Laki-laki',
+                phone: su.phone || '',
+                email: su.email || '',
+                username: su.username || su.id.toLowerCase(),
+                password: su.password || 'password123',
+                nik: su.nik || '',
+                statusKaryawan: su.status_karyawan || 'Tetap',
+                statusPajak: su.status_pajak || 'TK/0',
+                pendidikan: su.pendidikan || 'Sarjana (S1)',
+                noKK: su.no_kk || '',
+                alamatKTP: su.alamat_ktp || '',
+                alamatDomisili: su.alamat_domisili || '',
+                statusTempatTinggal: su.status_tempat_tinggal || 'Milik Sendiri',
+                noNPWP: su.no_npwp || '',
+                alamatNPWP: su.alamat_npwp || '',
+                bankName: su.bank_name || 'Bank Mandiri',
+                rekeningNo: su.rekening_no || '-',
+                rekeningName: su.rekening_name || su.name,
+                noBPJSKesehatan: su.no_bpjs_kesehatan || '',
+                noBPJSTenagaKerja: su.no_bpjs_tenaga_kerja || '',
+                emergencyName: su.emergency_name || '',
+                emergencyRelation: su.emergency_relation || '',
+                emergencyPhone: su.emergency_phone || '',
+                notes: su.notes || ''
+              });
+            }
+          }
+        }
+      }
+
+      // 2. Process Kitchens
+      if (kRes.status === 'fulfilled' && kRes.value.ok) {
+        const dbKitchens = await kRes.value.json();
+        if (Array.isArray(dbKitchens) && dbKitchens.length > 0) {
+          this.data.kitchens = dbKitchens.map(k => ({
+            id: k.id,
+            idSppg: k.id_sppg,
+            namaDapur: k.nama_dapur,
+            namaYayasan: k.nama_yayasan,
+            name: k.nama_dapur,
+            provinsi: k.provinsi,
+            kotaKabupaten: k.kota_kabupaten,
+            kecamatan: k.kecamatan,
+            kelurahan: k.kelurahan,
+            alamatLengkap: k.alamat_lengkap,
+            location: k.location,
+            makerYayasan: k.maker_yayasan,
+            perwakilanYayasan: k.perwakilan_yayasan,
+            managerArea: k.manager_area,
+            status: k.status,
+            kapasitasPorsi: Number(k.kapasitas_porsi) || 500,
+            createdAt: k.created_at
+          }));
+        }
+      }
+
+      // 3. Process Item Requests (Smart Merge & Attachment Preserved)
+      if (prRes.status === 'fulfilled' && prRes.value.ok) {
+        const prs = await prRes.value.json();
+        if (Array.isArray(prs)) {
+          const existingPRs = this.data.itemRequests || [];
+          const remotePRs = prs.map(p => {
+            const local = existingPRs.find(item => item.id === p.id);
+            return {
+              id: p.id,
+              employeeId: p.employee_id,
+              employeeName: p.employee_name,
+              role: p.role,
+              department: p.department,
+              itemName: p.item_name,
+              category: p.category,
+              quantity: p.quantity,
+              unitPrice: Number(p.unit_price) || 0,
+              totalPrice: Number(p.total_price) || 0,
+              urgency: p.urgency,
+              reason: p.reason,
+              targetKitchen: p.target_kitchen,
+              attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : (p.attachment_url || null),
+              attachmentName: p.attachment_name,
+              stage: p.stage,
+              status: p.status,
+              rejectionReason: p.rejection_reason,
+              approvalHistory: Array.isArray(p.approval_history) ? p.approval_history : (typeof p.approval_history === 'string' ? (function() { try { const r = JSON.parse(p.approval_history); return Array.isArray(r) ? r : (r ? [r] : []); } catch(e) { return []; } })() : (p.approval_history ? [p.approval_history] : [])),
+              orderStatus: p.order_status || (local && local.orderStatus) || (p.status === 'APPROVED' ? 'DALAM_ANTRIAN' : null),
+              orderTrackingHistory: p.order_tracking_history || (local && local.orderTrackingHistory) || [],
+              orderInvoice: p.order_invoice || (local && local.orderInvoice) || null,
+              orderDisbursement: p.order_disbursement || (local && local.orderDisbursement) || null,
+              createdAt: p.created_at
+            };
+          });
+
+          this.data.itemRequests = remotePRs;
+        }
+      }
+
+      // 4. Process Leaves (Smart Merge & Attachment Preserved)
+      if (leaveRes.status === 'fulfilled' && leaveRes.value.ok) {
+        const leaves = await leaveRes.value.json();
+        if (Array.isArray(leaves)) {
+          const existingLeaves = this.data.leaves || [];
+          const remoteLeaves = leaves.map(l => {
+            const local = existingLeaves.find(item => item.id === l.id);
+            const userMatch = (this.data.users || []).find(u => u.id === l.employee_id || u.name === l.employee_name);
+            const deductType = resolveLeaveDeductionType({
+              leaveType: l.leave_type,
+              type: l.leave_type,
+              quotaDeductionType: (local && local.quotaDeductionType) ? local.quotaDeductionType : undefined
+            }, userMatch ? userMatch.joinDate : null);
+
+            const isHalf = (local && local.isHalfDay !== undefined) 
+              ? local.isHalfDay 
+              : (Number(l.duration) === 0.5 || (l.leave_type && l.leave_type.includes('0.5')));
+
+            return {
+              id: l.id,
+              employeeId: l.employee_id,
+              employeeName: l.employee_name,
+              role: l.role,
+              department: l.department,
+              leaveType: l.leave_type,
+              type: l.leave_type,
+              startDate: l.start_date,
+              endDate: l.end_date,
+              duration: Number(l.duration) || 1,
+              isHalfDay: isHalf,
+              quotaDeductionType: deductType,
+              quotaDeducted: deductType === 'NONE' ? 0 : (Number(l.duration) || 1),
+              reason: l.reason,
+              emergencyContact: l.emergency_contact,
+              attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : (l.attachment_url || null),
+              attachmentName: l.attachment_name,
+              stage: l.stage,
+              status: l.status,
+              rejectionReason: l.rejection_reason,
+              approvalHistory: Array.isArray(l.approval_history) ? l.approval_history : (typeof l.approval_history === 'string' ? (function() { try { const r = JSON.parse(l.approval_history); return Array.isArray(r) ? r : (r ? [r] : []); } catch(e) { return []; } })() : (l.approval_history ? [l.approval_history] : [])),
+              createdAt: l.created_at
+            };
+          });
+
+          this.data.leaves = remoteLeaves;
+          this.recalculateUserLeaveBalances();
+        }
+      }
+
+      // 5. Process Kitchen Reports (Smart Merge & SPM Attachment Preserved)
+      if (krRes.status === 'fulfilled' && krRes.value.ok) {
+        const krs = await krRes.value.json();
+        if (Array.isArray(krs)) {
+          const existingKRs = this.data.kitchenReports || [];
+          this.data.kitchenReports = krs.map(kr => {
+            const local = existingKRs.find(item => item.id === kr.id);
+
+            // Clean legacy mock unsplash URLs
+            let cleanRemoteUrl = (kr.spm_attachment_url && !kr.spm_attachment_url.includes('unsplash.com')) ? kr.spm_attachment_url : null;
+            let cleanLocalUrl = (local && local.spmAttachmentUrl && !local.spmAttachmentUrl.includes('unsplash.com')) ? local.spmAttachmentUrl : null;
+
+            const finalUrl = cleanRemoteUrl || cleanLocalUrl || null;
+            const finalFileName = (finalUrl && (finalUrl.startsWith('http://') || finalUrl.startsWith('https://'))) 
+              ? 'Link Google Drive SPM' 
+              : (kr.spm_file_name || (local && local.spmFileName ? local.spmFileName : null));
+
+            // If local was edited with an updated kitchen name or newer timestamp, preserve the updated local values
+            const finalKitchenName = (local && local.updatedAt && local.kitchenName) ? local.kitchenName : (kr.kitchen_name || (local ? local.kitchenName : ''));
+            const finalKitchenId = (local && local.updatedAt && local.kitchenId) ? local.kitchenId : (kr.kitchen_id || (local ? local.kitchenId : 'DAPUR-01'));
+
+            return {
+              id: kr.id,
+              kitchenId: finalKitchenId,
+              kitchenName: finalKitchenName,
+              date: kr.date,
+              reporterId: kr.reporter_id || (local ? local.reporterId : null),
+              reporterName: kr.reporter_name || (local ? local.reporterName : ''),
+              rawMaterialCost: Number(kr.raw_material_cost) || (local ? local.rawMaterialCost : 0),
+              operationalCost: Number(kr.operational_cost) || (local ? local.operationalCost : 0),
+              carRentalCost: Number(kr.car_rental_cost) || (local ? local.carRentalCost : 0),
+              foundationIncentive: (kr.foundation_incentive !== undefined && kr.foundation_incentive !== null) ? Number(kr.foundation_incentive) : (local ? (Number(local.foundationIncentive) || 0) : 0),
+              incentiveNotes: (kr.incentive_notes !== undefined && kr.incentive_notes !== null) ? kr.incentive_notes : (local ? (local.incentiveNotes || '') : ''),
+              totalDailyExpense: Number(kr.total_daily_expense) || (local ? local.totalDailyExpense : 0),
+              porsiBesar: Number(kr.porsi_besar) || (local ? local.porsiBesar : 0),
+              porsiKecil: Number(kr.porsi_kecil) || (local ? local.porsiKecil : 0),
+              beneficiariesCount: Number(kr.beneficiaries_count) || (local ? local.beneficiariesCount : 0),
+              targetBudget: Number(kr.target_budget) || (local ? local.targetBudget : 0),
+              costPerPortion: Number(kr.cost_per_portion) || (local ? local.costPerPortion : 0),
+              costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || (local ? local.costPerPortionAllIn : 0),
+              spmFileName: finalFileName,
+              spmAttachmentUrl: finalUrl,
+              vaBankName: kr.va_bank_name || (local ? local.vaBankName : 'Bank Mandiri VA'),
+              vaBalance: Number(kr.va_balance) || (local ? local.vaBalance : 0),
+              notes: kr.notes || (local ? local.notes : ''),
+              updatedAt: local ? local.updatedAt : undefined,
+              createdAt: kr.created_at || (local ? local.createdAt : '')
+            };
+          });
+        }
+      }
+
+      // 6. Process Timesheets (Authoritative Cloud Sync)
+      if (tsRes.status === 'fulfilled' && tsRes.value.ok) {
+        const tss = await tsRes.value.json();
+        if (Array.isArray(tss)) {
+          const allUsers = this.data.users || [];
+          const remoteTS = tss.map(ts => {
+            let hours = 0;
+            if (ts.start_time && ts.end_time) {
+              const s = ts.start_time.split(':').map(Number);
+              const e = ts.end_time.split(':').map(Number);
+              hours = Math.max(0, (e[0] + (e[1] || 0)/60) - (s[0] + (s[1] || 0)/60));
+              hours = Math.round(hours * 10) / 10;
+            }
+
+            // Normalisasi ID dan Nama Karyawan agar selalu sinkron dengan master users
+            const normTsName = (ts.employee_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const normTsId = (ts.employee_id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const matchedUser = allUsers.find(u => {
+              const uId = (u.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const uName = (u.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              return (normTsId && uId === normTsId) || (normTsName && uName === normTsName);
+            });
+
+            const finalId = matchedUser ? matchedUser.id : (ts.employee_id || '');
+            const finalName = matchedUser ? matchedUser.name : (ts.employee_name || 'Karyawan');
+            const finalRole = matchedUser ? matchedUser.role : (ts.role || 'STAFF');
+            const finalDept = matchedUser ? matchedUser.department : (ts.department || 'Operasional');
+            const cleanDate = ts.date ? String(ts.date).slice(0, 10) : '';
+
+            return {
+              id: ts.id,
+              employeeId: finalId,
+              employeeName: finalName,
+              department: finalDept,
+              role: finalRole,
+              date: cleanDate,
+              startTime: ts.start_time,
+              endTime: ts.end_time,
+              hours: hours || 0,
+              activity: ts.activity,
+              activityPreset: ts.activity_preset,
+              category: ts.category || 'Operasional',
+              status: ts.status || 'RECORDED',
+              approvalHistory: Array.isArray(ts.approval_history) ? ts.approval_history : (typeof ts.approval_history === 'string' ? (function() { try { const r = JSON.parse(ts.approval_history); return Array.isArray(r) ? r : (r ? [r] : []); } catch(e) { return []; } })() : (ts.approval_history ? [ts.approval_history] : [])),
+              createdAt: ts.created_at
+            };
+          });
+
+          // Two-Way Smart Merge: Gabungkan remote dari Supabase dengan data lokal yang belum sempat terunggah
+          const existingTS = this.data.timesheets || [];
+          const unsyncedTS = existingTS.filter(local => 
+            local && local.id && !tss.some(remote => remote.id === local.id)
+          );
+
+          this.data.timesheets = [...remoteTS, ...unsyncedTS];
+
+          // Auto-push record lokal yang belum terkirim ke Supabase
+          if (unsyncedTS.length > 0) {
+            console.log(`⚡ [Auto-Push TS] Mengunggah ${unsyncedTS.length} data timesheet lokal ke Supabase...`);
+            for (const item of unsyncedTS) {
+              this.syncToSupabase('timesheets', {
+                id: item.id,
+                employee_id: item.employeeId,
+                employee_name: item.employeeName,
+                role: item.role,
+                date: item.date,
+                start_time: item.startTime,
+                end_time: item.endTime,
+                activity: item.activity || item.activityPreset || 'Log Kehadiran',
+                activity_preset: item.activityPreset || null,
+                category: item.category || 'Operasional',
+                status: item.status || 'RECORDED'
+              }).catch(err => console.warn('Auto-push TS notice:', err));
+            }
+          }
+        }
+      }
+
+      // 7. Process Cash Advances (Smart Merge)
+      if (caRes.status === 'fulfilled' && caRes.value.ok) {
+        const cas = await caRes.value.json();
+        if (Array.isArray(cas)) {
+          const remoteCAs = cas.map(ca => ({
+            id: ca.id,
+            title: ca.purpose,
+            employeeId: ca.employee_id,
+            employeeName: ca.employee_name,
+            employeeRole: ca.role,
+            department: ca.department,
+            targetLocation: ca.target_kitchen,
+            amountRequested: Number(ca.amount_requested) || 0,
+            amountApproved: Number(ca.amount_approved) || 0,
+            amountDisbursed: Number(ca.amount_disbursed) || 0,
+            bankName: ca.bank_name,
+            bankAccountNo: ca.rekening_no,
+            bankAccountName: ca.rekening_name,
+            reason: ca.purpose,
+            stage: ca.stage,
+            status: ca.status,
+            settlement: ca.settlement,
+            approvalHistory: Array.isArray(ca.approval_history) ? ca.approval_history : (typeof ca.approval_history === 'string' ? (function() { try { const r = JSON.parse(ca.approval_history); return Array.isArray(r) ? r : (r ? [r] : []); } catch(e) { return []; } })() : (ca.approval_history ? [ca.approval_history] : [])),
+            createdAt: ca.created_at
+          }));
+
+          this.data.cashAdvances = remoteCAs;
+        }
+      }
+
+      // 8. Process Guideline Documents (Metadata only, fileData is Lazy-Loaded On-Demand)
+      if (docRes.status === 'fulfilled' && docRes.value.ok) {
+        const dList = await docRes.value.json();
+        if (Array.isArray(dList) && dList.length > 0) {
+          const localDocs = this.data.guidelineDocuments || [];
+          this.data.guidelineDocuments = dList.map(d => {
+            const local = localDocs.find(ld => ld.id === d.id);
+            return {
+              id: d.id,
+              title: d.title,
+              fileType: d.file_type,
+              category: d.category,
+              targetRole: d.target_role,
+              targetLabel: d.target_label,
+              fileSize: d.file_size,
+              description: d.description,
+              uploadedBy: d.uploaded_by,
+              uploadDate: d.upload_date,
+              fileData: (local && local.fileData) ? local.fileData : null,
+              createdAt: d.created_at
+            };
+          });
+        }
+      }
+
+      // 9. Process Field Issues
+      if (issueRes.status === 'fulfilled' && issueRes.value.ok) {
+        const fList = await issueRes.value.json();
+        if (Array.isArray(fList) && fList.length > 0) {
+          this.data.fieldIssues = fList.map(f => {
+            let parsedPoints = [];
+            try {
+              parsedPoints = JSON.parse(f.issue_description);
+            } catch (e) {
+              parsedPoints = [{ id: 'PT-1', text: f.issue_description, status: 'BELUM_DIRESPON' }];
+            }
+            return {
+              id: f.id,
+              authorId: f.author_id,
+              authorName: f.author_name,
+              date: f.date,
+              kitchenId: f.kitchen_id,
+              kitchenName: f.kitchen_name,
+              points: Array.isArray(parsedPoints) ? parsedPoints : [],
+              status: f.status,
+              createdAt: f.created_at
+            };
+          });
+        }
+      }
+
+      // 10. Process Kitchen Daily Statuses (Smart Two-Way Merge & Auto-Push)
+      if (kdsRes && kdsRes.status === 'fulfilled' && kdsRes.value.ok) {
+        const kdsList = await kdsRes.value.json();
+        if (Array.isArray(kdsList)) {
+          const existingKDS = this.data.kitchenDailyStatuses || [];
+          
+          // 1. Map data dari remote Supabase
+          const remoteKDS = kdsList.map(s => {
+            const local = existingKDS.find(item => item.id === s.id || (item.date === s.date && item.kitchenId === s.kitchen_id));
+            return {
+              id: s.id,
+              date: s.date,
+              kitchenId: s.kitchen_id,
+              kitchenName: s.kitchen_name,
+              status: s.status || 'BERJALAN',
+              reason: s.reason || '',
+              reportedById: s.reported_by_id,
+              reportedByName: s.reported_by_name,
+              createdAt: s.created_at || (local ? local.createdAt : ''),
+              updatedAt: s.updated_at || (local ? local.updatedAt : '')
+            };
+          });
+
+          // 2. Temukan record lokal yang belum sempat terunggah ke Supabase (misal dibuat saat offline/tabel baru dibuat)
+          const unsyncedLocal = existingKDS.filter(local => 
+            !kdsList.some(remote => remote.id === local.id || (remote.date === local.date && remote.kitchen_id === local.kitchenId))
+          );
+
+          // 3. Gabungkan remote dan unsynced local agar data di laptop tidak hilang
+          this.data.kitchenDailyStatuses = [...remoteKDS, ...unsyncedLocal];
+
+          // 4. Otomatis push record lokal yang belum sinkron ke database cloud Supabase
+          if (unsyncedLocal.length > 0) {
+            console.log(`⚡ [Auto-Push KDS] Mengunggah ${unsyncedLocal.length} data status dapur lokal ke Supabase...`);
+            for (const item of unsyncedLocal) {
+              this.syncToSupabase('kitchen_daily_statuses', {
+                id: item.id,
+                date: item.date,
+                kitchen_id: item.kitchenId,
+                kitchen_name: item.kitchenName,
+                status: item.status,
+                reason: item.reason,
+                reported_by_id: item.reportedById,
+                reported_by_name: item.reportedByName,
+                updated_at: item.updatedAt
+              }).catch(err => console.warn('Auto-push KDS notice:', err));
+            }
+          }
+        }
+      }
+
+      // 11. Process Reimbursements (Smart Merge & Attachment Preserved)
+      if (rmbRes && rmbRes.status === 'fulfilled' && rmbRes.value.ok) {
+        const rmbs = await rmbRes.value.json();
+        if (Array.isArray(rmbs)) {
+          const existingRMBs = this.data.reimbursements || [];
+          const remoteRMBs = rmbs.map(r => {
+            const local = existingRMBs.find(item => item.id === r.id);
+            return {
+              id: r.id,
+              employeeId: r.employee_id,
+              employeeName: r.employee_name,
+              employeeRole: r.role,
+              department: r.department,
+              itemName: r.item_name,
+              unitPrice: Number(r.unit_price) || 0,
+              quantity: Number(r.quantity) || 1,
+              subtotal: Number(r.subtotal) || 0,
+              originalSubtotal: local ? local.originalSubtotal : (Number(r.subtotal) || 0),
+              purchaseDate: r.purchase_date,
+              category: r.category,
+              targetKitchen: r.target_kitchen,
+              isManualKitchen: local ? local.isManualKitchen : false,
+              bankName: r.bank_name,
+              bankAccountNo: r.bank_account_no,
+              bankAccountName: r.bank_account_name,
+              attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : (r.attachment_url || null),
+              attachmentName: r.attachment_name,
+              notes: local ? local.notes : '',
+              workflowType: r.workflow_type || 'FIELD_JALUR_1',
+              stage: r.stage,
+              status: r.status,
+              rejectionReason: r.rejection_reason,
+              disbursementDetails: r.disbursement_details || null,
+              approvalHistory: Array.isArray(r.approval_history) ? r.approval_history : (typeof r.approval_history === 'string' ? (function() { try { const res = JSON.parse(r.approval_history); return Array.isArray(res) ? res : (res ? [res] : []); } catch(e) { return []; } })() : (r.approval_history ? [r.approval_history] : [])),
+              createdAt: r.created_at,
+              updatedAt: r.updated_at || r.created_at
+            };
+          });
+
+          // Smart Merge: Pertahankan record lokal yang belum sempat tersinkron
+          const unsyncedRMB = existingRMBs.filter(local =>
+            local && local.id && !rmbs.some(remote => remote.id === local.id)
+          );
+
+          this.data.reimbursements = [...remoteRMBs, ...unsyncedRMB];
+
+          // Auto-push unsynced local records to Supabase
+          if (unsyncedRMB.length > 0) {
+            console.log(`⚡ [Auto-Push RMB] Mengunggah ${unsyncedRMB.length} klaim reimburse lokal ke Supabase...`);
+            for (const item of unsyncedRMB) {
+              this.syncToSupabase('reimbursements', {
+                id: item.id,
+                employee_id: item.employeeId,
+                employee_name: item.employeeName,
+                role: item.employeeRole || item.role,
+                department: item.department,
+                item_name: item.itemName,
+                unit_price: Number(item.unitPrice) || 0,
+                quantity: Number(item.quantity) || 1,
+                subtotal: Number(item.subtotal) || 0,
+                purchase_date: item.purchaseDate,
+                category: item.category,
+                target_kitchen: item.targetKitchen,
+                bank_name: item.bankName,
+                bank_account_no: item.bankAccountNo,
+                bank_account_name: item.bankAccountName,
+                attachment_url: item.attachmentUrl || null,
+                attachment_name: item.attachmentName || null,
+                workflow_type: item.workflowType || 'FIELD_JALUR_1',
+                stage: item.stage,
+                status: item.status,
+                rejection_reason: item.rejectionReason || null,
+                disbursement_details: item.disbursementDetails || null,
+                approval_history: item.approvalHistory || []
+              }).catch(err => console.warn('Auto-push RMB notice:', err));
+            }
+          }
+        }
+      }
+
+      this.lastPullTimestamp = Date.now();
+      this.save();
+      console.log('✅ [Supabase Pull] Data tersinkronisasi instan & payload slim (~15KB). Cache TTL aktif 3 menit.');
+    } catch (err) {
+      console.warn('⚠️ [Supabase Pull] Gagal mengambil data:', err);
+    }
+  }
+
+  // =========================================================================
+  // ON-DEMAND LAZY ATTACHMENT FETCHERS (Hemat Egress 99%)
+  // =========================================================================
+
+  async fetchReimbursementAttachment(rmbId) {
+    const rmbs = this.getReimbursements();
+    const r = rmbs.find(item => item.id === rmbId);
+    if (r && r.attachmentUrl && r.attachmentUrl.length > 50) {
+      return r.attachmentUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return r ? (r.attachmentUrl || '') : '';
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/reimbursements?select=id,attachment_url,attachment_name&id=eq.${encodeURIComponent(rmbId)}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].attachment_url) {
+          if (r) {
+            r.attachmentUrl = data[0].attachment_url;
+            if (data[0].attachment_name) r.attachmentName = data[0].attachment_name;
+          }
+          return data[0].attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat lampiran reimburse on-demand dari Supabase:', e);
+    }
+    return r ? (r.attachmentUrl || '') : '';
+  }
+
+  async fetchKitchenReportAttachment(reportId) {
+    const reports = this.getKitchenReports();
+    const r = reports.find(item => item.id === reportId);
+    if (r && r.spmAttachmentUrl && !r.spmAttachmentUrl.includes('unsplash.com')) {
+      return r.spmAttachmentUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return (r && !r.spmAttachmentUrl?.includes('unsplash.com')) ? (r.spmAttachmentUrl || '') : '';
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/kitchen_reports?select=id,spm_attachment_url,spm_file_name&id=eq.${encodeURIComponent(reportId)}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].spm_attachment_url && !data[0].spm_attachment_url.includes('unsplash.com')) {
+          if (r) {
+            r.spmAttachmentUrl = data[0].spm_attachment_url;
+            if (data[0].spm_file_name) r.spmFileName = data[0].spm_file_name;
+          }
+          return data[0].spm_attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat lampiran SPM on-demand dari Supabase:', e);
+    }
+    return (r && !r.spmAttachmentUrl?.includes('unsplash.com')) ? (r.spmAttachmentUrl || '') : '';
+  }
+
+  async fetchLeaveAttachment(leaveId) {
+    const leaves = this.getLeaves();
+    const l = leaves.find(item => item.id === leaveId);
+    if (l && l.attachmentUrl && l.attachmentUrl.length > 50) {
+      return l.attachmentUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return l ? (l.attachmentUrl || '') : '';
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/leaves?select=id,attachment_url,attachment_name&id=eq.${leaveId}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].attachment_url) {
+          if (l) {
+            l.attachmentUrl = data[0].attachment_url;
+            if (data[0].attachment_name) l.attachmentName = data[0].attachment_name;
+          }
+          return data[0].attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat lampiran Cuti on-demand dari Supabase:', e);
+    }
+    return l ? (l.attachmentUrl || '') : '';
+  }
+
+  async fetchItemRequestAttachment(prId) {
+    const prs = this.getItemRequests();
+    const p = prs.find(item => item.id === prId);
+    if (p && p.attachmentUrl && p.attachmentUrl.length > 50) {
+      return p.attachmentUrl;
+    }
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) {
+      return p ? (p.attachmentUrl || '') : '';
+    }
+    try {
+      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+      const key = window.SupabaseConfig.getAnonKey();
+      const res = await fetch(`${url}/rest/v1/item_requests?select=id,attachment_url,attachment_name&id=eq.${prId}`, {
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].attachment_url) {
+          if (p) {
+            p.attachmentUrl = data[0].attachment_url;
+            if (data[0].attachment_name) p.attachmentName = data[0].attachment_name;
+          }
+          return data[0].attachment_url;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat foto lampiran PR on-demand dari Supabase:', e);
+    }
+    return p ? (p.attachmentUrl || '') : '';
+  }
+
+  // On-demand loader data file dokumen panduan (PDF / PPT) dari Supabase
+  async fetchGuidelineDocumentFile(docId) {
+    if (!docId) return null;
+    const docs = this.getGuidelineDocuments() || [];
+    const doc = docs.find(d => d.id === docId);
+    if (doc && doc.fileData && doc.fileData.length > 50) {
+      return doc.fileData;
+    }
+
+    if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+      try {
+        const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+        const key = window.SupabaseConfig.getAnonKey();
+        const res = await fetch(`${url}/rest/v1/guideline_documents?select=id,file_data&id=eq.${encodeURIComponent(docId)}`, {
+          headers: {
+            'apikey': key,
+            'Authorization': `Bearer ${key}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0 && data[0].file_data) {
+            if (doc) doc.fileData = data[0].file_data;
+            return data[0].file_data;
+          }
+        }
+      } catch (e) {
+        console.warn('Gagal memuat berkas dokumen panduan on-demand dari Supabase:', e);
+      }
+    }
+    return doc ? (doc.fileData || null) : null;
+  }
+
+  // Helper Kompresi Gambar Otomatis di Browser sebelum dikirim ke database
+  async compressImageFile(file, maxWidth = 1600, maxHeight = 1600, quality = 0.75) {
+    if (!file) return null;
+    if (!file.type || !file.type.startsWith('image/')) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressedDataUrl);
+        };
+        img.onerror = () => {
+          resolve(e.target.result);
+        };
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Notifikasi Email Helper
+  notifyEmail(eventData) {
+    if (window.SupabaseConfig && typeof window.SupabaseConfig.sendEmailNotification === 'function') {
+      window.SupabaseConfig.sendEmailNotification(eventData).catch(err => {
+        console.warn('⚠️ Notifikasi email tertunda / gagal:', err);
+      });
+    }
+  }
+}
+
+// Global DB Instance
+window.DB = new DatabaseManager();
+window.calculateTenure = calculateTenure;
+window.calculateAge = calculateAge;
+window.hasWorkedOneYear = hasWorkedOneYear;
+window.resolveLeaveDeductionType = resolveLeaveDeductionType;
+
+// Auto-sync: Tarik seluruh data terbaru dari Supabase Cloud sebagai Single Source of Truth
+setTimeout(async () => {
+  if (window.DB) {
+    if (typeof window.DB.pullLatestFromSupabase === 'function') {
+      await window.DB.pullLatestFromSupabase();
+    }
+  }
+  if (window.App && typeof window.App.updateUserHeader === 'function') {
+    window.App.updateUserHeader();
+  }
+}, 300);

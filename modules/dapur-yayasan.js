@@ -1,0 +1,3374 @@
+/**
+ * ERP MMS - Modul Khusus Yayasan: Pelaporan Transaksi Dapur Program & Saldo Virtual Account (VA)
+ * Digunakan oleh Pengelola Dapur Yayasan, Staff Keuangan, dan Direksi
+ * Features:
+ * 1. Filter Dinamis Tanggal & Dapur Delegasi Maker di Atas Summary KPI
+ * 2. Perhitungan Akurat Porsi Besar (Budget Rp 10.000) & Porsi Kecil (Budget Rp 8.000)
+ * 3. Upload & Lampiran Dokumen SPM (Surat Perintah Membayar / Nota Belanja Bahan Baku)
+ * 4. Analisis Biaya Efisiensi per Porsi Makanan (Rp/Porsi vs Target Anggaran)
+ * 5. Jaringan Distribusi Dapur Aktif Berdasarkan Delegasi Maker di Master Database
+ */
+
+window.DapurYayasanModule = {
+  selectedKitchenFilter: 'ALL',
+  selectedDateFilter: 'ALL',
+  startDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
+  endDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
+  customDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
+  currentPage: 1,
+  pageSize: 5,
+  uploadedSPMUrl: '',
+  uploadedSPMName: '',
+  statusCalYear: 2026,
+  statusCalMonth: 8, // September (0-indexed: 0=Jan, 8=Sep)
+  statusSelectedDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : '2026-09-11'),
+
+  render: function(container) {
+    if (!container) return;
+
+    const todayStr = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10));
+    const currentMonthStr = todayStr.slice(0, 7);
+    const nowD = new Date();
+    const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const monthsFull = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const todayFormatted = `${nowD.getDate()} ${monthsShort[nowD.getMonth()]} ${nowD.getFullYear()}`;
+    const thisMonthFormatted = `${monthsFull[nowD.getMonth()]} ${nowD.getFullYear()}`;
+
+    const allReports = DB.getKitchenReports() || [];
+    const allKitchens = DB.getKitchens() || [];
+    const user = DB.getCurrentUser();
+    const isMaker = (user.role === 'MAKER_YAYASAN');
+
+    // 1. Dapur yang didelegasikan ke user ini
+    const delegatedKitchens = isMaker 
+      ? allKitchens.filter(k => k.makerYayasan && (k.makerYayasan.includes(user.name) || k.makerYayasan.includes(user.id)))
+      : allKitchens;
+
+    // 2. Filter Laporan berdasarkan Akses Role & Pilihan Filter
+    const activeKitchensForReports = isMaker ? delegatedKitchens : allKitchens;
+    const activeKitchenNames = activeKitchensForReports.map(k => (k.namaDapur || k.name || '').toLowerCase());
+    const activeKitchenIds = activeKitchensForReports.map(k => (k.id || '').toLowerCase());
+    const activeKitchenSppgs = activeKitchensForReports.map(k => (k.idSppg || '').toLowerCase());
+
+    const filteredReports = allReports.filter(r => {
+      // Role scope check
+      if (isMaker) {
+        const rKName = (r.kitchenName || '').toLowerCase();
+        const rKId = (r.kitchenId || '').toLowerCase();
+        const isMyKitchen = activeKitchenNames.some(name => rKName.includes(name) || name.includes(rKName)) ||
+                            activeKitchenIds.includes(rKId) ||
+                            activeKitchenSppgs.some(sppg => rKName.includes(sppg));
+        if (!isMyKitchen) return false;
+      }
+
+      // Kitchen Dropdown Filter
+      if (this.selectedKitchenFilter !== 'ALL') {
+        const targetKitchen = allKitchens.find(k => (k.id === this.selectedKitchenFilter || k.idSppg === this.selectedKitchenFilter));
+        const filterName = targetKitchen ? (targetKitchen.namaDapur || targetKitchen.name).toLowerCase() : '';
+        const filterId = (this.selectedKitchenFilter || '').toLowerCase();
+        const rName = (r.kitchenName || '').toLowerCase();
+        const rId = (r.kitchenId || '').toLowerCase();
+
+        const matchKitchen = (rId === filterId || (filterName && rName.includes(filterName)) || (filterName && filterName.includes(rName)));
+        if (!matchKitchen) return false;
+      }
+
+      // Date Filter (Support Range Tanggal Mulai s.d. Tanggal Akhir)
+      if (this.selectedDateFilter === 'TODAY' && r.date !== todayStr) {
+        return false;
+      } else if (this.selectedDateFilter === 'MONTH' && !r.date.startsWith(currentMonthStr)) {
+        return false;
+      } else if (this.selectedDateFilter === 'RANGE' || this.selectedDateFilter === 'SPECIFIC') {
+        const sDate = this.startDate || this.customDate;
+        const eDate = this.endDate || this.customDate;
+        if (sDate && eDate) {
+          if (r.date < sDate || r.date > eDate) return false;
+        } else if (sDate && r.date < sDate) {
+          return false;
+        } else if (eDate && r.date > eDate) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    // 3. Dynamic Aggregations & Calculations
+    const totalRawCost = filteredReports.reduce((acc, curr) => acc + (Number(curr.rawMaterialCost) || 0), 0);
+    const totalOpsCost = filteredReports.reduce((acc, curr) => acc + (Number(curr.operationalCost) || 0), 0);
+    const totalCarRentalCost = filteredReports.reduce((acc, curr) => acc + (Number(curr.carRentalCost) || 0), 0);
+    const totalIncentive = filteredReports.reduce((acc, curr) => acc + (Number(curr.foundationIncentive) || 0), 0);
+    const totalDailyExpense = filteredReports.reduce((acc, curr) => {
+      const explicit = Number(curr.totalDailyExpense);
+      if (!isNaN(explicit) && explicit > 0) return acc + explicit;
+      return acc + (Number(curr.rawMaterialCost) || 0) + (Number(curr.operationalCost) || 0) + (Number(curr.carRentalCost) || 0) + (Number(curr.foundationIncentive) || 0);
+    }, 0);
+
+    const totalBeneficiaries = filteredReports.reduce((acc, curr) => acc + (Number(curr.beneficiariesCount) || 0), 0);
+    const totalPorsiBesar = filteredReports.reduce((acc, curr) => acc + (Number(curr.porsiBesar) || 0), 0);
+    const totalPorsiKecil = filteredReports.reduce((acc, curr) => acc + (Number(curr.porsiKecil) || 0), 0);
+    const totalTargetBudget = (totalPorsiBesar * 10000) + (totalPorsiKecil * 8000);
+
+    const avgRawCostPerPortion = totalBeneficiaries > 0 ? Math.round(totalRawCost / totalBeneficiaries) : 0;
+    const avgAllInCostPerPortion = totalBeneficiaries > 0 ? Math.round(totalDailyExpense / totalBeneficiaries) : 0;
+    const overallEfficiency = totalTargetBudget > 0 ? Math.round((totalRawCost / totalTargetBudget) * 100) : 100;
+
+    const isSpecificKitchen = (this.selectedKitchenFilter !== 'ALL');
+    
+    // Sort reports for accurate latest date lookups
+    const sortedFiltered = [...filteredReports].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    
+    const formatIndoDate = (dateStr) => {
+      if (!dateStr) return '-';
+      const parts = dateStr.split('-');
+      if (parts.length < 3) return dateStr;
+      const y = parseInt(parts[0]);
+      const m = parseInt(parts[1]) - 1;
+      const d = parseInt(parts[2]);
+      const mNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      return `${d} ${mNames[m] || ''} ${y}`;
+    };
+
+    // Cari tanggal input terakhir masing-masing pos biaya
+    const latestRawReport = sortedFiltered.find(r => Number(r.rawMaterialCost) > 0) || sortedFiltered[0];
+    const latestRawDate = latestRawReport ? formatIndoDate(latestRawReport.date) : '-';
+
+    const latestOpsReport = sortedFiltered.find(r => Number(r.operationalCost) > 0) || sortedFiltered[0];
+    const latestOpsDate = latestOpsReport ? formatIndoDate(latestOpsReport.date) : '-';
+
+    const latestCarReport = sortedFiltered.find(r => Number(r.carRentalCost) > 0);
+    const latestCarDate = latestCarReport ? formatIndoDate(latestCarReport.date) : '-';
+
+    const latestIncentiveReport = sortedFiltered.find(r => Number(r.foundationIncentive) > 0);
+    const latestIncentiveDate = latestIncentiveReport ? formatIndoDate(latestIncentiveReport.date) : '-';
+
+    const latestOverallReport = sortedFiltered[0];
+    const latestOverallDate = latestOverallReport ? formatIndoDate(latestOverallReport.date) : '-';
+
+    // Hitung Saldo VA Terkini
+    let latestVAReport = null;
+    let latestVABalance = 0;
+    let vaAccountLabel = '';
+    if (isSpecificKitchen) {
+      latestVAReport = sortedFiltered.find(r => r.vaBalance !== undefined && r.vaBalance !== null && !isNaN(Number(r.vaBalance)));
+      if (!latestVAReport) {
+        const targetKitchen = allKitchens.find(k => (k.id === this.selectedKitchenFilter || k.idSppg === this.selectedKitchenFilter));
+        const filterName = targetKitchen ? (targetKitchen.namaDapur || targetKitchen.name).toLowerCase() : '';
+        const filterId = (this.selectedKitchenFilter || '').toLowerCase();
+        const kitchenAllReports = allReports.filter(r => {
+          const rName = (r.kitchenName || '').toLowerCase();
+          const rId = (r.kitchenId || '').toLowerCase();
+          return (rId === filterId || (filterName && rName.includes(filterName)) || (filterName && filterName.includes(rName)));
+        }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        latestVAReport = kitchenAllReports.find(r => r.vaBalance !== undefined && r.vaBalance !== null && !isNaN(Number(r.vaBalance)));
+      }
+      latestVABalance = latestVAReport ? (Number(latestVAReport.vaBalance) || 0) : 0;
+      vaAccountLabel = latestVAReport ? (latestVAReport.vaBankName || 'Virtual Account Bank') : 'Rekening VA Dapur';
+    } else {
+      // Konsolidasi saldo VA dari seluruh dapur yang aktif di filter
+      const kitchenBalanceMap = {};
+      const sortedAll = [...allReports].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      sortedAll.forEach(r => {
+        const kKey = r.kitchenId || r.kitchenName;
+        if (!kitchenBalanceMap[kKey] && r.vaBalance !== undefined && r.vaBalance !== null) {
+          if (!isMaker || activeKitchenNames.some(name => (r.kitchenName || '').toLowerCase().includes(name))) {
+            kitchenBalanceMap[kKey] = Number(r.vaBalance) || 0;
+          }
+        }
+      });
+      latestVABalance = Object.values(kitchenBalanceMap).reduce((sum, b) => sum + b, 0);
+      vaAccountLabel = isMaker ? 'Total Konsolidasi VA Delegasi Saya' : 'Total Saldo Konsolidasi Seluruh VA Dapur';
+      latestVAReport = sortedFiltered.find(r => r.vaBalance !== undefined && r.vaBalance !== null);
+    }
+    const latestVADate = latestVAReport ? formatIndoDate(latestVAReport.date) : '-';
+
+    // 4. Jaringan Distribusi Dapur Aktif
+    const displayedKitchens = isMaker ? delegatedKitchens : allKitchens;
+
+    container.innerHTML = `
+      <div class="animate-blur-in">
+        
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="text-mono-badge" style="color: #F87171; background: rgba(239, 68, 68, 0.15); padding: 2px 8px; border-radius: 4px; font-size: 11px;">
+                Operasional Program & Akuntabilitas Yayasan
+              </span>
+              ${isMaker ? `
+                <span style="font-size: 11.5px; color: #34D399; font-weight: 500; font-style: italic;">
+                  ● Login sebagai Maker Yayasan (Akses Dapur Delegasi: ${delegatedKitchens.length} Titik)
+                </span>
+              ` : `
+                <span style="font-size: 11.5px; color: #60A5FA; font-weight: 500; font-style: italic;">
+                  ● Mode Akses Eksekutif (Konsolidasi Seluruh Dapur SPPG)
+                </span>
+              `}
+            </div>
+            <h1 style="font-size: 26px; font-weight: 700; margin-top: 4px;">Pelaporan Transaksi Dapur & Saldo Virtual Account (VA)</h1>
+          </div>
+          
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+            ${this.canExportKitchenData(user) ? `
+              <button class="btn-nalar-secondary" onclick="DapurYayasanModule.openExportModal()" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.25) 100%); border: 1px solid rgba(52, 211, 153, 0.45); color: #34D399; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; transition: all 0.2s ease;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Export Laporan Excel (.xlsx)</span>
+              </button>
+            ` : ''}
+            <button class="btn-nalar-primary" onclick="DapurYayasanModule.openReportModal()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              + Input Laporan Transaksi Dapur Baru
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Bar di Atas Saldo / Summary KPI Cards -->
+        <div class="nalar-card" style="margin-bottom: 36px; padding: 18px 22px; background: rgba(18, 14, 10, 0.88); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md); box-shadow: 0 4px 20px rgba(0,0,0,0.4);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            
+            <!-- Left Info -->
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); display: flex; align-items: center; justify-content: center; font-size: 16px;">
+                🔍
+              </div>
+              <div>
+                <div style="font-size: 12px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em;">
+                  Filter Analisis Transaksi & Saldo VA
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 2px;">
+                  ${isMaker ? 'Menyesuaikan summary berdasarkan tanggal & dapur yang didelegasikan ke Anda' : 'Pilih tanggal & dapur tertentu atau tampilkan konsolidasi seluruh dapur'}
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Controls -->
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+              
+              <!-- Dapur Selector -->
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 600;">Dapur SPPG:</span>
+                <select id="dy-filter-kitchen" class="form-control" style="width: auto; min-width: 240px; font-size: 12px; font-weight: 500;" onchange="DapurYayasanModule.handleKitchenFilterChange(this.value)">
+                  ${isMaker ? `
+                    <option value="ALL" ${this.selectedKitchenFilter === 'ALL' ? 'selected' : ''}>
+                      🍳 Semua Dapur Delegasi Saya (${delegatedKitchens.length} Titik)
+                    </option>
+                    ${delegatedKitchens.map(k => `
+                      <option value="${k.idSppg || k.id}" ${this.selectedKitchenFilter === (k.idSppg || k.id) ? 'selected' : ''}>
+                        ${k.idSppg} — ${k.namaDapur || k.name}
+                      </option>
+                    `).join('')}
+                  ` : `
+                    <option value="ALL" ${this.selectedKitchenFilter === 'ALL' ? 'selected' : ''}>
+                      🌐 Semua Dapur SPPG (Konsolidasi Seluruh Titik)
+                    </option>
+                    ${allKitchens.map(k => `
+                      <option value="${k.idSppg || k.id}" ${this.selectedKitchenFilter === (k.idSppg || k.id) ? 'selected' : ''}>
+                        ${k.idSppg} — ${k.namaDapur || k.name}
+                      </option>
+                    `).join('')}
+                  `}
+                </select>
+              </div>
+
+              <!-- Date Selector (Range Support) -->
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 600;">Periode:</span>
+                <select id="dy-filter-date" class="form-control" style="width: auto; min-width: 180px; font-size: 12px; font-weight: 500;" onchange="DapurYayasanModule.handleDateFilterChange(this.value)">
+                  <option value="ALL" ${this.selectedDateFilter === 'ALL' ? 'selected' : ''}>🗓️ Semua Riwayat</option>
+                  <option value="TODAY" ${this.selectedDateFilter === 'TODAY' ? 'selected' : ''}>📅 Hari Ini (${todayFormatted})</option>
+                  <option value="MONTH" ${this.selectedDateFilter === 'MONTH' ? 'selected' : ''}>📆 Bulan Ini (${thisMonthFormatted})</option>
+                  <option value="RANGE" ${(this.selectedDateFilter === 'RANGE' || this.selectedDateFilter === 'SPECIFIC') ? 'selected' : ''}>🎯 Rentang Tanggal (Mulai s/d Akhir)...</option>
+                </select>
+
+                ${(this.selectedDateFilter === 'RANGE' || this.selectedDateFilter === 'SPECIFIC') ? `
+                  <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.5); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 6px; padding: 4px 10px;">
+                    <span style="font-size: 11px; color: var(--text-muted); font-weight: 500;">Mulai:</span>
+                    <input type="date" id="dy-start-date" class="form-control" value="${this.startDate || this.customDate}" 
+                           style="width: 130px; padding: 4px 8px; font-size: 11.5px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); color: #fff;"
+                           onchange="DapurYayasanModule.handleStartDateChange(this.value)">
+                    <span style="font-size: 11px; color: #FCD34D; font-weight: 700;">s/d</span>
+                    <span style="font-size: 11px; color: var(--text-muted); font-weight: 500;">Sampai:</span>
+                    <input type="date" id="dy-end-date" class="form-control" value="${this.endDate || this.customDate}" 
+                           style="width: 130px; padding: 4px 8px; font-size: 11.5px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); color: #fff;"
+                           onchange="DapurYayasanModule.handleEndDateChange(this.value)">
+                  </div>
+                ` : ''}
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+
+        <!-- KPI HUD Chips Dapur & VA (4 Di Atas & 4 Di Bawah: Belanja Bahan, Ops, Sewa Mobil, Insentif Yayasan | Total, Porsi, Saldo VA, Biaya/Porsi) -->
+        <div class="kpi-stat-grid dapur-kpi-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px;">
+          
+          <!-- Chip 1: Total Belanja Bahan Baku -->
+          <div class="kpi-chip hud-corner-box">
+            <div class="kpi-chip-header">
+              <span class="kpi-chip-title">Belanja Bahan Baku</span>
+              <span style="font-size: 10px; color: #F87171; font-weight: 700; background: rgba(239,68,68,0.12); padding: 1px 5px; border-radius: 3px;">BAHAN POKOK</span>
+            </div>
+            <div class="kpi-chip-value" style="color: #FCA5A5; font-weight: 700; font-size: 20px;">
+              Rp ${totalRawCost.toLocaleString('id-ID')}
+            </div>
+            <div class="kpi-chip-footer" style="color: #FCA5A5; font-size: 11px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir diinput: <strong style="color: #fff;">${latestRawDate !== '-' ? latestRawDate : 'Belum diinput'}</strong> (${filteredReports.length} lap.)</span>
+              ` : `
+                <span class="stat-trend-up">●</span> ${filteredReports.length} laporan belanja tercatat ${latestRawDate !== '-' ? `• Terakhir: <strong style="color: #fff;">${latestRawDate}</strong>` : ''}
+              `}
+            </div>
+          </div>
+
+          <!-- Chip 2: Biaya Operasional Hari Itu -->
+          <div class="kpi-chip hud-corner-box">
+            <div class="kpi-chip-header">
+              <span class="kpi-chip-title">Biaya Operasional</span>
+              <span style="font-size: 10px; color: #FCD34D; font-weight: 700; background: rgba(245,158,11,0.12); padding: 1px 5px; border-radius: 3px;">GAS & UTILITAS</span>
+            </div>
+            <div class="kpi-chip-value" style="color: #FDE68A; font-weight: 700; font-size: 20px;">
+              Rp ${totalOpsCost.toLocaleString('id-ID')}
+            </div>
+            <div class="kpi-chip-footer" style="color: #FCD34D; font-size: 11px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir diinput: <strong style="color: #fff;">${latestOpsDate !== '-' ? latestOpsDate : 'Belum diinput'}</strong></span>
+              ` : `
+                <span>● Gas LPG & utilitas ${latestOpsDate !== '-' ? `• Terakhir: <strong style="color: #fff;">${latestOpsDate}</strong>` : ''}</span>
+              `}
+            </div>
+          </div>
+
+          <!-- Chip 3: Biaya Sewa Mobil (Opsional) -->
+          <div class="kpi-chip hud-corner-box">
+            <div class="kpi-chip-header">
+              <span class="kpi-chip-title">Biaya Sewa Mobil</span>
+              <span style="font-size: 10px; color: #60A5FA; font-weight: 700; background: rgba(59,130,246,0.12); padding: 1px 5px; border-radius: 3px;">DISTRIBUSI</span>
+            </div>
+            <div class="kpi-chip-value" style="color: #93C5FD; font-weight: 700; font-size: 20px;">
+              Rp ${totalCarRentalCost.toLocaleString('id-ID')}
+            </div>
+            <div class="kpi-chip-footer" style="color: #93C5FD; font-size: 11px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir diinput: <strong style="color: #fff;">${latestCarDate !== '-' ? latestCarDate : 'Belum pernah diinput'}</strong></span>
+              ` : `
+                <span>● Armada pengantaran ${latestCarDate !== '-' ? `• Terakhir: <strong style="color: #fff;">${latestCarDate}</strong>` : ''}</span>
+              `}
+            </div>
+          </div>
+
+          <!-- Chip 4: Insentif Yayasan (Opsional) -->
+          <div class="kpi-chip hud-corner-box">
+            <div class="kpi-chip-header">
+              <span class="kpi-chip-title">Insentif Yayasan</span>
+              <span style="font-size: 10px; color: #C084FC; font-weight: 700; background: rgba(192,132,252,0.12); padding: 1px 5px; border-radius: 3px;">MITRA YAYASAN</span>
+            </div>
+            <div class="kpi-chip-value" style="color: #E879F9; font-weight: 700; font-size: 20px;">
+              Rp ${totalIncentive.toLocaleString('id-ID')}
+            </div>
+            <div class="kpi-chip-footer" style="color: #E879F9; font-size: 11px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir diinput: <strong style="color: #fff;">${latestIncentiveDate !== '-' ? latestIncentiveDate : 'Belum ada insentif'}</strong></span>
+              ` : `
+                <span>● Insentif berkala & khusus ${latestIncentiveDate !== '-' ? `• Terakhir: <strong style="color: #fff;">${latestIncentiveDate}</strong>` : ''}</span>
+              `}
+            </div>
+          </div>
+
+          <!-- Chip 5: Total Akumulasi Pengeluaran Dapur -->
+          <div class="kpi-chip hud-corner-box" style="border-color: rgba(255, 75, 1, 0.4); background: linear-gradient(180deg, rgba(255,75,1,0.08) 0%, rgba(20,15,10,0.6) 100%);">
+            <div class="kpi-chip-header">
+              <span class="kpi-chip-title" style="color: var(--brand-orange); font-weight: 700;">Total Pengeluaran</span>
+              <span style="font-size: 10px; color: #FF4B01; font-weight: 800; background: rgba(255,75,1,0.15); padding: 1px 5px; border-radius: 3px;">ALL-IN BIAYA</span>
+            </div>
+            <div class="kpi-chip-value" style="color: #FF8A4C; font-weight: 800; font-size: 22px;">
+              Rp ${totalDailyExpense.toLocaleString('id-ID')}
+            </div>
+            <div class="kpi-chip-footer" style="color: #FF8A4C; font-weight: 500; font-size: 11px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir transaksi: <strong style="color: #fff;">${latestOverallDate !== '-' ? latestOverallDate : '-'}</strong></span>
+              ` : `
+                <span>● Bahan + Ops + Sewa + Insentif</span>
+              `}
+            </div>
+          </div>
+
+          <!-- Chip 6: Total Penerima Manfaat & Porsi -->
+          <div class="kpi-chip hud-corner-box">
+            <div class="kpi-chip-header">
+              <span class="kpi-chip-title">Penerima Manfaat</span>
+              <span style="font-size: 10px; color: #34D399; font-weight: 700; background: rgba(52,211,153,0.12); padding: 1px 5px; border-radius: 3px;">PORSI TERBAGI</span>
+            </div>
+            <div class="kpi-chip-value" style="color: #6EE7B7; font-weight: 700; font-size: 20px;">
+              ${totalBeneficiaries.toLocaleString('id-ID')} <span style="font-size: 13px; font-weight: 400; color: var(--text-muted);">Porsi</span>
+            </div>
+            <div class="kpi-chip-footer" style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <span style="color: #FCD34D; font-size: 10.5px;">● ${totalPorsiBesar.toLocaleString('id-ID')} Bsr</span>
+              <span style="color: #60A5FA; font-size: 10.5px;">● ${totalPorsiKecil.toLocaleString('id-ID')} Kcl</span>
+            </div>
+          </div>
+
+          <!-- Chip 7: Saldo Terakhir Virtual Account (VA) -->
+          <div class="kpi-chip hud-corner-box">
+            <div class="kpi-chip-header">
+              <span class="kpi-chip-title">Saldo Virtual Account</span>
+              <span style="font-size: 10px; color: #38BDF8; font-weight: 700; background: rgba(56,189,248,0.12); padding: 1px 5px; border-radius: 3px;">MUTASI VA</span>
+            </div>
+            <div class="kpi-chip-value" style="color: #7DD3FC; font-weight: 700; font-size: 20px;">
+              Rp ${latestVABalance.toLocaleString('id-ID')}
+            </div>
+            <div class="kpi-chip-footer" style="color: #7DD3FC; font-size: 10.5px;">
+              ${isSpecificKitchen ? `
+                <span>● Terakhir diinput: <strong style="color: #fff;">${latestVADate !== '-' ? latestVADate : 'Belum diinput'}</strong> • ${vaAccountLabel}</span>
+              ` : `
+                <span>${vaAccountLabel} ${latestVADate !== '-' ? `• Terakhir: <strong style="color: #fff;">${latestVADate}</strong>` : ''}</span>
+              `}
+            </div>
+          </div>
+
+          <!-- Chip 8: Biaya Rata-Rata per Porsi Makanan -->
+          <div class="kpi-chip hud-corner-box">
+            <div class="kpi-chip-header">
+              <span class="kpi-chip-title">Biaya per Porsi Makanan</span>
+              <span style="font-size: 10px; font-weight: 700; color: ${overallEfficiency <= 100 ? '#34D399' : '#F87171'};">
+                ${overallEfficiency <= 100 ? '🟢 EFISIEN (' + overallEfficiency + '%)' : '🔴 OVER BUDGET'}
+              </span>
+            </div>
+            <div class="kpi-chip-value" style="color: #FDE68A; font-weight: 700; font-size: 20px;">
+              Rp ${avgRawCostPerPortion.toLocaleString('id-ID')} <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/ porsi</span>
+            </div>
+            <div class="kpi-chip-footer" style="font-size: 10.5px; color: var(--text-muted);">
+              All-In: <strong style="color: #fff;">Rp ${avgAllInCostPerPortion.toLocaleString('id-ID')}</strong> · Target: Rp ${totalTargetBudget.toLocaleString('id-ID')}
+            </div>
+          </div>
+
+        </div>
+
+        <!-- SECTION: LAPORAN STATUS OPERASIONAL DAPUR (Interactive Compact Calendar & Weekly Summary) -->
+        ${this.renderStatusSection(user, activeKitchensForReports, allKitchens)}
+
+        <!-- Master Dapur Quick View Cards (Hanya muncul berdasarkan penentuan peranan Maker di Database Master) -->
+        <div class="nalar-card" style="margin-bottom: 28px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="text-mono-badge" style="color: #FCD34D;">Jaringan Distribusi Dapur</span>
+                <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
+                  (Berdasarkan Delegasi Peran Maker di Database SPPG)
+                </span>
+              </div>
+              <h3 style="font-size: 18px; margin-top: 2px;">
+                ${isMaker ? 'Daftar Dapur Program yang Didelegasikan ke Anda' : 'Daftar Seluruh Titik Dapur Program Yayasan Aktif'}
+              </h3>
+            </div>
+
+            ${!isMaker ? `
+              <button class="btn-nalar-secondary" onclick="App.switchTab('admin-dapur')" style="font-size: 12px; padding: 6px 14px; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D;">
+                ⚙️ Buka Database & Kelola Delegasi Maker
+              </button>
+            ` : `
+              <div style="font-size: 11.5px; color: #34D399; font-weight: 600; background: rgba(52, 211, 153, 0.12); padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(52, 211, 153, 0.25);">
+                ✓ ${displayedKitchens.length} Titik Dapur Diberikan Otoritas Pelaporan
+              </div>
+            `}
+          </div>
+
+          ${displayedKitchens.length === 0 ? `
+            <div style="background: rgba(0,0,0,0.3); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); padding: 32px; text-align: center; color: var(--text-muted);">
+              <div style="font-size: 28px; margin-bottom: 6px;">🍳</div>
+              <div style="font-weight: 600; color: #fff; font-size: 14px;">Belum Ada Dapur yang Didelegasikan</div>
+              <p style="font-size: 12.5px; margin-top: 4px;">
+                Akun Maker Anda belum ditautkan ke titik dapur manapun pada pengaturan database dapur SPPG oleh Staf Ahli Keuangan.
+              </p>
+            </div>
+          ` : `
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+              ${displayedKitchens.map(k => {
+                const isSelected = (this.selectedKitchenFilter === (k.idSppg || k.id));
+                return `
+                  <div style="background: ${isSelected ? 'rgba(245, 158, 11, 0.08)' : 'var(--bg-card-elevated)'}; border: 1px solid ${isSelected ? 'var(--brand-orange)' : 'var(--border-subtle)'}; border-radius: var(--radius-md); padding: 16px 18px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease; cursor: pointer;"
+                       onclick="DapurYayasanModule.handleKitchenCardClick('${k.idSppg || k.id}')"
+                       title="Klik untuk filter summary dapur ini">
+                    
+                    <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 12px;">
+                      <div style="width: 42px; height: 42px; border-radius: var(--radius-sm); background: rgba(225, 29, 72, 0.15); border: 1px solid rgba(225, 29, 72, 0.3); display: flex; align-items: center; justify-content: center; color: #FB7185; font-size: 20px; flex-shrink: 0;">
+                        🍲
+                      </div>
+                      <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                          <span style="font-size: 11px; font-weight: 700; color: #60A5FA; background: rgba(59,130,246,0.12); padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(59,130,246,0.25);">
+                            ${k.idSppg || k.id}
+                          </span>
+                          <span class="badge-status ${k.status === 'AKTIF' ? 'badge-approved' : 'badge-rejected'}" style="font-size: 9.5px; padding: 2px 6px;">
+                            ${k.status === 'AKTIF' ? '🟢 Aktif' : '🔴 Nonaktif'}
+                          </span>
+                        </div>
+                        <div style="font-size: 13.5px; font-weight: 600; color: #fff; margin-top: 4px; line-height: 1.3;">
+                          ${k.namaDapur || k.name}
+                        </div>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                          📍 ${k.kotaKabupaten || k.location || '-'}, ${k.provinsi || '-'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="border-top: 1px solid var(--border-subtle); padding-top: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-secondary);">
+                      <div>
+                        👩‍🍳 Maker: <strong style="color: #FCD34D;">${k.makerYayasan || 'Belum Ditetapkan'}</strong>
+                      </div>
+                      <div style="color: #6EE7B7; font-weight: 500;">
+                        🍱 ${k.kapasitasPorsi || 500} porsi/hari
+                      </div>
+                    </div>
+
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+        </div>
+
+        <!-- Tabel Riwayat Laporan Transaksi Dapur & Mutasi Saldo VA -->
+        <div class="nalar-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <span class="text-mono-badge" style="color: var(--text-muted);">Rekap Transaksi & Audit</span>
+              <h3 style="font-size: 18px; margin-top: 2px;">Riwayat Pelaporan Transaksi Bahan Baku, Biaya Operasional, Sewa Mobil & Saldo VA</h3>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.35); padding: 5px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+              Menampilkan <strong style="color: #fff;">${filteredReports.length === 0 ? 0 : ((Math.min(Math.max(1, this.currentPage || 1), Math.ceil(filteredReports.length / this.pageSize) || 1) - 1) * this.pageSize) + 1}–${Math.min((Math.min(Math.max(1, this.currentPage || 1), Math.ceil(filteredReports.length / this.pageSize) || 1) * this.pageSize), filteredReports.length)}</strong> dari <strong style="color: #FCD34D;">${filteredReports.length}</strong> total transaksi
+            </div>
+          </div>
+
+          <!-- Table Container -->
+          <div class="nalar-table-container" style="overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+            <table class="nalar-table" style="min-width: 2000px; border-collapse: separate; border-spacing: 0;">
+              <thead>
+                <tr>
+                  <th style="min-width: 150px; white-space: nowrap;">No. Laporan</th>
+                  <th style="min-width: 115px; white-space: nowrap;">Tanggal</th>
+                  <th style="min-width: 220px;">Nama Dapur & SPPG</th>
+                  <th style="min-width: 175px; white-space: nowrap; background: rgba(245, 158, 11, 0.08); color: #FCD34D;">Target Budget (Anggaran)</th>
+                  <th style="min-width: 160px; white-space: nowrap;">Belanja Bahan Baku</th>
+                  <th style="min-width: 150px; white-space: nowrap;">Biaya Operasional</th>
+                  <th style="min-width: 135px; white-space: nowrap;">Sewa Mobil</th>
+                  <th style="min-width: 170px; white-space: nowrap; color: #C084FC; background: rgba(192, 132, 252, 0.08);">Insentif Yayasan</th>
+                  <th style="min-width: 170px; white-space: nowrap; background: rgba(255, 75, 1, 0.08); color: #FF8A4C;">Total Pengeluaran</th>
+                  <th style="min-width: 160px; white-space: nowrap;">Rincian Porsi</th>
+                  <th style="min-width: 175px; white-space: nowrap;">Biaya / Porsi</th>
+                  <th style="min-width: 160px; white-space: nowrap;">Saldo Akhir VA</th>
+                  <th style="min-width: 155px; white-space: nowrap;">Lampiran SPM</th>
+                  <th style="min-width: 165px;">Pelapor (Maker)</th>
+                  <th style="min-width: 90px; text-align: center; white-space: nowrap;">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(() => {
+                  const totalReports = filteredReports.length;
+                  const totalPages = Math.ceil(totalReports / this.pageSize) || 1;
+                  const curPage = Math.min(Math.max(1, this.currentPage || 1), totalPages);
+                  this.currentPage = curPage;
+
+                  const startIdx = (curPage - 1) * this.pageSize;
+                  const endIdx = Math.min(startIdx + this.pageSize, totalReports);
+                  const pageReports = filteredReports.slice(startIdx, endIdx);
+
+                  if (pageReports.length === 0) {
+                    return `
+                      <tr>
+                        <td colspan="15" style="text-align: center; color: var(--text-muted); padding: 42px;">
+                          Belum ada laporan transaksi dapur yang sesuai dengan kriteria filter saat ini.
+                        </td>
+                      </tr>
+                    `;
+                  }
+
+                  return pageReports.map(r => {
+                    const pBesar = Number(r.porsiBesar) || 0;
+                    const pKecil = Number(r.porsiKecil) || 0;
+                    const rawCost = Number(r.rawMaterialCost) || 0;
+                    const opsCost = Number(r.operationalCost) || 0;
+                    const carCost = Number(r.carRentalCost) || 0;
+                    const incCost = Number(r.foundationIncentive) || 0;
+                    const incNotes = r.incentiveNotes || '';
+                    const totExpense = Number(r.totalDailyExpense) || (rawCost + opsCost + carCost + incCost);
+
+                    // Auto generate perhitungan target budget: Porsi Besar (@Rp10.000) + Porsi Kecil (@Rp8.000)
+                    const targetBudg = Number(r.targetBudget) || ((pBesar * 10000) + (pKecil * 8000));
+                    const totalPorsi = (r.beneficiariesCount !== undefined ? Number(r.beneficiariesCount) : (pBesar + pKecil)) || 0;
+                    const eff = targetBudg > 0 ? Math.round((rawCost / targetBudg) * 100) : (rawCost === 0 ? 100 : 100);
+                    const costPerPortionAllIn = totalPorsi > 0 ? Math.round(totExpense / totalPorsi) : 0;
+                    
+                    return `
+                      <tr>
+                        <td style="color: #FB7185; font-weight: 700; white-space: nowrap; font-family: monospace; font-size: 12.5px;">
+                          ${r.id}
+                        </td>
+                        <td style="font-size: 12px; white-space: nowrap; color: #E2E8F0;">
+                          ${r.date}
+                        </td>
+                        <td style="min-width: 220px;">
+                          <div style="font-weight: 600; color: #fff; font-size: 13px; line-height: 1.35;">${r.kitchenName}</div>
+                          <div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 2px;">
+                            Titik Dapur SPPG Terdaftar
+                          </div>
+                        </td>
+                        <td style="background: rgba(245, 158, 11, 0.04); border-left: 1px solid rgba(245, 158, 11, 0.15); border-right: 1px solid rgba(245, 158, 11, 0.15); white-space: nowrap;">
+                          <div style="color: #FDE68A; font-weight: 700; font-size: 13px;">
+                            Rp ${targetBudg.toLocaleString('id-ID')}
+                          </div>
+                          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+                            Budget Auto-Generate
+                          </div>
+                        </td>
+                        <td style="color: #FCA5A5; font-weight: 600; font-size: 13px; white-space: nowrap;">
+                          Rp ${rawCost.toLocaleString('id-ID')}
+                        </td>
+                        <td style="color: #FDE68A; font-weight: 600; font-size: 13px; white-space: nowrap;">
+                          Rp ${opsCost.toLocaleString('id-ID')}
+                        </td>
+                        <td style="color: ${carCost > 0 ? '#93C5FD' : 'var(--text-muted)'}; font-weight: 600; font-size: 12.5px; white-space: nowrap;">
+                          ${carCost > 0 ? `Rp ${carCost.toLocaleString('id-ID')}` : '<span style="font-style: italic; font-weight: 400; font-size: 11px; color: var(--text-dim);">- (Tidak Ada)</span>'}
+                        </td>
+                        <td style="color: ${incCost > 0 ? '#C084FC' : 'var(--text-muted)'}; font-weight: 600; font-size: 12.5px; white-space: nowrap; background: rgba(192, 132, 252, 0.03);">
+                          ${incCost > 0 ? `
+                            <div style="color: #E879F9; font-weight: 700; font-size: 13px;">
+                              Rp ${incCost.toLocaleString('id-ID')}
+                            </div>
+                            ${incNotes ? `
+                              <div style="font-size: 10.5px; color: #D8B4FE; font-style: italic; margin-top: 2px; max-width: 165px; white-space: normal; line-height: 1.25;" title="${incNotes}">
+                                📝 ${incNotes}
+                              </div>
+                            ` : ''}
+                          ` : '<span style="font-style: italic; font-weight: 400; font-size: 11px; color: var(--text-dim);">- (Tidak Ada)</span>'}
+                        </td>
+                        <td style="color: #FF8A4C; font-weight: 800; font-size: 13.5px; background: rgba(255, 75, 1, 0.06); white-space: nowrap;">
+                          Rp ${totExpense.toLocaleString('id-ID')}
+                        </td>
+                        <td style="white-space: nowrap;">
+                          <div style="font-weight: 700; color: #6EE7B7; font-size: 12.5px;">
+                            🍱 ${totalPorsi.toLocaleString('id-ID')} Porsi
+                          </div>
+                          <div style="display: flex; gap: 8px; font-size: 11px; margin-top: 3px;">
+                            <span style="color: #FCD34D; font-weight: 500;">● ${pBesar.toLocaleString('id-ID')} Bsr</span>
+                            <span style="color: #60A5FA; font-weight: 500;">● ${pKecil.toLocaleString('id-ID')} Kcl</span>
+                          </div>
+                        </td>
+                        <td style="white-space: nowrap;">
+                          <div style="color: #FDE68A; font-weight: 600; font-size: 12px;">
+                            Bahan: Rp ${(r.costPerPortion || 0).toLocaleString('id-ID')}
+                          </div>
+                          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                            All-In: <strong style="color: #fff;">Rp ${costPerPortionAllIn.toLocaleString('id-ID')}</strong>
+                          </div>
+                          <div style="font-size: 10px; margin-top: 4px;">
+                            ${(totExpense === 0 && totalPorsi === 0) ? `
+                              <span class="badge-status" style="font-size: 9.5px; padding: 2px 6px; background: rgba(148, 163, 184, 0.15); color: #94A3B8; border: 1px solid rgba(148, 163, 184, 0.3);">
+                                ⚪ Saldo VA
+                              </span>
+                            ` : `
+                              <span class="badge-status ${eff <= 100 ? 'badge-approved' : 'badge-rejected'}" style="font-size: 9.5px; padding: 2px 6px;">
+                                ${eff <= 100 ? `🟢 Hemat (${eff}%)` : `🔴 Over (${eff}%)`}
+                              </span>
+                            `}
+                          </div>
+                        </td>
+                        <td style="white-space: nowrap;">
+                          <div style="color: #7DD3FC; font-weight: 700; font-size: 13px;">
+                            Rp ${(r.vaBalance || 0).toLocaleString('id-ID')}
+                          </div>
+                          <div style="font-size: 10.5px; color: var(--text-dim); margin-top: 2px;">
+                            ${r.vaBankName || 'Bank Mandiri VA'}
+                          </div>
+                        </td>
+                        <td style="white-space: nowrap;">
+                          ${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://')) && !r.spmAttachmentUrl.includes('unsplash.com')) ? `
+                            <a href="${r.spmAttachmentUrl}" target="_blank" rel="noopener noreferrer" class="btn-preview-link" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 11px; background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.35); color: #60A5FA; text-decoration: none; font-weight: 600;" title="Buka Link Google Drive SPM">
+                              🔗 Link SPM ↗
+                            </a>
+                          ` : (r.spmFileName && !r.spmFileName.includes('unsplash')) ? `
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                              <button type="button" class="btn-preview-link" style="padding: 3px 8px; font-size: 10.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
+                                      onclick="DapurYayasanModule.openSPMLightbox('${r.id}')" title="Pratinjau Dokumen SPM">
+                                📄 ${r.spmFileName.length > 13 ? r.spmFileName.slice(0, 11) + '...' : r.spmFileName}
+                              </button>
+                              <button type="button" class="btn-nalar-secondary" style="padding: 3px 7px; font-size: 10.5px; color: #34D399; border-color: rgba(52, 211, 153, 0.4);"
+                                      onclick="DapurYayasanModule.downloadSPMDocument('${r.id}')" title="Unduh Berkas ${r.spmFileName}">
+                                ⬇️
+                              </button>
+                            </div>
+                          ` : `
+                            <span style="font-size: 11px; color: var(--text-dim); font-style: italic;">
+                              -
+                            </span>
+                          `}
+                        </td>
+                        <td style="min-width: 165px;">
+                          <div style="font-weight: 500; color: #fff; font-size: 12px;">${r.reporterName}</div>
+                          <div style="font-size: 10.5px; color: var(--text-muted); font-style: italic; margin-top: 2px;">${r.createdAt || '-'}</div>
+                        </td>
+                        <td style="text-align: center; white-space: nowrap;">
+                          <div style="display: flex; gap: 6px; justify-content: center; align-items: center;">
+                            <button type="button" class="btn-nalar-secondary" style="padding: 4px 9px; font-size: 11px; color: #60A5FA; border-color: rgba(96, 165, 250, 0.4);" 
+                                    onclick="DapurYayasanModule.viewReportDetail('${r.id}')" title="Lihat Detail Transaksi & SPM">
+                              👁️ Detail
+                            </button>
+                            <button type="button" class="btn-nalar-secondary" style="padding: 4px 9px; font-size: 11px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);" 
+                                    onclick="DapurYayasanModule.openEditReportModal('${r.id}')" title="Edit Laporan Transaksi Dapur">
+                              ✏️ Edit
+                            </button>
+                            <button type="button" class="btn-nalar-secondary" style="padding: 4px 9px; font-size: 11px; color: #F87171; border-color: rgba(248, 113, 113, 0.4);" 
+                                    onclick="DapurYayasanModule.handleDeleteReport('${r.id}')" title="Hapus Laporan Transaksi Dapur">
+                              🗑️ Hapus
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('');
+                })()}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Controls (Maksimal 5 Transaksi Per Tampilan) -->
+          ${(() => {
+            const totalReports = filteredReports.length;
+            const totalPages = Math.ceil(totalReports / this.pageSize) || 1;
+            const curPage = Math.min(Math.max(1, this.currentPage || 1), totalPages);
+
+            // Logika Smart Pagination Ringkas & Responsif dengan Ellipsis (...)
+            const getPaginationPages = (current, total) => {
+              if (total <= 7) {
+                return Array.from({ length: total }, (_, i) => i + 1);
+              }
+
+              // Jika berada di 3 halaman awal (1, 2, 3)
+              if (current <= 3) {
+                return [1, 2, 3, 4, '...', total - 1, total];
+              }
+              // Jika berada di 3 halaman terakhir
+              else if (current >= total - 2) {
+                return [1, 2, '...', total - 3, total - 2, total - 1, total];
+              }
+              // Jika berada di tengah
+              else {
+                return [1, '...', current - 1, current, current + 1, '...', total];
+              }
+            };
+
+            const pageItems = getPaginationPages(curPage, totalPages);
+
+            return `
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 14px;">
+                <div style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                  <span>Halaman</span>
+                  <span style="color: #FCD34D; font-weight: 700; font-family: var(--font-mono); font-size: 13px;">${curPage}</span>
+                  <span>dari</span>
+                  <strong style="color: #fff; font-family: var(--font-mono); font-size: 13px;">${totalPages}</strong>
+                  <span style="color: var(--text-dim); font-size: 11px;">(Maks 5 Data / Hal)</span>
+                </div>
+
+                ${totalPages > 1 ? `
+                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" class="btn-nalar-secondary" 
+                            style="padding: 5px 12px; font-size: 11.5px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; ${curPage <= 1 ? 'opacity: 0.35; cursor: not-allowed;' : 'color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);'}"
+                            onclick="DapurYayasanModule.goToPage(${curPage - 1})"
+                            ${curPage <= 1 ? 'disabled' : ''}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                      <span>Sebelumnya</span>
+                    </button>
+
+                    <div style="display: flex; gap: 4px; align-items: center;">
+                      ${pageItems.map(item => {
+                        if (item === '...') {
+                          return `
+                            <span style="color: var(--text-muted); font-size: 13px; font-weight: 700; padding: 0 4px; user-select: none; letter-spacing: 1px;">
+                              •••
+                            </span>
+                          `;
+                        }
+                        const p = Number(item);
+                        const isActive = (p === curPage);
+                        return `
+                          <button type="button" class="btn-nalar-secondary" 
+                                  style="min-width: 32px; height: 30px; padding: 0 6px; font-size: 12px; font-weight: ${isActive ? '700' : '400'}; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; ${isActive ? 'background: rgba(245, 158, 11, 0.25); border-color: #F59E0B; color: #FCD34D; box-shadow: 0 0 10px rgba(245,158,11,0.2);' : 'color: var(--text-muted); background: rgba(0,0,0,0.25); border-color: rgba(255,255,255,0.08);'}"
+                                  onclick="DapurYayasanModule.goToPage(${p})">
+                            ${p}
+                          </button>
+                        `;
+                      }).join('')}
+                    </div>
+
+                    <button type="button" class="btn-nalar-secondary" 
+                            style="padding: 5px 12px; font-size: 11.5px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; ${curPage >= totalPages ? 'opacity: 0.35; cursor: not-allowed;' : 'color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);'}"
+                            onclick="DapurYayasanModule.goToPage(${curPage + 1})"
+                            ${curPage >= totalPages ? 'disabled' : ''}>
+                      <span>Berikutnya</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          })()}
+        </div>
+
+      </div>
+
+      <!-- Modal Input Laporan Dapur -->
+      <div id="modal-kitchen-report" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 720px;">
+          <div class="modal-header">
+            <div>
+              <span class="text-mono-badge" style="color: #F87171;">Formulir Harian Maker Yayasan</span>
+              <h3 id="modal-kitchen-report-title" class="modal-title" style="margin-top: 2px;">Input Laporan Transaksi Dapur & Saldo VA</h3>
+            </div>
+            <button class="modal-close-btn" onclick="App.closeModal('modal-kitchen-report')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <form id="form-kitchen-report" onsubmit="DapurYayasanModule.handleSubmit(event)">
+            <input type="hidden" id="kr-report-id" value="">
+            <div class="modal-body">
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Pilih Dapur Program (Database SPPG) <span style="color: #F87171;">*</span></label>
+                  <select id="kr-kitchen-select" class="form-control" required style="font-weight: 500;">
+                    ${(isMaker ? delegatedKitchens : allKitchens).map(k => `
+                      <option value="${k.idSppg} — ${k.namaDapur || k.name}">${k.idSppg} — ${k.namaDapur || k.name}</option>
+                    `).join('')}
+                  </select>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; font-style: italic;">
+                    ${isMaker ? '*Menampilkan daftar dapur yang didelegasikan ke akun Anda' : '*Menampilkan seluruh database master dapur SPPG'}
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Tanggal Pelaporan <span style="color: #F87171;">*</span></label>
+                  <input type="date" id="kr-date" class="form-control" value="${todayStr}" required>
+                </div>
+              </div>
+
+              <!-- Distribusi Porsi Makanan (Porsi Besar @10k & Porsi Kecil @8k) -->
+              <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span class="text-mono-badge" style="color: #6EE7B7;">Distribusi Penerima Manfaat & Porsi</span>
+                  <span id="kr-live-budget-estimate" style="font-size: 11.5px; color: #FCD34D; font-weight: 600;">
+                    Target Anggaran Bahan: Rp 0
+                  </span>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group" style="margin-bottom: 8px;">
+                    <label class="form-label">Total Penerima Manfaat (Porsi) <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">(Bisa 0)</span></label>
+                    <input type="number" id="kr-beneficiaries" class="form-control" placeholder="0" min="0" value="0"
+                           oninput="DapurYayasanModule.handlePorsiTotalChange(this.value)"
+                           style="font-weight: 700; color: #6EE7B7;">
+                  </div>
+                  <div class="form-group" style="margin-bottom: 8px;">
+                    <label class="form-label">Jumlah Porsi Besar (Budget Rp 10.000) <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">(Bisa 0)</span></label>
+                    <input type="number" id="kr-porsi-besar" class="form-control" placeholder="0" min="0" value="0"
+                           oninput="DapurYayasanModule.recalculatePorsiBreakdown('besar')"
+                           style="font-weight: 600; color: #FCD34D;">
+                  </div>
+                  <div class="form-group" style="margin-bottom: 8px;">
+                    <label class="form-label">Jumlah Porsi Kecil (Budget Rp 8.000) <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">(Bisa 0)</span></label>
+                    <input type="number" id="kr-porsi-kecil" class="form-control" placeholder="0" min="0" value="0"
+                           oninput="DapurYayasanModule.recalculatePorsiBreakdown('kecil')"
+                           style="font-weight: 600; color: #60A5FA;">
+                  </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 4px;">
+                  <span>*Porsi Besar: Santri Dewasa (Standar Rp 10.000/porsi)</span>
+                  <span>*Porsi Kecil: Santri Anak/Balita (Standar Rp 8.000/porsi)</span>
+                </div>
+              </div>
+
+              <!-- Rincian Biaya Pengeluaran Dapur (Bahan Baku + Biaya Operasional + Sewa Mobil) -->
+              <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                  <span class="text-mono-badge" style="color: #FCA5A5;">Rincian Pengeluaran Dapur Hari Ini</span>
+                  <div id="kr-live-total-expense" style="font-size: 13px; font-weight: 700; color: #FF8A4C;">
+                    Total Pengeluaran: Rp 0
+                  </div>
+                </div>
+
+                <!-- 1. Total Belanja Bahan Baku -->
+                <div class="form-group" style="margin-bottom: 12px;">
+                  <label class="form-label">1. Total Belanja Bahan Baku Aktual (Rp) <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">(Bisa diisi 0 jika tidak ada belanja)</span></label>
+                  <input type="number" id="kr-raw-cost" class="form-control" placeholder="0" min="0" value="0"
+                         oninput="DapurYayasanModule.recalculateLiveTotals()"
+                         style="font-weight: 700; color: #FCA5A5;">
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                    *Pembelian beras, sayur mayur, lauk pauk, telur/daging, dan bahan pangan pokok.
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <!-- 2. Biaya Operasional Hari Itu -->
+                  <div class="form-group" style="margin-bottom: 8px;">
+                    <label class="form-label">2. Biaya Operasional Hari Itu (Rp) <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">(Bisa diisi 0)</span></label>
+                    <input type="number" id="kr-operational-cost" class="form-control" placeholder="0" min="0" value="0"
+                           oninput="DapurYayasanModule.recalculateLiveTotals()"
+                           style="font-weight: 600; color: #FCD34D;">
+                    <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">
+                      *Gas LPG, bumbu pelengkap, air galon, plastik kemasan, & utilitas harian.
+                    </div>
+                  </div>
+
+                  <!-- 3. Biaya Sewa Mobil -->
+                  <div class="form-group" style="margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                      <label class="form-label">3. Biaya Sewa Mobil (Rp)</label>
+                      <span style="font-size: 10px; color: #60A5FA; font-weight: 700; background: rgba(59,130,246,0.15); padding: 1px 5px; border-radius: 3px;">OPSIONAL</span>
+                    </div>
+                    <input type="number" id="kr-car-rental-cost" class="form-control" placeholder="0" min="0" value="0"
+                           oninput="DapurYayasanModule.recalculateLiveTotals()"
+                           style="font-weight: 600; color: #93C5FD;">
+                    <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">
+                      *Sewa pick-up/van pengantaran makanan ke asrama santri jika ada.
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 4. Insentif Yayasan & Catatan Khusus Insentif -->
+                <div style="background: rgba(192, 132, 252, 0.05); border: 1px solid rgba(192, 132, 252, 0.25); border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 10px; margin-bottom: 8px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span class="text-mono-badge" style="color: #C084FC; font-size: 11px;">4. Insentif Yayasan (Opsional)</span>
+                    <span style="font-size: 10px; color: #C084FC; font-style: italic;">Diisi jika ada pembayaran insentif untuk yayasan</span>
+                  </div>
+                  <div class="form-row" style="margin-bottom: 0;">
+                    <div class="form-group" style="margin-bottom: 4px; flex: 1;">
+                      <label class="form-label" style="font-size: 11.5px; color: #E9D5FF;">Nominal Insentif (Rp) <span style="font-size: 10px; color: var(--text-muted);">(Bisa 0)</span></label>
+                      <input type="number" id="kr-foundation-incentive" class="form-control" placeholder="0" min="0" value="0"
+                             oninput="DapurYayasanModule.recalculateLiveTotals()"
+                             style="font-weight: 600; color: #E879F9;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 4px; flex: 1.4;">
+                      <label class="form-label" style="font-size: 11.5px; color: #E9D5FF;">Catatan Khusus Insentif <span style="font-size: 10px; color: var(--text-muted);">(Periode / Keterangan)</span></label>
+                      <input type="text" id="kr-incentive-notes" class="form-control" placeholder="Misal: Insentif periode 1 s/d 15 Sept 2026"
+                             style="font-size: 12px; color: #fff;">
+                    </div>
+                  </div>
+                  <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px; font-style: italic;">
+                    *Tuliskan rentang tanggal periode insentif yang dibayarkan atau catatan khusus lainnya.
+                  </div>
+                </div>
+
+                <div id="kr-live-efficiency-badge" style="font-size: 11.5px; color: var(--text-muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
+                  Masukkan rincian biaya untuk melihat kalkulasi biaya per porsi dan efisiensi.
+                </div>
+              </div>
+
+              <!-- Lampiran Dokumen SPM / Link Google Drive (Surat Perintah Membayar / Nota Belanja) -->
+              <div class="form-group" style="margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label class="form-label" style="margin-bottom: 0;">Link Google Drive Dokumen SPM / Bukti Nota</label>
+                  <span style="font-size: 10px; color: #34D399; font-weight: 700; background: rgba(16,185,129,0.15); padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.3);">HEMAT EGRESS & CLOUD</span>
+                </div>
+                
+                <div style="position: relative;">
+                  <input type="url" id="kr-spm-drive-url" class="form-control" 
+                         placeholder="https://drive.google.com/file/d/... atau tautan folder Google Drive"
+                         style="font-family: var(--font-mono); font-size: 12.5px; padding-left: 36px;">
+                  <div style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; pointer-events: none;">
+                    🔗
+                  </div>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">
+                  *Salin & tempel tautan Google Drive dokumen SPM atau foto nota belanja di sini (pastikan izin akses: <em>Siapa saja yang memiliki link dapat melihat</em>).
+                </div>
+
+                <input type="hidden" id="kr-spm-url" value="">
+                <input type="hidden" id="kr-spm-filename" value="">
+              </div>
+
+              <!-- Saldo VA Bank -->
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Nama Bank Virtual Account (VA) <span style="color: #F87171;">*</span></label>
+                  <input type="text" id="kr-va-bank" class="form-control" value="Bank Mandiri VA - Dapur Yayasan" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Saldo Terakhir VA per Tanggal Lapor (Rp) <span style="color: #F87171;">*</span></label>
+                  <input type="number" id="kr-va-balance" class="form-control" placeholder="0" min="0" required>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Catatan Operasional Dapur & Keterangan</label>
+                <textarea id="kr-notes" class="form-control" rows="2" placeholder="Tuliskan catatan penyaluran, kendala, atau keterangan update saldo VA hari ini..."></textarea>
+              </div>
+
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-kitchen-report')">Batal</button>
+              <button type="submit" id="kr-submit-btn" class="btn-nalar-primary">Submit Laporan Dapur & SPM</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal Detail Laporan -->
+      <div id="modal-kitchen-detail-view" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 650px;">
+          <div class="modal-header">
+            <div>
+              <span class="text-mono-badge" style="color: #60A5FA;">Audit Detail Laporan & SPM</span>
+              <h3 id="dt-report-id" class="modal-title" style="margin-top: 2px;">Detail Laporan Dapur</h3>
+            </div>
+            <button class="modal-close-btn" onclick="App.closeModal('modal-kitchen-detail-view')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div id="dt-report-body"></div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="dt-report-edit-btn" class="btn-nalar-secondary" style="padding: 6px 14px; font-size: 12px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);">
+                ✏️ Edit Transaksi
+              </button>
+              <button type="button" id="dt-report-delete-btn" class="btn-nalar-secondary" style="padding: 6px 14px; font-size: 12px; color: #F87171; border-color: rgba(248, 113, 113, 0.4);">
+                🗑️ Hapus
+              </button>
+            </div>
+            <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-kitchen-detail-view')">Tutup</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal SPM Lightbox Preview -->
+      <div id="modal-spm-lightbox" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 720px;">
+          <div class="modal-header">
+            <div>
+              <span class="text-mono-badge" style="color: #FCD34D;">Dokumen Lampiran SPM</span>
+              <h3 id="spm-lightbox-title" class="modal-title" style="margin-top: 2px;">Pratinjau Dokumen SPM</h3>
+            </div>
+            <button class="modal-close-btn" onclick="App.closeModal('modal-spm-lightbox')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body" style="text-align: center;">
+            <div id="spm-lightbox-content" style="max-height: 480px; overflow-y: auto; display: flex; justify-content: center; align-items: center;"></div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+            <button type="button" id="spm-lightbox-download-btn" class="btn-nalar-primary" style="padding: 7px 18px; font-size: 12.5px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; font-weight: 600; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);">
+              ⬇️ Unduh Dokumen SPM
+            </button>
+            <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-spm-lightbox')">Tutup</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Update Status Operasional Dapur -->
+      <div id="modal-kitchen-status" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 740px;">
+          <div class="modal-header">
+            <div>
+              <span class="text-mono-badge" style="color: #34D399;">Operational Status Log</span>
+              <h3 id="modal-kitchen-status-title" class="modal-title" style="margin-top: 2px;">Update Status Operasional Dapur</h3>
+            </div>
+            <button class="modal-close-btn" onclick="App.closeModal('modal-kitchen-status')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <form id="form-kitchen-status" onsubmit="DapurYayasanModule.handleSaveDailyStatus(event)">
+            <input type="hidden" id="status-target-date" value="">
+            
+            <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+              <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 16px;">
+                <div style="font-size: 11px; color: #93C5FD; font-weight: 600;">📅 TANGGAL PELAPORAN OPERASIONAL:</div>
+                <div id="status-modal-date-display" style="font-size: 14px; font-weight: 700; color: #fff; margin-top: 2px;"></div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  Pilih status untuk setiap titik dapur di bawah. Jika dapur <strong>Tidak Berjalan / Berhenti</strong>, wajib mengisi alasan kendala/libur.
+                </div>
+              </div>
+
+              <!-- Daftar Seluruh Dapur yang Didelegasikan -->
+              <div id="status-modal-kitchens-list" style="display: flex; flex-direction: column; gap: 12px;"></div>
+            </div>
+
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+              <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-kitchen-status')">Batal</button>
+              <button type="submit" id="btn-save-kitchen-status" class="btn-nalar-primary" style="padding: 8px 22px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);">
+                💾 Simpan Status Operasional
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  },
+
+  handleKitchenFilterChange: function(val) {
+    this.selectedKitchenFilter = val;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleKitchenCardClick: function(kitchenId) {
+    if (this.selectedKitchenFilter === kitchenId) {
+      this.selectedKitchenFilter = 'ALL';
+    } else {
+      this.selectedKitchenFilter = kitchenId;
+    }
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleDateFilterChange: function(val) {
+    this.selectedDateFilter = val;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleCustomDateChange: function(val) {
+    this.customDate = val;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  // Interactive Live Calculation Helpers in Modal Form
+  handlePorsiTotalChange: function(totalVal) {
+    const total = Number(totalVal) || 0;
+    const pBesarEl = document.getElementById('kr-porsi-besar');
+    const pKecilEl = document.getElementById('kr-porsi-kecil');
+
+    if (pBesarEl && pKecilEl) {
+      if (!pBesarEl.value && !pKecilEl.value) {
+        const besarEst = Math.round(total * 0.65);
+        const kecilEst = total - besarEst;
+        pBesarEl.value = besarEst;
+        pKecilEl.value = kecilEst;
+      }
+    }
+    this.updateTargetBudgetDisplay();
+  },
+
+  recalculatePorsiBreakdown: function(source) {
+    const pBesarEl = document.getElementById('kr-porsi-besar');
+    const pKecilEl = document.getElementById('kr-porsi-kecil');
+    const totalEl = document.getElementById('kr-beneficiaries');
+
+    const pBesar = Number(pBesarEl ? pBesarEl.value : 0) || 0;
+    const pKecil = Number(pKecilEl ? pKecilEl.value : 0) || 0;
+
+    if (totalEl) {
+      totalEl.value = pBesar + pKecil;
+    }
+    this.updateTargetBudgetDisplay();
+  },
+
+  updateTargetBudgetDisplay: function() {
+    const pBesar = Number(document.getElementById('kr-porsi-besar')?.value) || 0;
+    const pKecil = Number(document.getElementById('kr-porsi-kecil')?.value) || 0;
+    const targetBudget = (pBesar * 10000) + (pKecil * 8000);
+
+    const budgetEl = document.getElementById('kr-live-budget-estimate');
+    if (budgetEl) {
+      budgetEl.innerHTML = `Target Anggaran Bahan: <strong style="color: #FCD34D;">Rp ${targetBudget.toLocaleString('id-ID')}</strong> (${pBesar} Besar + ${pKecil} Kecil)`;
+    }
+    this.recalculateLiveTotals();
+  },
+
+  recalculateLiveTotals: function() {
+    const pBesar = Number(document.getElementById('kr-porsi-besar')?.value) || 0;
+    const pKecil = Number(document.getElementById('kr-porsi-kecil')?.value) || 0;
+    const rawCost = Number(document.getElementById('kr-raw-cost')?.value) || 0;
+    const opsCost = Number(document.getElementById('kr-operational-cost')?.value) || 0;
+    const carRentalCost = Number(document.getElementById('kr-car-rental-cost')?.value) || 0;
+    const foundationIncentive = Number(document.getElementById('kr-foundation-incentive')?.value) || 0;
+
+    const totalPorsi = pBesar + pKecil;
+    const targetBudget = (pBesar * 10000) + (pKecil * 8000);
+    const totalDailyExpense = rawCost + opsCost + carRentalCost + foundationIncentive;
+
+    const totalExpenseEl = document.getElementById('kr-live-total-expense');
+    if (totalExpenseEl) {
+      totalExpenseEl.innerHTML = `Total Pengeluaran: <strong style="color: #FF8A4C;">Rp ${totalDailyExpense.toLocaleString('id-ID')}</strong>`;
+    }
+
+    const badgeEl = document.getElementById('kr-live-efficiency-badge');
+    if (!badgeEl) return;
+
+    if (rawCost === 0 && totalDailyExpense === 0 && totalPorsi === 0) {
+      badgeEl.innerHTML = `
+        <span style="color: #94A3B8; font-style: italic; font-size: 11px;">
+          ⚪ Transaksi nihil (Rp 0 / 0 Porsi) — Hanya pembaruan saldo akhir Virtual Account (VA).
+        </span>
+      `;
+    } else if (rawCost > 0 && totalPorsi > 0 && targetBudget > 0) {
+      const avgRawCost = Math.round(rawCost / totalPorsi);
+      const avgAllInCost = Math.round(totalDailyExpense / totalPorsi);
+      const eff = Math.round((rawCost / targetBudget) * 100);
+      const isHemat = (eff <= 100);
+      
+      badgeEl.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <span style="color: ${isHemat ? '#34D399' : '#F87171'}; font-weight: 600;">
+              ${isHemat ? `🟢 Biaya Bahan: Rp ${avgRawCost.toLocaleString('id-ID')} / Porsi (Hemat ${100 - eff}% dari target)` : `🔴 Biaya Bahan: Rp ${avgRawCost.toLocaleString('id-ID')} / Porsi (Over ${eff - 100}%)`}
+            </span>
+            <span style="color: var(--text-muted); margin-left: 8px;">
+              · Biaya All-In: <strong style="color: #fff;">Rp ${avgAllInCost.toLocaleString('id-ID')} / Porsi</strong>
+            </span>
+          </div>
+        </div>
+      `;
+    } else {
+      badgeEl.innerHTML = `<span style="color: var(--text-muted); font-size: 11px;">Rincian: Total Pengeluaran Rp ${totalDailyExpense.toLocaleString('id-ID')} · Total Porsi ${totalPorsi}.</span>`;
+    }
+  },
+
+  recalculateEfficiencyLive: function() {
+    this.recalculateLiveTotals();
+  },
+
+  handleSPMFileUpload: async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const preview = document.getElementById('kr-spm-upload-preview');
+    const urlInput = document.getElementById('kr-spm-url');
+    const nameInput = document.getElementById('kr-spm-filename');
+
+    try {
+      const fileData = await DB.compressImageFile(file);
+      if (urlInput) urlInput.value = fileData || '';
+      if (nameInput) nameInput.value = file.name;
+
+      if (preview) {
+        preview.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
+            <span style="font-size: 24px;">📄</span>
+            <div style="text-align: left;">
+              <div style="font-size: 13px; font-weight: 600; color: #6EE7B7;">${file.name}</div>
+              <div style="font-size: 10.5px; color: var(--text-muted);">${(file.size / 1024).toFixed(1)} KB · Berkas Dokumen SPM Terlampir</div>
+            </div>
+            <button type="button" class="btn-nalar-secondary" style="padding: 2px 8px; font-size: 10.5px; margin-left: 10px;" onclick="DapurYayasanModule.removeSPMUpload(event)">
+              ✕ Ganti
+            </button>
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.error('File upload error:', err);
+      App.showToast('Gagal memproses berkas unggahan: ' + err.message, 'error');
+    }
+  },
+
+  removeSPMUpload: function(e) {
+    if (e) e.stopPropagation();
+    const fileInput = document.getElementById('kr-spm-file');
+    const urlInput = document.getElementById('kr-spm-url');
+    const nameInput = document.getElementById('kr-spm-filename');
+    const preview = document.getElementById('kr-spm-upload-preview');
+
+    if (fileInput) fileInput.value = '';
+    if (urlInput) urlInput.value = '';
+    if (nameInput) nameInput.value = '';
+    if (preview) {
+      preview.innerHTML = `
+        <div style="font-size: 26px; margin-bottom: 4px;">📑</div>
+        <div style="font-weight: 600; color: #fff; font-size: 13px;">
+          Klik atau Seret Berkas Dokumen SPM di Sini
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+          Format: File Dokumen SPM / Nota Belanja (JPG, PNG, PDF maks 10MB) — Opsional jika tidak ada pengeluaran
+        </div>
+      `;
+    }
+  },
+
+  openReportModal: function() {
+    const user = DB.getCurrentUser();
+    const isMaker = (user.role === 'MAKER_YAYASAN');
+    const select = document.getElementById('kr-kitchen-select');
+    const titleEl = document.getElementById('modal-kitchen-report-title');
+    const submitBtn = document.getElementById('kr-submit-btn');
+    const reportIdInput = document.getElementById('kr-report-id');
+
+    if (reportIdInput) reportIdInput.value = '';
+    if (titleEl) titleEl.textContent = 'Input Laporan Transaksi Dapur & Saldo VA';
+    if (submitBtn) submitBtn.textContent = 'Submit Laporan Dapur & SPM';
+    
+    if (select) {
+      const allKitchens = DB.getKitchens() || [];
+      const options = isMaker
+        ? allKitchens.filter(k => k.makerYayasan && (k.makerYayasan.includes(user.name) || k.makerYayasan.includes(user.id)))
+        : allKitchens;
+
+      select.innerHTML = options.map(k => `
+        <option value="${k.idSppg} — ${k.namaDapur || k.name}">${k.idSppg} — ${k.namaDapur || k.name}</option>
+      `).join('');
+    }
+
+    // Reset Form to Fresh State with 0 defaults
+    const form = document.getElementById('form-kitchen-report');
+    if (form) {
+      const dateEl = document.getElementById('kr-date');
+      const bEl = document.getElementById('kr-beneficiaries');
+      const pbEl = document.getElementById('kr-porsi-besar');
+      const pkEl = document.getElementById('kr-porsi-kecil');
+      const rawEl = document.getElementById('kr-raw-cost');
+      const opsEl = document.getElementById('kr-operational-cost');
+      const carEl = document.getElementById('kr-car-rental-cost');
+      const incEl = document.getElementById('kr-foundation-incentive');
+      const incNotesEl = document.getElementById('kr-incentive-notes');
+      const notesEl = document.getElementById('kr-notes');
+      const bankEl = document.getElementById('kr-va-bank');
+      const balEl = document.getElementById('kr-va-balance');
+
+      if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
+      if (bEl) bEl.value = '0';
+      if (incEl) incEl.value = '0';
+      if (incNotesEl) incNotesEl.value = '';
+      if (notesEl) notesEl.value = '';
+      if (bankEl && !bankEl.value) bankEl.value = 'Bank Mandiri VA - Dapur Yayasan';
+      if (balEl) balEl.value = '0';
+      const driveUrlEl = document.getElementById('kr-spm-drive-url');
+      if (driveUrlEl) driveUrlEl.value = '';
+      this.removeSPMUpload();
+      this.updateTargetBudgetDisplay();
+      this.recalculateLiveTotals();
+    }
+
+    App.openModal('modal-kitchen-report');
+  },
+
+  openEditReportModal: function(reportId) {
+    const reports = DB.getKitchenReports() || [];
+    const r = reports.find(item => item.id === reportId);
+    if (!r) {
+      App.showToast('Data laporan tidak ditemukan!', 'error');
+      return;
+    }
+
+    const user = DB.getCurrentUser();
+    const isMaker = (user.role === 'MAKER_YAYASAN');
+    const select = document.getElementById('kr-kitchen-select');
+    const titleEl = document.getElementById('modal-kitchen-report-title');
+    const submitBtn = document.getElementById('kr-submit-btn');
+    const reportIdInput = document.getElementById('kr-report-id');
+
+    if (reportIdInput) reportIdInput.value = r.id;
+    if (titleEl) titleEl.textContent = `Edit Laporan Transaksi (${r.id})`;
+    if (submitBtn) submitBtn.textContent = 'Simpan Perubahan Laporan';
+
+    if (select) {
+      const allKitchens = DB.getKitchens() || [];
+      const options = isMaker
+        ? allKitchens.filter(k => k.makerYayasan && (k.makerYayasan.includes(user.name) || k.makerYayasan.includes(user.id)))
+        : allKitchens;
+
+      select.innerHTML = options.map(k => `
+        <option value="${k.idSppg} — ${k.namaDapur || k.name}">${k.idSppg} — ${k.namaDapur || k.name}</option>
+      `).join('');
+
+      // Match kitchen by SPPG code or name
+      const sppgMatch = (r.kitchenName || '').match(/^([A-Z0-9]+)\s*[-—]/i);
+      const sppgCode = sppgMatch ? sppgMatch[1].trim() : (r.kitchenId || '');
+      
+      const foundOption = Array.from(select.options).find(opt => 
+        (sppgCode && opt.value.startsWith(sppgCode)) ||
+        opt.value === r.kitchenName ||
+        opt.value.includes(r.kitchenName) ||
+        (r.kitchenName && r.kitchenName.includes(opt.value))
+      );
+
+      if (foundOption) {
+        select.value = foundOption.value;
+      } else if (r.kitchenName) {
+        const newOpt = document.createElement('option');
+        newOpt.value = r.kitchenName;
+        newOpt.textContent = r.kitchenName;
+        select.appendChild(newOpt);
+        select.value = r.kitchenName;
+      }
+    }
+
+    const dateEl = document.getElementById('kr-date');
+    const bEl = document.getElementById('kr-beneficiaries');
+    const pbEl = document.getElementById('kr-porsi-besar');
+    const pkEl = document.getElementById('kr-porsi-kecil');
+    const rawEl = document.getElementById('kr-raw-cost');
+    const opsEl = document.getElementById('kr-operational-cost');
+    const carEl = document.getElementById('kr-car-rental-cost');
+    const incEl = document.getElementById('kr-foundation-incentive');
+    const incNotesEl = document.getElementById('kr-incentive-notes');
+    const bankEl = document.getElementById('kr-va-bank');
+    const balEl = document.getElementById('kr-va-balance');
+    const notesEl = document.getElementById('kr-notes');
+    const driveUrlEl = document.getElementById('kr-spm-drive-url');
+    const urlInput = document.getElementById('kr-spm-url');
+    const nameInput = document.getElementById('kr-spm-filename');
+    const preview = document.getElementById('kr-spm-upload-preview');
+
+    const pBesar = Number(r.porsiBesar) || 0;
+    const pKecil = Number(r.porsiKecil) || 0;
+    const totalPorsi = (r.beneficiariesCount !== undefined ? Number(r.beneficiariesCount) : (pBesar + pKecil)) || 0;
+
+    if (dateEl) dateEl.value = r.date || '';
+    if (bEl) bEl.value = totalPorsi;
+    if (pbEl) pbEl.value = pBesar;
+    if (pkEl) pkEl.value = pKecil;
+    if (rawEl) rawEl.value = (r.rawMaterialCost !== undefined ? r.rawMaterialCost : 0);
+    if (opsEl) opsEl.value = (r.operationalCost !== undefined ? r.operationalCost : 0);
+    if (carEl) carEl.value = (r.carRentalCost !== undefined ? r.carRentalCost : 0);
+    if (incEl) incEl.value = (r.foundationIncentive !== undefined ? r.foundationIncentive : 0);
+    if (incNotesEl) incNotesEl.value = r.incentiveNotes || '';
+    if (bankEl) bankEl.value = r.vaBankName || 'Bank Mandiri VA - Dapur Yayasan';
+    if (balEl) balEl.value = (r.vaBalance !== undefined ? r.vaBalance : 0);
+    if (notesEl) notesEl.value = r.notes || '';
+
+    const cleanUrl = (r.spmAttachmentUrl && !r.spmAttachmentUrl.includes('unsplash.com')) ? r.spmAttachmentUrl : '';
+    if (driveUrlEl) {
+      driveUrlEl.value = (cleanUrl && (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://'))) ? cleanUrl : '';
+    }
+    if (urlInput) urlInput.value = (cleanUrl && !cleanUrl.startsWith('http')) ? cleanUrl : '';
+    if (nameInput) nameInput.value = cleanUrl ? (r.spmFileName || '') : '';
+
+    if (preview) {
+      if (r.spmFileName && cleanUrl && !cleanUrl.startsWith('http')) {
+        preview.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
+            <span style="font-size: 24px;">📄</span>
+            <div style="text-align: left;">
+              <div style="font-size: 13px; font-weight: 600; color: #6EE7B7;">${r.spmFileName}</div>
+              <div style="font-size: 10.5px; color: var(--text-muted);">Berkas Dokumen SPM Fisik Lama</div>
+            </div>
+          </div>
+        `;
+      } else {
+        this.removeSPMUpload();
+      }
+    }
+
+    this.updateTargetBudgetDisplay();
+    this.recalculateLiveTotals();
+
+    App.closeModal('modal-kitchen-detail-view');
+    App.openModal('modal-kitchen-report');
+  },
+
+  handleDeleteReport: async function(reportId) {
+    const reports = DB.getKitchenReports() || [];
+    const r = reports.find(item => item.id === reportId);
+    const kitchenName = r ? r.kitchenName : reportId;
+    const dateStr = r ? r.date : '';
+
+    const isConfirmed = confirm(`Apakah Anda yakin ingin menghapus laporan transaksi dapur "${kitchenName}" (Tanggal: ${dateStr})?\n\nTindakan ini akan menghapus data transaksi dari sistem dan database cloud Supabase.`);
+    if (!isConfirmed) return;
+
+    App.showToast('Menghapus laporan transaksi...', 'info');
+    try {
+      await DB.deleteKitchenReport(reportId);
+      App.closeModal('modal-kitchen-detail-view');
+      App.showToast(`Laporan transaksi ${reportId} berhasil dihapus!`, 'success');
+      this.render(document.getElementById('main-content-area'));
+    } catch (err) {
+      console.error('Delete error:', err);
+      App.showToast('Gagal menghapus laporan transaksi: ' + (err.message || err), 'error');
+    }
+  },
+
+  handleSubmit: async function(e) {
+    e.preventDefault();
+    const user = DB.getCurrentUser();
+    const editId = document.getElementById('kr-report-id')?.value;
+    const kitchenSelectVal = document.getElementById('kr-kitchen-select').value;
+    const date = document.getElementById('kr-date').value;
+    
+    const rawMaterialCost = Number(document.getElementById('kr-raw-cost').value) || 0;
+    const operationalCost = Number(document.getElementById('kr-operational-cost').value) || 0;
+    const carRentalCost = Number(document.getElementById('kr-car-rental-cost').value) || 0;
+    const foundationIncentive = Number(document.getElementById('kr-foundation-incentive')?.value) || 0;
+    const incentiveNotes = (document.getElementById('kr-incentive-notes')?.value || '').trim();
+    const totalDailyExpense = rawMaterialCost + operationalCost + carRentalCost + foundationIncentive;
+
+    const porsiBesar = Number(document.getElementById('kr-porsi-besar').value) || 0;
+    const porsiKecil = Number(document.getElementById('kr-porsi-kecil').value) || 0;
+    const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (Number(document.getElementById('kr-beneficiaries').value) || 0);
+
+    const rawDrive = (document.getElementById('kr-spm-drive-url')?.value || '').trim();
+    const rawUpload = (document.getElementById('kr-spm-url')?.value || '').trim();
+    let spmUrl = '';
+    if (rawDrive && !rawDrive.includes('unsplash.com')) {
+      spmUrl = rawDrive;
+    } else if (rawUpload && !rawUpload.includes('unsplash.com')) {
+      spmUrl = rawUpload;
+    }
+    const defaultSpmFileName = spmUrl.startsWith('http') ? 'Link Google Drive SPM' : ((totalDailyExpense > 0) ? `SPM-${kitchenSelectVal.split(' — ')[0]}-${date.replace(/-/g, '')}.pdf` : '');
+    const spmFileName = spmUrl.startsWith('http') ? 'Link Google Drive SPM' : ((document.getElementById('kr-spm-filename')?.value || '').trim() || defaultSpmFileName);
+
+    const vaBankName = document.getElementById('kr-va-bank').value.trim() || 'Bank Mandiri VA - Dapur Yayasan';
+    const vaBalance = Number(document.getElementById('kr-va-balance').value) || 0;
+    const notes = document.getElementById('kr-notes').value.trim();
+
+    if (!kitchenSelectVal || !date) {
+      App.showToast('Mohon lengkapi pilihan dapur dan tanggal pelaporan!', 'warn');
+      return;
+    }
+
+    if (rawMaterialCost < 0 || operationalCost < 0 || carRentalCost < 0 || foundationIncentive < 0 || beneficiariesCount < 0) {
+      App.showToast('Nilai biaya dan porsi tidak boleh negatif!', 'warn');
+      return;
+    }
+
+    const reportData = {
+      kitchenName: kitchenSelectVal,
+      date,
+      rawMaterialCost,
+      operationalCost,
+      carRentalCost,
+      foundationIncentive,
+      incentiveNotes,
+      totalDailyExpense,
+      porsiBesar,
+      porsiKecil,
+      beneficiariesCount,
+      spmFileName,
+      spmAttachmentUrl: spmUrl,
+      vaBankName,
+      vaBalance,
+      notes
+    };
+
+    if (editId) {
+      App.closeModal('modal-kitchen-report');
+      App.showToast(`Memperbarui laporan transaksi ${editId}...`, 'info');
+      try {
+        await DB.updateKitchenReport(editId, reportData);
+        App.showToast(`Laporan transaksi ${editId} berhasil diperbarui!`, 'success');
+      } catch (err) {
+        console.error('Update kitchen report error:', err);
+        App.showToast(`Gagal memperbarui laporan: ${err.message || err}`, 'error');
+      }
+    } else {
+      reportData.reporterId = user.id;
+      reportData.reporterName = `${user.name} (${user.roleLabel})`;
+      App.closeModal('modal-kitchen-report');
+      App.showToast(`Menyimpan laporan transaksi ${kitchenSelectVal}...`, 'info');
+      try {
+        await DB.addKitchenReport(reportData);
+        App.showToast(`Laporan transaksi ${kitchenSelectVal} berhasil disimpan!`, 'success');
+      } catch (err) {
+        console.error('Add kitchen report error:', err);
+        App.showToast(`Gagal menyimpan laporan: ${err.message || err}`, 'error');
+      }
+    }
+
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  viewReportDetail: function(reportId) {
+    const reports = DB.getKitchenReports() || [];
+    const r = reports.find(item => item.id === reportId);
+    if (!r) return;
+
+    const titleEl = document.getElementById('dt-report-id');
+    const bodyEl = document.getElementById('dt-report-body');
+
+    const pBesar = Number(r.porsiBesar) || 0;
+    const pKecil = Number(r.porsiKecil) || 0;
+    const rawCost = Number(r.rawMaterialCost) || 0;
+    const opsCost = Number(r.operationalCost) || 0;
+    const carCost = Number(r.carRentalCost) || 0;
+    const incCost = Number(r.foundationIncentive) || 0;
+    const incNotes = r.incentiveNotes || '';
+    const totExpense = Number(r.totalDailyExpense) || (rawCost + opsCost + carCost + incCost);
+
+    const costPerPortionAllIn = Number(r.costPerPortionAllIn) || 0;
+    const eff = (r.beneficiariesCount > 0 && r.targetBudget > 0) ? Math.round((totExpense / r.targetBudget) * 100) : 100;
+
+    if (titleEl) titleEl.textContent = `${r.id} · ${r.kitchenName}`;
+    if (bodyEl) {
+      bodyEl.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px;">
+          <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 10.5px; color: var(--text-muted);">Tanggal:</div>
+            <div style="font-size: 13px; font-weight: 600; color: #fff;">${r.date}</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 10.5px; color: var(--text-muted);">Belanja Bahan:</div>
+            <div style="font-size: 13px; font-weight: 600; color: #FCD34D;">Rp ${rawCost.toLocaleString('id-ID')}</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 10.5px; color: var(--text-muted);">Operasional:</div>
+            <div style="font-size: 13px; font-weight: 600; color: #60A5FA;">Rp ${opsCost.toLocaleString('id-ID')}</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 10.5px; color: var(--text-muted);">Sewa Mobil:</div>
+            <div style="font-size: 13px; font-weight: 600; color: #A78BFA;">Rp ${carCost.toLocaleString('id-ID')}</div>
+          </div>
+          <div style="background: rgba(192, 132, 252, 0.08); padding: 10px; border-radius: var(--radius-sm); border: 1px solid rgba(192, 132, 252, 0.25);">
+            <div style="font-size: 10.5px; color: #C084FC; font-weight: 600;">Insentif Yayasan:</div>
+            <div style="font-size: 13px; font-weight: 700; color: #E879F9;">Rp ${incCost.toLocaleString('id-ID')}</div>
+          </div>
+          <div style="background: rgba(16, 185, 129, 0.08); padding: 10px; border-radius: var(--radius-sm); border: 1px solid rgba(16, 185, 129, 0.25);">
+            <div style="font-size: 10.5px; color: #34D399; font-weight: 600;">TOTAL BELANJA:</div>
+            <div style="font-size: 14px; font-weight: 700; color: #6EE7B7;">Rp ${totExpense.toLocaleString('id-ID')}</div>
+          </div>
+        </div>
+
+        ${incNotes ? `
+          <div style="background: rgba(192, 132, 252, 0.06); border: 1px solid rgba(192, 132, 252, 0.25); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 14px;">
+            <div style="font-size: 11px; color: #D8B4FE; font-weight: 600; margin-bottom: 3px;">Catatan Khusus Insentif Yayasan:</div>
+            <div style="font-size: 12.5px; color: #fff;">📝 ${incNotes}</div>
+          </div>
+        ` : ''}
+
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 14px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 10px;">
+            <div>Porsi Besar (@Rp10.000): <strong style="color: #FCD34D;">${pBesar} Porsi</strong></div>
+            <div>Porsi Kecil (@Rp8.000): <strong style="color: #60A5FA;">${pKecil} Porsi</strong></div>
+            <div>Total Penerima Manfaat: <strong style="color: #6EE7B7;">${(r.beneficiariesCount !== undefined ? r.beneficiariesCount : (pBesar + pKecil))} Porsi</strong></div>
+            <div>Biaya Bahan per Porsi: <strong style="color: #FDE68A;">Rp ${(r.costPerPortion || 0).toLocaleString('id-ID')}</strong></div>
+            <div>Biaya All-In per Porsi: <strong style="color: #fff;">Rp ${costPerPortionAllIn.toLocaleString('id-ID')}</strong></div>
+          </div>
+
+          <div style="border-top: 1px solid var(--border-subtle); padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 12px;">Saldo Akhir VA: <strong style="color: #7DD3FC;">Rp ${(r.vaBalance || 0).toLocaleString('id-ID')}</strong> (${r.vaBankName || 'Bank Mandiri VA'})</div>
+            ${(totExpense === 0 && (r.beneficiariesCount || (pBesar + pKecil)) === 0) ? `
+              <span class="badge-status" style="font-size: 10px; background: rgba(148, 163, 184, 0.15); color: #94A3B8; border: 1px solid rgba(148, 163, 184, 0.3);">
+                ⚪ Saldo VA Saja
+              </span>
+            ` : `
+              <span class="badge-status ${eff <= 100 ? 'badge-approved' : 'badge-rejected'}" style="font-size: 10px;">
+                ${eff <= 100 ? `🟢 Efisiensi ${eff}% (Hemat)` : `🔴 Over Budget (${eff}%)`}
+              </span>
+            `}
+          </div>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 14px;">
+          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">DOKUMEN LAMPIRAN SPM (SURAT PERINTAH MEMBAYAR):</div>
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 20px;">📄</span>
+              <span style="font-size: 12.5px; font-weight: 600; color: #fff;">${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://')) && !r.spmAttachmentUrl.includes('unsplash.com')) ? 'Link Google Drive SPM' : (r.spmFileName || 'Dokumen SPM')}</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              ${(r.spmAttachmentUrl && (r.spmAttachmentUrl.startsWith('http://') || r.spmAttachmentUrl.startsWith('https://')) && !r.spmAttachmentUrl.includes('unsplash.com')) ? `
+                <a href="${r.spmAttachmentUrl}" target="_blank" rel="noopener noreferrer" class="btn-nalar-primary" style="padding: 6px 16px; font-size: 12px; background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(37,99,235,0.35);">
+                  🔗 Buka Link Google Drive SPM ↗
+                </a>
+              ` : (r.spmFileName && !r.spmFileName.includes('unsplash')) ? `
+                <button type="button" class="btn-nalar-secondary" style="padding: 5px 12px; font-size: 11.5px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
+                        onclick="DapurYayasanModule.openSPMLightbox('${r.id}')">
+                  👁️ Pratinjau Dokumen ↗
+                </button>
+                <button type="button" class="btn-nalar-primary" style="padding: 5px 14px; font-size: 11.5px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; font-weight: 600; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
+                        onclick="DapurYayasanModule.downloadSPMDocument('${r.id}')">
+                  ⬇️ Unduh Berkas
+                </button>
+              ` : `
+                <span style="font-size: 11.5px; color: var(--text-dim); font-style: italic;">Tidak ada lampiran dokumen</span>
+              `}
+            </div>
+          </div>
+        </div>
+
+        ${r.notes ? `
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px;">
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Catatan Pelaporan Dapur:</div>
+            <div style="font-size: 12.5px; color: #CBD5E1; font-style: italic;">"${r.notes}"</div>
+          </div>
+        ` : ''}
+
+        <div style="font-size: 10.5px; color: var(--text-dim); margin-top: 12px; font-style: italic; text-align: right;">
+          Dilaporkan oleh: ${r.reporterName} (${r.createdAt || '-'})
+        </div>
+      `;
+    }
+
+    const editBtn = document.getElementById('dt-report-edit-btn');
+    const delBtn = document.getElementById('dt-report-delete-btn');
+    if (editBtn) {
+      editBtn.onclick = () => {
+        DapurYayasanModule.openEditReportModal(reportId);
+      };
+    }
+    if (delBtn) {
+      delBtn.onclick = () => {
+        DapurYayasanModule.handleDeleteReport(reportId);
+      };
+    }
+
+    App.openModal('modal-kitchen-detail-view');
+  },
+
+  openSPMLightbox: async function(reportIdOrUrl, titleParam, reportIdParam) {
+    let url = '';
+    let title = 'Dokumen SPM';
+    let reportId = '';
+
+    const reports = DB.getKitchenReports() || [];
+
+    // If passed a report ID
+    if (typeof reportIdOrUrl === 'string' && reportIdOrUrl.length < 100) {
+      const foundReport = reports.find(item => item.id === reportIdOrUrl);
+      if (foundReport) {
+        reportId = foundReport.id;
+        title = foundReport.spmFileName || titleParam || 'Dokumen SPM';
+        url = (foundReport.spmAttachmentUrl && !foundReport.spmAttachmentUrl.includes('unsplash.com')) ? foundReport.spmAttachmentUrl : '';
+        if (!url && foundReport.spmFileName && !foundReport.spmFileName.includes('unsplash')) {
+          App.showToast('Memuat dokumen SPM dari database cloud...', 'info');
+          url = await DB.fetchKitchenReportAttachment(foundReport.id);
+        }
+      } else {
+        url = (reportIdOrUrl && !reportIdOrUrl.includes('unsplash.com')) ? reportIdOrUrl : '';
+        title = titleParam || 'Dokumen SPM';
+        reportId = reportIdParam || '';
+      }
+    } else {
+      url = (reportIdOrUrl && !reportIdOrUrl.includes('unsplash.com')) ? reportIdOrUrl : '';
+      title = titleParam || 'Dokumen SPM';
+      reportId = reportIdParam || '';
+    }
+
+    if (url && (url.startsWith('http://') || url.startsWith('https://')) && !url.includes('unsplash.com')) {
+      window.open(url, '_blank');
+      return;
+    }
+
+    const titleEl = document.getElementById('spm-lightbox-title');
+    const contentEl = document.getElementById('spm-lightbox-content');
+    const dlBtn = document.getElementById('spm-lightbox-download-btn');
+
+    if (titleEl) titleEl.textContent = `Dokumen: ${title}`;
+
+    if (dlBtn) {
+      dlBtn.onclick = () => {
+        DapurYayasanModule.downloadSPMDocument(reportId || url, title);
+      };
+    }
+
+    if (contentEl) {
+      const isPdf = (title && title.toLowerCase().endsWith('.pdf')) || (url && url.startsWith('data:application/pdf'));
+      const isImage = (url && url.startsWith('data:image')) || (title && (title.toLowerCase().endsWith('.jpg') || title.toLowerCase().endsWith('.jpeg') || title.toLowerCase().endsWith('.png') || title.toLowerCase().endsWith('.webp')));
+
+      if (isPdf && url && (url.startsWith('data:application/pdf') || url.startsWith('blob:') || url.startsWith('http'))) {
+        contentEl.innerHTML = `
+          <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+            <iframe src="${url}" style="width: 100%; height: 460px; border: 1px solid var(--border-card); border-radius: var(--radius-sm); background: #ffffff;"></iframe>
+            <div style="font-size: 11px; color: var(--text-muted); font-style: italic;">
+              ${title} — Berkas Asli Terverifikasi Sistem ERP Yayasan
+            </div>
+          </div>
+        `;
+      } else if (isImage && url && (url.startsWith('data:image') || (url.startsWith('http') && !url.includes('unsplash.com')) || url.startsWith('blob:'))) {
+        contentEl.innerHTML = `
+          <div style="width: 100%; text-align: center;">
+            <img src="${url}" alt="Dokumen SPM" style="max-width: 100%; max-height: 440px; border-radius: var(--radius-sm); border: 1px solid var(--border-card); box-shadow: 0 8px 30px rgba(0,0,0,0.7);"
+                 onerror="this.onerror=null; DapurYayasanModule.renderFallbackSPMPreview(this.parentElement, '${title}', '${reportId}')">
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; font-style: italic;">
+              ${title} — Berkas Asli Terverifikasi Sistem ERP Yayasan
+            </div>
+          </div>
+        `;
+      } else {
+        this.renderFallbackSPMPreview(contentEl, title, reportId);
+      }
+    }
+
+    App.openModal('modal-spm-lightbox');
+  },
+
+  renderFallbackSPMPreview: function(container, title, reportId) {
+    if (!container) return;
+    const reports = DB.getKitchenReports() || [];
+    const r = reportId ? reports.find(item => item.id === reportId) : null;
+
+    container.innerHTML = `
+      <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); border-radius: var(--radius-md); padding: 32px 24px; text-align: center; width: 100%;">
+        <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: center; font-size: 30px; margin: 0 auto 14px auto;">
+          📄
+        </div>
+        <div style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px;">${title}</div>
+        <div style="font-size: 12px; color: #FCD34D; font-weight: 500; margin-bottom: 8px;">
+          Dokumen Lampiran SPM Digital
+        </div>
+        <div style="font-size: 11.5px; color: var(--text-muted); max-width: 440px; margin: 0 auto 18px auto; line-height: 1.5;">
+          ${r ? `Terkait transaksi <strong>${r.kitchenName}</strong> pada tanggal <strong>${r.date}</strong> (Total Belanja: Rp ${(r.totalDailyExpense || 0).toLocaleString('id-ID')}).` : 'Berkas lampiran resmi terverifikasi dalam database ERP Yayasan.'}
+        </div>
+        <button type="button" class="btn-nalar-primary" style="margin: 0 auto; padding: 8px 20px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #10B981; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);"
+                onclick="DapurYayasanModule.downloadSPMDocument('${reportId || ''}')">
+          ⬇️ Unduh Berkas Asli
+        </button>
+      </div>
+    `;
+  },
+
+  downloadSPMDocument: async function(reportIdOrUrl, customFileName) {
+    let url = '';
+    let fileName = customFileName || '';
+
+    const reports = DB.getKitchenReports() || [];
+
+    // Check if passed a report ID
+    if (typeof reportIdOrUrl === 'string' && reportIdOrUrl.length < 100) {
+      const r = reports.find(item => item.id === reportIdOrUrl);
+      if (r) {
+        fileName = fileName || r.spmFileName || 'Dokumen-SPM';
+        url = (r.spmAttachmentUrl && !r.spmAttachmentUrl.includes('unsplash.com')) ? r.spmAttachmentUrl : '';
+        if (!url && r.spmFileName && !r.spmFileName.includes('unsplash')) {
+          App.showToast('Mengambil data berkas asli dari database cloud...', 'info');
+          url = await DB.fetchKitchenReportAttachment(r.id);
+        }
+      } else {
+        url = (reportIdOrUrl && !reportIdOrUrl.includes('unsplash.com')) ? reportIdOrUrl : '';
+      }
+    } else {
+      url = (reportIdOrUrl && !reportIdOrUrl.includes('unsplash.com')) ? reportIdOrUrl : '';
+    }
+
+    if (!url || url.includes('unsplash.com')) {
+      App.showToast('Tidak ada berkas lampiran yang diunggah untuk transaksi ini.', 'warn');
+      return;
+    }
+
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      window.open(url, '_blank');
+      return;
+    }
+
+    fileName = fileName || 'Dokumen-SPM';
+    App.showToast(`Menyiapkan pengunduhan berkas ${fileName}...`, 'info');
+
+    // 1. If Base64 Data URL (e.g. data:application/pdf;base64,...)
+    if (url.startsWith('data:')) {
+      try {
+        const mimeMatch = url.match(/^data:([^;]+);/);
+        const mimeType = mimeMatch ? mimeMatch[1].toLowerCase() : '';
+
+        // Ensure genuine extension based on MIME type if filename has none or generic
+        if (mimeType.includes('pdf') && !fileName.toLowerCase().endsWith('.pdf')) {
+          fileName = fileName.replace(/\.[^/.]+$/, '') + '.pdf';
+        } else if ((mimeType.includes('jpeg') || mimeType.includes('jpg')) && !fileName.toLowerCase().endsWith('.jpg') && !fileName.toLowerCase().endsWith('.jpeg')) {
+          fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
+        } else if (mimeType.includes('png') && !fileName.toLowerCase().endsWith('.png')) {
+          fileName = fileName.replace(/\.[^/.]+$/, '') + '.png';
+        } else if (mimeType.includes('webp') && !fileName.toLowerCase().endsWith('.webp')) {
+          fileName = fileName.replace(/\.[^/.]+$/, '') + '.webp';
+        }
+
+        // Convert base64 to binary Blob for robust download across all browsers
+        const base64Data = url.split(',')[1];
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: mimeType || 'application/octet-stream' });
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 3000);
+
+        App.showToast(`Berkas asli "${fileName}" berhasil diunduh!`, 'success');
+        return;
+      } catch (e) {
+        console.error('Data URL blob conversion error:', e);
+        // Fallback to direct anchor download
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        App.showToast(`Berkas "${fileName}" berhasil diunduh!`, 'success');
+        return;
+      }
+    }
+
+    // 2. If HTTP / HTTPS or Blob URL
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      App.showToast(`Berkas "${fileName}" berhasil diunduh!`, 'success');
+      return;
+    }
+
+    App.showToast('Format berkas tidak dikenali untuk diunduh.', 'error');
+  },
+
+  goToPage: function(pageNum) {
+    this.currentPage = pageNum;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleKitchenFilterChange: function(kitchenVal) {
+    this.selectedKitchenFilter = kitchenVal;
+    this.currentPage = 1;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleKitchenCardClick: function(kitchenId) {
+    this.selectedKitchenFilter = kitchenId;
+    this.currentPage = 1;
+    this.render(document.getElementById('main-content-area'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+
+  handleDateFilterChange: function(dateVal) {
+    this.selectedDateFilter = dateVal;
+    this.currentPage = 1;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleStartDateChange: function(val) {
+    this.startDate = val;
+    this.customDate = val;
+    this.currentPage = 1;
+    if (this.endDate && this.startDate > this.endDate) {
+      this.endDate = this.startDate;
+    }
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleEndDateChange: function(val) {
+    this.endDate = val;
+    this.currentPage = 1;
+    if (this.startDate && this.endDate < this.startDate) {
+      this.startDate = this.endDate;
+    }
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  handleCustomDateChange: function(val) {
+    this.customDate = val;
+    this.startDate = val;
+    this.endDate = val;
+    this.currentPage = 1;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  // =========================================================================
+  // LAPORAN STATUS OPERASIONAL DAPUR (COMPACT CALENDAR & WEEKLY SUMMARY)
+  // =========================================================================
+
+  prevStatusMonth: function() {
+    this.statusCalMonth--;
+    if (this.statusCalMonth < 0) {
+      this.statusCalMonth = 11;
+      this.statusCalYear--;
+    }
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  nextStatusMonth: function() {
+    this.statusCalMonth++;
+    if (this.statusCalMonth > 11) {
+      this.statusCalMonth = 0;
+      this.statusCalYear++;
+    }
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  setStatusToday: function() {
+    const todayStr = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : '2026-09-11');
+    const parts = todayStr.split('-').map(Number);
+    this.statusCalYear = parts[0] || 2026;
+    this.statusCalMonth = parts[1] ? (parts[1] - 1) : 8;
+    this.statusSelectedDate = todayStr;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  selectStatusDate: function(dateStr) {
+    this.statusSelectedDate = dateStr;
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  renderStatusSection: function(user, delegatedKitchens, allKitchens) {
+    const isMaker = (user.role === 'MAKER_YAYASAN');
+    const targetKitchens = delegatedKitchens.length > 0 ? delegatedKitchens : allKitchens;
+    const monthsFull = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+    return `
+      <!-- SECTION: LAPORAN STATUS OPERASIONAL DAPUR -->
+      <div class="nalar-card" style="margin-bottom: 28px; padding: 22px 24px;">
+        
+        <!-- Header Section -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 14px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="text-mono-badge" style="color: #34D399; background: rgba(52, 211, 153, 0.12);">
+                Operational Tracker
+              </span>
+              <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
+                (Monitoring Keaktifan & Libur Dapur)
+              </span>
+            </div>
+            <h3 style="font-size: 18px; margin-top: 3px; font-weight: 700; color: #FFFFFF;">
+              Laporan Status Operasional Dapur
+            </h3>
+          </div>
+
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn-nalar-secondary" 
+                    onclick="DapurYayasanModule.openStatusModalForDate('${this.statusSelectedDate}')"
+                    style="font-size: 12px; padding: 7px 15px; border-color: rgba(52, 211, 153, 0.4); color: #34D399; display: inline-flex; align-items: center; gap: 6px;">
+              ⚡ Update Status Tanggal Ini (${this.statusSelectedDate})
+            </button>
+          </div>
+        </div>
+
+        <!-- 2 Kolom Grid: Kiri Kalender Compact, Kanan Weekly Summary 7 Hari -->
+        <div class="dapur-status-grid-container">
+          
+          <!-- SISI KIRI: Compact Calendar Box -->
+          <div class="status-calendar-box">
+            
+            <div class="status-cal-header">
+              <div class="status-cal-month-title">
+                ${monthsFull[this.statusCalMonth]} ${this.statusCalYear}
+              </div>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 11px;" onclick="DapurYayasanModule.prevStatusMonth()" title="Bulan Sebelumnya">◀</button>
+                <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 10.5px; color: #60A5FA; border-color: rgba(96,165,250,0.4);" onclick="DapurYayasanModule.setStatusToday()" title="Hari Ini">Hari Ini</button>
+                <button type="button" class="btn-nalar-secondary" style="padding: 3px 8px; font-size: 11px;" onclick="DapurYayasanModule.nextStatusMonth()" title="Bulan Berikutnya">▶</button>
+              </div>
+            </div>
+
+            <!-- Header Nama Hari (SEN - MIN) -->
+            <div class="status-cal-days-header">
+              <div class="status-cal-day-name">SEN</div>
+              <div class="status-cal-day-name">SEL</div>
+              <div class="status-cal-day-name">RAB</div>
+              <div class="status-cal-day-name">KAM</div>
+              <div class="status-cal-day-name">JUM</div>
+              <div class="status-cal-day-name weekend">SAB</div>
+              <div class="status-cal-day-name weekend">MIN</div>
+            </div>
+
+            <!-- Grid Tanggal Compact Bulanan -->
+            <div class="status-cal-grid">
+              ${this.renderStatusCalendarGrid(targetKitchens)}
+            </div>
+
+            <!-- Legend Bar -->
+            <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 6px; font-size: 10.5px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span class="status-cal-dot dot-green"></span>
+                  <span style="color: #6EE7B7; font-weight: 500;">Semua Berjalan</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span class="status-cal-dot dot-yellow"></span>
+                  <span style="color: #FDE68A; font-weight: 500;">Ada Berhenti</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span class="status-cal-dot dot-gray"></span>
+                  <span style="color: var(--text-muted);">Belum Konfirmasi</span>
+                </div>
+              </div>
+              <div style="color: var(--text-muted); font-style: italic; font-size: 10px; margin-top: 2px;">
+                *Klik tanggal untuk melihat summary & update status operasional dapur.
+              </div>
+            </div>
+
+          </div>
+
+          <!-- SISI KANAN: Weekly Summary Operasional Window (Rentang 7 Hari) -->
+          <div class="status-weekly-summary-box">
+            ${this.renderStatusWeeklySummary(targetKitchens)}
+          </div>
+
+        </div>
+
+        <!-- BAGIAN BAWAH: Catatan & Alert Dapur yang Belum Dikonfirmasi -->
+        ${this.renderUnconfirmedAlert(targetKitchens)}
+
+      </div>
+    `;
+  },
+
+  renderStatusCalendarGrid: function(targetKitchens) {
+    const year = this.statusCalYear;
+    const month = this.statusCalMonth;
+
+    const firstDay = new Date(year, month, 1);
+    const startingDayOfWeek = (firstDay.getDay() + 6) % 7; // 0=Senin, 6=Minggu
+
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    const todayRealStr = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10));
+
+    let html = '';
+
+    // 1. Previous month overflow days
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      const prevDateNum = daysInPrevMonth - startingDayOfWeek + i + 1;
+      html += `
+        <div class="status-cal-cell is-other-month">
+          <div class="status-cal-date-num" style="color: var(--text-dim);">${prevDateNum}</div>
+        </div>
+      `;
+    }
+
+    // 2. Current month days
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const isSelected = (dateStr === this.statusSelectedDate);
+      const isToday = (dateStr === todayRealStr);
+
+      // Status evaluation for targetKitchens on dateStr
+      const dayStatuses = DB.getKitchenDailyStatusesForDate(dateStr) || [];
+
+      let stateClass = 'status-cell-unconfirmed';
+      let dotClass = 'dot-gray';
+      let titleTooltip = `Tanggal ${dateStr}: Belum ada konfirmasi status`;
+
+      if (dayStatuses.length > 0) {
+        const stoppedKitchens = dayStatuses.filter(s => {
+          const isTarget = targetKitchens.some(k => k.id === s.kitchenId || k.idSppg === s.kitchenId || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name)));
+          return isTarget && (s.status === 'BERHENTI');
+        });
+
+        const runningKitchens = dayStatuses.filter(s => {
+          const isTarget = targetKitchens.some(k => k.id === s.kitchenId || k.idSppg === s.kitchenId || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name)));
+          return isTarget && (s.status === 'BERJALAN');
+        });
+
+        if (stoppedKitchens.length > 0) {
+          stateClass = 'status-cell-has-stopped';
+          dotClass = 'dot-yellow';
+          titleTooltip = `Tanggal ${dateStr}: ⚠️ ${stoppedKitchens.length} dapur berhenti operasi!`;
+        } else if (runningKitchens.length > 0) {
+          stateClass = 'status-cell-all-running';
+          dotClass = 'dot-green';
+          titleTooltip = `Tanggal ${dateStr}: 🟢 Seluruh ${runningKitchens.length} dapur beroperasi normal.`;
+        }
+      }
+
+      html += `
+        <div class="status-cal-cell ${stateClass} ${isSelected ? 'status-cell-selected' : ''}"
+             onclick="DapurYayasanModule.selectStatusDate('${dateStr}')"
+             title="${titleTooltip}">
+          <div class="status-cal-date-num" style="${isToday ? 'color: #60A5FA; text-decoration: underline;' : ''}">${d}</div>
+          <span class="status-cal-dot ${dotClass}"></span>
+        </div>
+      `;
+    }
+
+    // 3. Next month overflow days (fill grid to multiple of 7)
+    const totalRendered = startingDayOfWeek + daysInMonth;
+    const remaining = (7 - (totalRendered % 7)) % 7;
+    for (let j = 1; j <= remaining; j++) {
+      html += `
+        <div class="status-cal-cell is-other-month">
+          <div class="status-cal-date-num" style="color: var(--text-dim);">${j}</div>
+        </div>
+      `;
+    }
+
+    return html;
+  },
+
+  renderStatusWeeklySummary: function(targetKitchens) {
+    // Generate 7 consecutive days window centered around statusSelectedDate (from -3 to +3)
+    const baseDate = new Date(this.statusSelectedDate);
+    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+    const weekDays = [];
+    for (let offset = -3; offset <= 3; offset++) {
+      const d = new Date(baseDate);
+      d.setDate(d.getDate() + offset);
+      const YYYY = d.getFullYear();
+      const MM = String(d.getMonth() + 1).padStart(2, '0');
+      const DD = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${YYYY}-${MM}-${DD}`;
+      weekDays.push({
+        dateStr,
+        dayName: dayNames[d.getDay()],
+        formatted: `${d.getDate()} ${monthsShort[d.getMonth()]} ${YYYY}`,
+        isInspected: (dateStr === this.statusSelectedDate)
+      });
+    }
+
+    // Calculate aggregated metrics over the 7 days window
+    let totalFullRunningDays = 0;
+    let totalStoppedDays = 0;
+    let totalUnconfirmedDays = 0;
+
+    weekDays.forEach(w => {
+      const statuses = DB.getKitchenDailyStatusesForDate(w.dateStr) || [];
+      const stopped = statuses.filter(s => targetKitchens.some(k => k.id === s.kitchenId || k.idSppg === s.kitchenId || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name))) && s.status === 'BERHENTI');
+      const running = statuses.filter(s => targetKitchens.some(k => k.id === s.kitchenId || k.idSppg === s.kitchenId || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name))) && s.status === 'BERJALAN');
+      if (stopped.length > 0) {
+        totalStoppedDays++;
+      } else if (running.length > 0) {
+        totalFullRunningDays++;
+      } else {
+        totalUnconfirmedDays++;
+      }
+    });
+
+    const sDateObj = new Date(weekDays[0].dateStr);
+    const eDateObj = new Date(weekDays[6].dateStr);
+    const windowRangeLabel = `${sDateObj.getDate()} ${monthsShort[sDateObj.getMonth()]} — ${eDateObj.getDate()} ${monthsShort[eDateObj.getMonth()]} ${eDateObj.getFullYear()}`;
+
+    return `
+      <!-- Weekly Summary Header & Mini Metrics -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;">
+        <div>
+          <div style="font-size: 11px; color: #60A5FA; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+            📅 Summary Rentang 7 Hari Operasional
+          </div>
+          <div style="font-size: 14px; font-weight: 700; color: #FFFFFF; margin-top: 2px;">
+            ${windowRangeLabel}
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <div style="font-size: 11px; background: rgba(52, 211, 153, 0.12); color: #34D399; border: 1px solid rgba(52, 211, 153, 0.3); padding: 3px 8px; border-radius: 4px; font-weight: 600;">
+            🟢 ${totalFullRunningDays} Hari Normal
+          </div>
+          <div style="font-size: 11px; background: rgba(245, 158, 11, 0.12); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.3); padding: 3px 8px; border-radius: 4px; font-weight: 600;">
+            🟡 ${totalStoppedDays} Hari Ada Kendala/Libur
+          </div>
+          <div style="font-size: 11px; background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid var(--border-subtle); padding: 3px 8px; border-radius: 4px;">
+            🍲 ${targetKitchens.length} Dapur Dipantau
+          </div>
+        </div>
+      </div>
+
+      <!-- 7 Daily Cards List -->
+      <div style="display: flex; flex-direction: column; gap: 9px; max-height: 380px; overflow-y: auto; padding-right: 4px;">
+        ${weekDays.map(w => {
+          const statuses = DB.getKitchenDailyStatusesForDate(w.dateStr) || [];
+          const relevantStatuses = statuses.filter(s => targetKitchens.some(k => k.id === s.kitchenId || k.idSppg === s.kitchenId || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name))));
+          
+          const stoppedList = relevantStatuses.filter(s => s.status === 'BERHENTI');
+          const runningList = relevantStatuses.filter(s => s.status === 'BERJALAN');
+          const hasData = relevantStatuses.length > 0;
+
+          return `
+            <div class="status-day-card ${w.isInspected ? 'is-active-day' : ''}" 
+                 style="cursor: pointer;"
+                 onclick="DapurYayasanModule.selectStatusDate('${w.dateStr}')">
+              
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-weight: 700; font-size: 12.5px; color: ${w.isInspected ? '#60A5FA' : '#FFFFFF'};">
+                    ${w.dayName}, ${w.formatted}
+                  </span>
+                  ${w.isInspected ? `
+                    <span style="font-size: 9.5px; background: #3B82F6; color: #fff; font-weight: 700; padding: 1px 5px; border-radius: 3px;">
+                      SEDANG DILIHAT
+                    </span>
+                  ` : ''}
+                </div>
+
+                <div>
+                  ${!hasData ? `
+                    <span style="font-size: 10px; color: var(--text-muted); background: rgba(255,255,255,0.06); padding: 2px 7px; border-radius: 3px;">
+                      ⚪ Belum Dikonfirmasi
+                    </span>
+                  ` : (stoppedList.length > 0) ? `
+                    <span style="font-size: 10px; color: #FCD34D; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); padding: 2px 7px; border-radius: 3px; font-weight: 700;">
+                      🟡 ${stoppedList.length} Dapur Berhenti · ${runningList.length} Berjalan
+                    </span>
+                  ` : `
+                    <span style="font-size: 10px; color: #34D399; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.3); padding: 2px 7px; border-radius: 3px; font-weight: 600;">
+                      🟢 Seluruh ${runningList.length} Dapur Berjalan Normal
+                    </span>
+                  `}
+                </div>
+              </div>
+
+              <!-- Rincian Dapur Berhenti & Catatan Khusus -->
+              ${stoppedList.length > 0 ? `
+                <div class="status-stopped-box">
+                  <div style="font-size: 11px; font-weight: 700; color: #F87171; margin-bottom: 4px; display: flex; align-items: center; gap: 5px;">
+                    <span>⚠️ Dapur yang Berhenti / Tidak Beroperasi:</span>
+                  </div>
+                  ${stoppedList.map(st => `
+                    <div style="font-size: 11.5px; color: #fff; margin-bottom: 4px; padding-left: 6px; border-left: 2px solid #EF4444;">
+                      <div style="font-weight: 600; color: #FCA5A5;">
+                        🍲 ${st.kitchenName} (${st.kitchenId})
+                      </div>
+                      <div style="font-size: 11px; color: #FDE68A; margin-top: 1px;">
+                        📝 <strong>Catatan Khusus / Alasan:</strong> "${st.reason || 'Tidak ada catatan alasan'}"
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+
+              <!-- Rincian Dapur Berjalan (Pill Tags) -->
+              ${runningList.length > 0 ? `
+                <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+                  ${runningList.slice(0, 5).map(rn => `
+                    <span style="font-size: 9.5px; color: #6EE7B7; background: rgba(52, 211, 153, 0.08); padding: 1px 6px; border-radius: 3px; border: 1px solid rgba(52, 211, 153, 0.2);">
+                      ✓ ${rn.kitchenName.split('—')[1] || rn.kitchenName}
+                    </span>
+                  `).join('')}
+                  ${runningList.length > 5 ? `
+                    <span style="font-size: 9.5px; color: var(--text-muted); padding: 1px 4px;">
+                      +${runningList.length - 5} dapur lainnya
+                    </span>
+                  ` : ''}
+                </div>
+              ` : ''}
+
+              <!-- If Unconfirmed Action Button -->
+              ${!hasData ? `
+                <div style="margin-top: 6px; display: flex; justify-content: flex-end;">
+                  <button type="button" class="btn-nalar-secondary" 
+                          style="font-size: 10.5px; padding: 2px 8px; color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);"
+                          onclick="event.stopPropagation(); DapurYayasanModule.openStatusModalForDate('${w.dateStr}')">
+                    ⚡ Update Status Tanggal Ini
+                  </button>
+                </div>
+              ` : ''}
+
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  },
+
+  renderUnconfirmedAlert: function(targetKitchens) {
+    const statuses = DB.getKitchenDailyStatusesForDate(this.statusSelectedDate) || [];
+    
+    // Check which kitchens are missing for this date
+    const unconfirmedKitchens = targetKitchens.filter(k => {
+      return !statuses.some(s => s.kitchenId === k.id || s.kitchenId === k.idSppg || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name)));
+    });
+
+    if (unconfirmedKitchens.length === 0) {
+      return `
+        <div style="background: rgba(52, 211, 153, 0.06); border: 1px dashed rgba(52, 211, 153, 0.35); border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 18px;">✅</span>
+            <div style="font-size: 12px; color: #6EE7B7;">
+              <strong>Status Lengkap:</strong> Seluruh <strong>${targetKitchens.length} dapur</strong> telah terkonfirmasi status operasionalnya untuk tanggal <strong>${this.statusSelectedDate}</strong>.
+            </div>
+          </div>
+          <button type="button" class="btn-nalar-secondary" 
+                  style="font-size: 11px; padding: 4px 10px; color: #34D399; border-color: rgba(52, 211, 153, 0.4);"
+                  onclick="DapurYayasanModule.openStatusModalForDate('${this.statusSelectedDate}')">
+            ✏️ Ubah / Review Status
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="background: rgba(245, 158, 11, 0.07); border: 1px dashed rgba(245, 158, 11, 0.35); border-radius: var(--radius-md); padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; align-items: flex-start; gap: 10px; flex: 1;">
+          <span style="font-size: 20px; flex-shrink: 0;">⚠️</span>
+          <div>
+            <div style="font-size: 12.5px; font-weight: 700; color: #FCD34D;">
+              Catatan: ${unconfirmedKitchens.length} Dapur Belum Dikonfirmasi Statusnya untuk Tanggal ${this.statusSelectedDate}
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 3px;">
+              Dapur berikut belum memiliki log keaktifan: <strong>${unconfirmedKitchens.map(k => k.namaDapur || k.name).join(', ')}</strong>.
+            </div>
+          </div>
+        </div>
+
+        <button type="button" class="btn-nalar-primary" 
+                style="font-size: 12px; padding: 7px 14px; white-space: nowrap; flex-shrink: 0;"
+                onclick="DapurYayasanModule.openStatusModalForDate('${this.statusSelectedDate}')">
+          ⚡ Konfirmasi Status Sekarang
+        </button>
+      </div>
+    `;
+  },
+
+  openStatusModalForDate: function(dateStr) {
+    const user = DB.getCurrentUser();
+    const isMaker = (user.role === 'MAKER_YAYASAN');
+    const allKitchens = DB.getKitchens() || [];
+    const delegatedKitchens = isMaker 
+      ? allKitchens.filter(k => k.makerYayasan && (k.makerYayasan.includes(user.name) || k.makerYayasan.includes(user.id)))
+      : allKitchens;
+    const targetKitchens = delegatedKitchens.length > 0 ? delegatedKitchens : allKitchens;
+
+    const targetDate = dateStr || this.statusSelectedDate;
+    const dateObj = new Date(targetDate);
+    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const monthsFull = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const dateFormatted = !isNaN(dateObj.getTime())
+      ? `${dayNames[dateObj.getDay()]}, ${dateObj.getDate()} ${monthsFull[dateObj.getMonth()]} ${dateObj.getFullYear()}`
+      : targetDate;
+
+    const dateHiddenEl = document.getElementById('status-target-date');
+    const dateDisplayEl = document.getElementById('status-modal-date-display');
+    const titleEl = document.getElementById('modal-kitchen-status-title');
+    const listEl = document.getElementById('status-modal-kitchens-list');
+
+    if (dateHiddenEl) dateHiddenEl.value = targetDate;
+    if (dateDisplayEl) dateDisplayEl.textContent = dateFormatted;
+    if (titleEl) titleEl.textContent = `Update Status Operasional — ${targetDate}`;
+
+    if (listEl) {
+      const existingStatuses = DB.getKitchenDailyStatusesForDate(targetDate) || [];
+
+      listEl.innerHTML = targetKitchens.map(k => {
+        const kId = k.id || k.idSppg;
+        const exist = existingStatuses.find(s => s.kitchenId === k.id || s.kitchenId === k.idSppg || (s.kitchenName && s.kitchenName.includes(k.namaDapur || k.name)));
+        const curStatus = exist ? exist.status : 'BERJALAN'; // default BERJALAN
+        const curReason = exist ? (exist.reason || '') : '';
+        const isStopped = (curStatus === 'BERHENTI');
+
+        return `
+          <div class="nalar-card" style="padding: 14px 16px; margin-bottom: 0; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 10.5px; font-weight: 700; color: #60A5FA; background: rgba(59,130,246,0.12); padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(59,130,246,0.25);">
+                    ${k.idSppg || k.id}
+                  </span>
+                  <span style="font-size: 13px; font-weight: 700; color: #fff;">
+                    ${k.namaDapur || k.name}
+                  </span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  📍 ${k.location || `${k.kotaKabupaten || '-'}, ${k.provinsi || '-'}`} · Maker: <span style="color: var(--text-secondary);">${k.makerYayasan || 'Maker Dapur'}</span>
+                </div>
+              </div>
+
+              <!-- Segmented Status Toggle Radio -->
+              <div style="display: flex; gap: 6px; background: rgba(0,0,0,0.4); padding: 4px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s ease; ${!isStopped ? 'background: rgba(16, 185, 129, 0.25); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.5);' : 'color: var(--text-muted);'}"
+                       id="lbl-running-${kId}">
+                  <input type="radio" name="status-${kId}" value="BERJALAN" ${!isStopped ? 'checked' : ''} 
+                         style="accent-color: #10B981;"
+                         onchange="DapurYayasanModule.handleStatusToggle('${kId}', 'BERJALAN')">
+                  🟢 Berjalan (Aktif)
+                </label>
+
+                <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s ease; ${isStopped ? 'background: rgba(239, 68, 68, 0.25); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.5);' : 'color: var(--text-muted);'}"
+                       id="lbl-stopped-${kId}">
+                  <input type="radio" name="status-${kId}" value="BERHENTI" ${isStopped ? 'checked' : ''} 
+                         style="accent-color: #EF4444;"
+                         onchange="DapurYayasanModule.handleStatusToggle('${kId}', 'BERHENTI')">
+                  🔴 Tidak Berjalan (Off)
+                </label>
+              </div>
+            </div>
+
+            <!-- Conditional Reason Textarea (Wajib jika BERHENTI) -->
+            <div id="reason-container-${kId}" style="display: ${isStopped ? 'block' : 'none'}; margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(239, 68, 68, 0.3);">
+              <label class="form-label" style="color: #FCA5A5; font-size: 11.5px; display: flex; align-items: center; justify-content: space-between;">
+                <span>Alasan / Catatan Khusus Berhenti Operasi <strong style="color: #F87171;">* (Wajib Diisi)</strong></span>
+                <span style="font-size: 10px; color: var(--text-muted); font-weight: 400;">Akan ditampilkan pada summary mingguan</span>
+              </label>
+              <textarea id="reason-text-${kId}" class="form-control" rows="2" 
+                        placeholder="Contoh: Pembersihan saluran gas, libur santri, renovasi cerobong, dsb..."
+                        style="font-size: 12px; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.04); color: #fff;"
+                        ${isStopped ? 'required' : ''}>${curReason}</textarea>
+            </div>
+
+          </div>
+        `;
+      }).join('');
+    }
+
+    App.openModal('modal-kitchen-status');
+  },
+
+  handleStatusToggle: function(kitchenId, statusVal) {
+    const isStopped = (statusVal === 'BERHENTI');
+    const reasonContainer = document.getElementById(`reason-container-${kitchenId}`);
+    const reasonText = document.getElementById(`reason-text-${kitchenId}`);
+    const lblRunning = document.getElementById(`lbl-running-${kitchenId}`);
+    const lblStopped = document.getElementById(`lbl-stopped-${kitchenId}`);
+
+    if (reasonContainer) {
+      reasonContainer.style.display = isStopped ? 'block' : 'none';
+    }
+    if (reasonText) {
+      if (isStopped) {
+        reasonText.setAttribute('required', 'required');
+        setTimeout(() => reasonText.focus(), 50);
+      } else {
+        reasonText.removeAttribute('required');
+      }
+    }
+
+    if (lblRunning) {
+      lblRunning.style.background = !isStopped ? 'rgba(16, 185, 129, 0.25)' : 'transparent';
+      lblRunning.style.color = !isStopped ? '#34D399' : 'var(--text-muted)';
+      lblRunning.style.border = !isStopped ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid transparent';
+    }
+    if (lblStopped) {
+      lblStopped.style.background = isStopped ? 'rgba(239, 68, 68, 0.25)' : 'transparent';
+      lblStopped.style.color = isStopped ? '#F87171' : 'var(--text-muted)';
+      lblStopped.style.border = isStopped ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid transparent';
+    }
+  },
+
+  handleSaveDailyStatus: async function(event) {
+    if (event) event.preventDefault();
+
+    const targetDateEl = document.getElementById('status-target-date');
+    const dateStr = targetDateEl ? targetDateEl.value : this.statusSelectedDate;
+    if (!dateStr) {
+      App.showToast('Tanggal status operasional tidak valid.', 'error');
+      return;
+    }
+
+    const user = DB.getCurrentUser();
+    const isMaker = (user.role === 'MAKER_YAYASAN');
+    const allKitchens = DB.getKitchens() || [];
+    const delegatedKitchens = isMaker 
+      ? allKitchens.filter(k => k.makerYayasan && (k.makerYayasan.includes(user.name) || k.makerYayasan.includes(user.id)))
+      : allKitchens;
+    const targetKitchens = delegatedKitchens.length > 0 ? delegatedKitchens : allKitchens;
+
+    const statusesToSave = [];
+
+    for (const k of targetKitchens) {
+      const kId = k.id || k.idSppg;
+      const radioEl = document.querySelector(`input[name="status-${kId}"]:checked`);
+      const statusVal = radioEl ? radioEl.value : 'BERJALAN';
+      const reasonEl = document.getElementById(`reason-text-${kId}`);
+      const reasonVal = reasonEl ? reasonEl.value.trim() : '';
+
+      if (statusVal === 'BERHENTI' && !reasonVal) {
+        App.showToast(`Mohon isi alasan berhenti beroperasi untuk ${k.namaDapur || k.name}!`, 'error');
+        if (reasonEl) reasonEl.focus();
+        return;
+      }
+
+      statusesToSave.push({
+        kitchenId: k.id,
+        kitchenName: `${k.idSppg || k.id} — ${k.namaDapur || k.name}`,
+        status: statusVal,
+        reason: statusVal === 'BERHENTI' ? reasonVal : ''
+      });
+    }
+
+    const saveBtn = document.getElementById('btn-save-kitchen-status');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '⏳ Menyimpan...';
+    }
+
+    try {
+      await DB.saveKitchenDailyStatuses(dateStr, statusesToSave, user);
+      App.closeModal('modal-kitchen-status');
+      this.statusSelectedDate = dateStr;
+      this.render(document.getElementById('main-content-area'));
+      App.showToast(`✅ Status operasional ${statusesToSave.length} dapur untuk tanggal ${dateStr} berhasil disimpan!`, 'success');
+    } catch (err) {
+      console.error('Error saving kitchen daily statuses:', err);
+      App.showToast('Gagal menyimpan status operasional dapur.', 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '💾 Simpan Status Operasional';
+      }
+    }
+  },
+
+  // =========================================================================
+  // EXPORT EXCEL MULTI-SHEET ENGINE (DIREKTUR & STAFF AHLI KEUANGAN)
+  // =========================================================================
+
+  canExportKitchenData: function(user) {
+    if (!user) {
+      user = DB.getCurrentUser();
+    }
+    if (!user || !user.role) return false;
+    const allowedRoles = [
+      'SUPER_ADMIN',
+      'DIREKTUR_UTAMA',
+      'KETUA_PEMBINA',
+      'DIREKTUR_KEUANGAN',
+      'DIREKTUR_OPERASIONAL',
+      'STAFF_AHLI_KEUANGAN',
+      'FAT_OFFICER'
+    ];
+    return allowedRoles.includes(user.role) || user.id === 'FAT-001' || user.nika === 'K-2026-012';
+  },
+
+  openExportModal: function() {
+    const user = DB.getCurrentUser();
+    if (!this.canExportKitchenData(user)) {
+      App.showToast('Akses ditolak: Fitur export laporan ini khusus Direktur, Staf Ahli Keuangan, dan FAT Officer.', 'warn');
+      return;
+    }
+
+    let modalEl = document.getElementById('modal-export-dapur-excel');
+    if (!modalEl) {
+      modalEl = document.createElement('div');
+      modalEl.id = 'modal-export-dapur-excel';
+      modalEl.className = 'modal-backdrop';
+      document.body.appendChild(modalEl);
+    }
+
+    const allKitchens = DB.getKitchens() || [];
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    const firstDay = `${y}-${m}-01`;
+    const lastDay = `${y}-${m}-${d}`;
+
+    modalEl.innerHTML = `
+      <div class="modal-box" style="max-width: 640px;">
+        <div class="modal-header">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="text-mono-badge" style="color: #34D399; background: rgba(52, 211, 153, 0.12); padding: 2px 8px; border-radius: 4px; font-size: 11px;">
+                Export Rekapitulasi Terpadu
+              </span>
+              <span style="font-size: 11px; color: #FCD34D; font-style: italic;">
+                Khusus Direksi, Staff Ahli Keuangan &amp; FAT
+              </span>
+            </div>
+            <h3 class="modal-title" style="margin-top: 4px; font-size: 18px; font-weight: 700;">
+              Export Saldo VA &amp; Laporan Status Dapur (.xlsx)
+            </h3>
+          </div>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-export-dapur-excel')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <div class="modal-body" style="padding: 20px 24px;">
+          <!-- Multi-Sheet Preview Banner -->
+          <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(6, 95, 70, 0.12) 100%); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 20px;">
+            <div style="font-size: 13px; font-weight: 700; color: #34D399; display: flex; align-items: center; gap: 8px;">
+              <span>📑</span> Format Buku Kerja Excel Multi-Sheet:
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
+              <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px 12px;">
+                <div style="font-size: 12px; font-weight: 600; color: #fff;">📄 Sheet 1: Saldo VA &amp; Belanja</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.35;">
+                  Rekapitulasi saldo VA terkini, penerima manfaat, bahan baku, ops, sewa mobil, insentif yayasan, dan link SPM belanja.
+                </div>
+              </div>
+              <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px 12px;">
+                <div style="font-size: 12px; font-weight: 600; color: #FCD34D;">📊 Sheet 2: Status Dapur Harian</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.35;">
+                  Log pemantauan operasional harian (Berjalan vs Libur/Kendala) beserta alasan khusus dan petugas konfirmasi.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filter 1: Cakupan Dapur SPPG -->
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" style="font-weight: 600; font-size: 12.5px;">1. Cakupan Dapur SPPG <span style="color: #F87171;">*</span></label>
+            <select id="export-dapur-kitchen" class="form-control" style="font-size: 12.5px;">
+              <option value="ALL" selected>🌐 Semua Dapur SPPG (Konsolidasi Seluruh Titik)</option>
+              ${allKitchens.map(k => `
+                <option value="${k.id || k.idSppg}">${k.idSppg || k.id} — ${k.namaDapur || k.name}</option>
+              `).join('')}
+            </select>
+          </div>
+
+          <!-- Filter 2: Cakupan Rentang Tanggal -->
+          <div class="form-group" style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+              <label class="form-label" style="margin-bottom: 0; font-weight: 600; font-size: 12.5px;">2. Rentang Tanggal Data</label>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                <button type="button" class="btn-preset-pill" onclick="DapurYayasanModule.setExportModalPreset('all')">Semua Data</button>
+                <button type="button" class="btn-preset-pill" onclick="DapurYayasanModule.setExportModalPreset('thisMonth')">Bulan Ini</button>
+                <button type="button" class="btn-preset-pill" onclick="DapurYayasanModule.setExportModalPreset('lastMonth')">Bulan Lalu</button>
+                <button type="button" class="btn-preset-pill" onclick="DapurYayasanModule.setExportModalPreset('today')">Hari Ini</button>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center;">
+              <div>
+                <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Mulai Tanggal:</span>
+                <input type="date" id="export-dapur-start-date" class="form-control" value="${firstDay}" style="font-size: 12px; font-family: var(--font-mono);">
+              </div>
+              <span style="color: var(--text-muted); font-size: 12px; align-self: flex-end; padding-bottom: 8px;">s/d</span>
+              <div>
+                <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Sampai Tanggal:</span>
+                <input type="date" id="export-dapur-end-date" class="form-control" value="${lastDay}" style="font-size: 12px; font-family: var(--font-mono);">
+              </div>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 6px;">
+              *Pilih rentang tanggal atau klik "Semua Data" untuk mengunduh seluruh data tanpa batas periode.
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 16px 24px;">
+          <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-export-dapur-excel')">Batal</button>
+          <button type="button" id="btn-do-export-dapur" class="btn-nalar-primary" style="background: linear-gradient(135deg, #059669 0%, #10B981 100%); border-color: #34D399; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;" onclick="DapurYayasanModule.executeExportExcel()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Unduh Laporan Excel (.xlsx)</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    App.openModal('modal-export-dapur-excel');
+  },
+
+  setExportModalPreset: function(preset) {
+    const startEl = document.getElementById('export-dapur-start-date');
+    const endEl = document.getElementById('export-dapur-end-date');
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+
+    if (preset === 'today') {
+      if (startEl) startEl.value = `${y}-${m}-${d}`;
+      if (endEl) endEl.value = `${y}-${m}-${d}`;
+    } else if (preset === 'thisMonth') {
+      const firstDay = `${y}-${m}-01`;
+      const lastDayNum = new Date(y, now.getMonth() + 1, 0).getDate();
+      if (startEl) startEl.value = firstDay;
+      if (endEl) endEl.value = `${y}-${m}-${String(lastDayNum).padStart(2, '0')}`;
+    } else if (preset === 'lastMonth') {
+      const prevDate = new Date(y, now.getMonth() - 1, 1);
+      const py = prevDate.getFullYear();
+      const pm = String(prevDate.getMonth() + 1).padStart(2, '0');
+      const pLastDay = new Date(py, prevDate.getMonth() + 1, 0).getDate();
+      if (startEl) startEl.value = `${py}-${pm}-01`;
+      if (endEl) endEl.value = `${py}-${pm}-${String(pLastDay).padStart(2, '0')}`;
+    } else if (preset === 'all') {
+      if (startEl) startEl.value = '';
+      if (endEl) endEl.value = '';
+    }
+  },
+
+  executeExportExcel: function() {
+    const user = DB.getCurrentUser();
+    if (!this.canExportKitchenData(user)) {
+      App.showToast('Akses ditolak: Fitur export ini hanya dapat diakses oleh Direktur, Staf Ahli Keuangan, dan FAT Officer.', 'warn');
+      return;
+    }
+
+    const kitchenFilterEl = document.getElementById('export-dapur-kitchen');
+    const startDateEl = document.getElementById('export-dapur-start-date');
+    const endDateEl = document.getElementById('export-dapur-end-date');
+
+    const kitchenFilter = kitchenFilterEl ? kitchenFilterEl.value : 'ALL';
+    const startDate = startDateEl ? startDateEl.value : '';
+    const endDate = endDateEl ? endDateEl.value : '';
+
+    const allKitchens = DB.getKitchens() || [];
+    const allReports = DB.getKitchenReports() || [];
+    const allStatuses = DB.getKitchenDailyStatuses() || [];
+
+    // 1. Filter Data Sheet 1 (Laporan Transaksi & Saldo VA)
+    let filteredReports = allReports.slice();
+    if (kitchenFilter !== 'ALL') {
+      const targetKitchen = allKitchens.find(k => k.id === kitchenFilter || k.idSppg === kitchenFilter);
+      const filterName = targetKitchen ? (targetKitchen.namaDapur || targetKitchen.name).toLowerCase() : '';
+      const filterId = (kitchenFilter || '').toLowerCase();
+      filteredReports = filteredReports.filter(r => {
+        const rId = (r.kitchenId || '').toLowerCase();
+        const rName = (r.kitchenName || '').toLowerCase();
+        return (rId === filterId || (filterName && rName.includes(filterName)) || (filterName && filterName.includes(rName)));
+      });
+    }
+    if (startDate) {
+      filteredReports = filteredReports.filter(r => r.date >= startDate);
+    }
+    if (endDate) {
+      filteredReports = filteredReports.filter(r => r.date <= endDate);
+    }
+    // Urutkan berdasarkan tanggal kronologis (Ascending)
+    filteredReports.sort((a, b) => (a.date > b.date ? 1 : -1));
+
+    // 2. Filter Data Sheet 2 (Laporan Status Dapur Harian)
+    let filteredStatuses = allStatuses.slice();
+    if (kitchenFilter !== 'ALL') {
+      const targetKitchen = allKitchens.find(k => k.id === kitchenFilter || k.idSppg === kitchenFilter);
+      const filterName = targetKitchen ? (targetKitchen.namaDapur || targetKitchen.name).toLowerCase() : '';
+      const filterId = (kitchenFilter || '').toLowerCase();
+      filteredStatuses = filteredStatuses.filter(s => {
+        const sId = (s.kitchenId || '').toLowerCase();
+        const sName = (s.kitchenName || '').toLowerCase();
+        return (sId === filterId || (filterName && sName.includes(filterName)) || (filterName && filterName.includes(sName)));
+      });
+    }
+    if (startDate) {
+      filteredStatuses = filteredStatuses.filter(s => s.date >= startDate);
+    }
+    if (endDate) {
+      filteredStatuses = filteredStatuses.filter(s => s.date <= endDate);
+    }
+    // Urutkan berdasarkan tanggal ascending, lalu nama dapur
+    filteredStatuses.sort((a, b) => {
+      if (a.date === b.date) {
+        return (a.kitchenName || '').localeCompare(b.kitchenName || '');
+      }
+      return a.date > b.date ? 1 : -1;
+    });
+
+    // Helper XML Escaping
+    const xmlEscape = (str) => {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+    };
+
+    const getIndoDay = (dateStr) => {
+      if (!dateStr) return '-';
+      const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const d = new Date(dateStr + 'T00:00:00');
+      if (isNaN(d.getTime())) return '-';
+      return days[d.getDay()];
+    };
+
+    const now = new Date();
+    const exportTimeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} WIB`;
+    const selectedKitchenObj = allKitchens.find(k => k.id === kitchenFilter || k.idSppg === kitchenFilter);
+    const kitchenScopeLabel = kitchenFilter === 'ALL' ? 'Semua Dapur SPPG (Konsolidasi Seluruh Titik)' : (selectedKitchenObj ? `${selectedKitchenObj.idSppg || selectedKitchenObj.id} — ${selectedKitchenObj.namaDapur || selectedKitchenObj.name}` : kitchenFilter);
+    const dateScopeLabel = (!startDate && !endDate) ? 'Semua Riwayat (Keseluruhan)' : `${startDate || 'Awal'} s/d ${endDate || 'Sekarang'}`;
+
+    // Kalkulasi Grand Total untuk Sheet 1
+    let sumPorsiBesar = 0;
+    let sumPorsiKecil = 0;
+    let sumTotalPorsi = 0;
+    let sumTargetBudget = 0;
+    let sumRawCost = 0;
+    let sumOperationalCost = 0;
+    let sumCarRentalCost = 0;
+    let sumFoundationIncentive = 0;
+    let sumTotalDailyExpense = 0;
+
+    filteredReports.forEach(r => {
+      const pBesar = Number(r.porsiBesar) || 0;
+      const pKecil = Number(r.porsiKecil) || 0;
+      const totP = Number(r.beneficiariesCount) || (pBesar + pKecil);
+      const raw = Number(r.rawMaterialCost) || 0;
+      const ops = Number(r.operationalCost) || 0;
+      const rent = Number(r.carRentalCost) || 0;
+      const inc = Number(r.foundationIncentive) || 0;
+      const explicitExp = Number(r.totalDailyExpense);
+      const totalExp = (!isNaN(explicitExp) && explicitExp > 0) ? explicitExp : (raw + ops + rent + inc);
+      const target = (pBesar * 10000) + (pKecil * 8000);
+
+      sumPorsiBesar += pBesar;
+      sumPorsiKecil += pKecil;
+      sumTotalPorsi += totP;
+      sumTargetBudget += target;
+      sumRawCost += raw;
+      sumOperationalCost += ops;
+      sumCarRentalCost += rent;
+      sumFoundationIncentive += inc;
+      sumTotalDailyExpense += totalExp;
+    });
+
+    const avgRawCostPerPortion = sumTotalPorsi > 0 ? Math.round(sumRawCost / sumTotalPorsi) : 0;
+    const avgAllInCostPerPortion = sumTotalPorsi > 0 ? Math.round(sumTotalDailyExpense / sumTotalPorsi) : 0;
+
+    // Kalkulasi Statistik untuk Sheet 2
+    const totalStatusCount = filteredStatuses.length;
+    const runningCount = filteredStatuses.filter(s => s.status === 'BERJALAN').length;
+    const stoppedCount = filteredStatuses.filter(s => s.status === 'BERHENTI').length;
+    const kelancaranPct = totalStatusCount > 0 ? Math.round((runningCount / totalStatusCount) * 100) : 100;
+
+    // ==========================================
+    // SHEET 1: ROWS GENERATION
+    // ==========================================
+    let sheet1RowsXml = `
+      <Row ss:Height="24">
+        <Cell ss:StyleID="DocTitle" ss:MergeAcross="21"><Data ss:Type="String">YAYASAN MERAH PUTIH SEJAHTERA (ERP MMS V3)</Data></Cell>
+      </Row>
+      <Row ss:Height="20">
+        <Cell ss:StyleID="DocSubtitle" ss:MergeAcross="21"><Data ss:Type="String">LAPORAN REKAPITULASI PELAPORAN TRANSAKSI DAPUR &amp; SALDO VIRTUAL ACCOUNT (VA)</Data></Cell>
+      </Row>
+      <Row ss:Height="12"><Cell ss:StyleID="Default"/></Row>
+      <Row ss:Height="18">
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Waktu Export:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="2"><Data ss:Type="String">${xmlEscape(exportTimeStr)}</Data></Cell>
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Diexport Oleh:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="3"><Data ss:Type="String">${xmlEscape(user.name)} (${xmlEscape(user.roleLabel)})</Data></Cell>
+      </Row>
+      <Row ss:Height="18">
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Cakupan Dapur:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="2"><Data ss:Type="String">${xmlEscape(kitchenScopeLabel)}</Data></Cell>
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Periode Tanggal:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="3"><Data ss:Type="String">${xmlEscape(dateScopeLabel)}</Data></Cell>
+      </Row>
+      <Row ss:Height="14"><Cell ss:StyleID="Default"/></Row>
+
+      <!-- Table Header -->
+      <Row ss:Height="28">
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">No</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Tanggal Transaksi</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">ID SPPG</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Nama Dapur SPPG</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Bank Rekening VA</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Saldo Terakhir VA (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Porsi Besar</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Porsi Kecil</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Total Porsi</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Target Anggaran (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Belanja Bahan Baku (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Biaya Operasional (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Biaya Sewa Mobil (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Insentif Yayasan (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Catatan Khusus Insentif</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Total Pengeluaran All-In (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Bahan / Porsi (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">All-In / Porsi (Rp)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Status Efisiensi</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Link Dokumen SPM (Nota Belanja)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Petugas Pelapor (Maker)</Data></Cell>
+        <Cell ss:StyleID="TableHeader"><Data ss:Type="String">Catatan Operasional &amp; Belanja</Data></Cell>
+      </Row>
+    `;
+
+    if (filteredReports.length === 0) {
+      sheet1RowsXml += `
+        <Row ss:Height="22">
+          <Cell ss:StyleID="CellCenter" ss:MergeAcross="21">
+            <Data ss:Type="String">-- Tidak ada data transaksi dapur pada filter &amp; periode yang dipilih --</Data>
+          </Cell>
+        </Row>
+      `;
+    } else {
+      filteredReports.forEach((r, idx) => {
+        const pBesar = Number(r.porsiBesar) || 0;
+        const pKecil = Number(r.porsiKecil) || 0;
+        const totP = Number(r.beneficiariesCount) || (pBesar + pKecil);
+        const raw = Number(r.rawMaterialCost) || 0;
+        const ops = Number(r.operationalCost) || 0;
+        const rent = Number(r.carRentalCost) || 0;
+        const inc = Number(r.foundationIncentive) || 0;
+        const explicitExp = Number(r.totalDailyExpense);
+        const totalExp = (!isNaN(explicitExp) && explicitExp > 0) ? explicitExp : (raw + ops + rent + inc);
+        const target = (pBesar * 10000) + (pKecil * 8000);
+        const rawPerPorsi = totP > 0 ? Math.round(raw / totP) : 0;
+        const allInPerPorsi = totP > 0 ? Math.round(totalExp / totP) : 0;
+
+        let effStyle = "BadgeGreen";
+        let effLabel = "Efisien";
+        if (target > 0 && raw > target) {
+          effStyle = "BadgeRed";
+          effLabel = "Over Budget";
+        } else if (target === 0) {
+          effStyle = "CellCenter";
+          effLabel = "Normal";
+        }
+
+        const vaBal = Number(r.vaBalance) || 0;
+        const vaBank = r.vaBankName || 'Virtual Account Bank';
+
+        const rawSpmUrl = (r.spmAttachmentUrl || r.spm_attachment_url || r.spmUrl || '').trim();
+        const isHttpLink = rawSpmUrl && (rawSpmUrl.startsWith('http://') || rawSpmUrl.startsWith('https://')) && !rawSpmUrl.includes('unsplash.com');
+        let spmCellXml = `<Cell ss:StyleID="CellCenter"><Data ss:Type="String">-</Data></Cell>`;
+        if (isHttpLink) {
+          spmCellXml = `<Cell ss:StyleID="CellHyperlink" ss:HRef="${xmlEscape(rawSpmUrl)}"><Data ss:Type="String">${xmlEscape(rawSpmUrl)}</Data></Cell>`;
+        } else if (r.spmFileName && r.spmFileName !== '-' && !r.spmFileName.includes('unsplash')) {
+          spmCellXml = `<Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.spmFileName)}</Data></Cell>`;
+        }
+
+        sheet1RowsXml += `
+          <Row ss:Height="20">
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${idx + 1}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(r.date)}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(r.kitchenId || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.kitchenName || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(vaBank)}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${vaBal}</Data></Cell>
+            <Cell ss:StyleID="CellNumber"><Data ss:Type="Number">${pBesar}</Data></Cell>
+            <Cell ss:StyleID="CellNumber"><Data ss:Type="Number">${pKecil}</Data></Cell>
+            <Cell ss:StyleID="CellNumber"><Data ss:Type="Number">${totP}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${target}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${raw}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${ops}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${rent}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${inc}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.incentiveNotes || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${totalExp}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${rawPerPorsi}</Data></Cell>
+            <Cell ss:StyleID="CellCurrency"><Data ss:Type="Number">${allInPerPorsi}</Data></Cell>
+            <Cell ss:StyleID="${effStyle}"><Data ss:Type="String">${xmlEscape(effLabel)}</Data></Cell>
+            ${spmCellXml}
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.reporterName || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(r.notes || '-')}</Data></Cell>
+          </Row>
+        `;
+      });
+
+      // Baris Grand Total
+      sheet1RowsXml += `
+        <Row ss:Height="24">
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="5"><Data ss:Type="String">GRAND TOTAL KONSOLIDASI (${filteredReports.length} LAPORAN)</Data></Cell>
+          <Cell ss:StyleID="FooterTotalNumber"><Data ss:Type="Number">${sumPorsiBesar}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalNumber"><Data ss:Type="Number">${sumPorsiKecil}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalNumber"><Data ss:Type="Number">${sumTotalPorsi}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumTargetBudget}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumRawCost}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumOperationalCost}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumCarRentalCost}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumFoundationIncentive}</Data></Cell>
+          <Cell ss:StyleID="FooterTotal"><Data ss:Type="String">-</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${sumTotalDailyExpense}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${avgRawCostPerPortion}</Data></Cell>
+          <Cell ss:StyleID="FooterTotalCurrency"><Data ss:Type="Number">${avgAllInCostPerPortion}</Data></Cell>
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="3"><Data ss:Type="String">Rata-rata Bahan: Rp ${avgRawCostPerPortion.toLocaleString('id-ID')} / Porsi</Data></Cell>
+        </Row>
+      `;
+    }
+
+    // ==========================================
+    // SHEET 2: ROWS GENERATION
+    // ==========================================
+    let sheet2RowsXml = `
+      <Row ss:Height="24">
+        <Cell ss:StyleID="DocTitle" ss:MergeAcross="8"><Data ss:Type="String">YAYASAN MERAH PUTIH SEJAHTERA (ERP MMS V3)</Data></Cell>
+      </Row>
+      <Row ss:Height="20">
+        <Cell ss:StyleID="DocSubtitle" ss:MergeAcross="8"><Data ss:Type="String">LAPORAN REKAPITULASI STATUS OPERASIONAL HARIAN DAPUR SPPG</Data></Cell>
+      </Row>
+      <Row ss:Height="12"><Cell ss:StyleID="Default"/></Row>
+      <Row ss:Height="18">
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Waktu Export:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="2"><Data ss:Type="String">${xmlEscape(exportTimeStr)}</Data></Cell>
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Diexport Oleh:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="3"><Data ss:Type="String">${xmlEscape(user.name)} (${xmlEscape(user.roleLabel)})</Data></Cell>
+      </Row>
+      <Row ss:Height="18">
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Cakupan Dapur:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="2"><Data ss:Type="String">${xmlEscape(kitchenScopeLabel)}</Data></Cell>
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Periode Tanggal:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="3"><Data ss:Type="String">${xmlEscape(dateScopeLabel)}</Data></Cell>
+      </Row>
+      <Row ss:Height="18">
+        <Cell ss:StyleID="MetaLabel"><Data ss:Type="String">Ringkasan Status:</Data></Cell>
+        <Cell ss:StyleID="MetaVal" ss:MergeAcross="7">
+          <Data ss:Type="String">Total Log: ${totalStatusCount} | 🟢 Berjalan Normal: ${runningCount} | 🟡 Berhenti/Libur: ${stoppedCount} | Tingkat Kelancaran: ${kelancaranPct}%</Data>
+        </Cell>
+      </Row>
+      <Row ss:Height="14"><Cell ss:StyleID="Default"/></Row>
+
+      <!-- Table Header -->
+      <Row ss:Height="28">
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">No</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Tanggal Operasional</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Hari</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">ID SPPG</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Nama Titik Dapur SPPG</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Status Operasional</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Kategori Kendala / Alasan Khusus</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Dikonfirmasi Oleh</Data></Cell>
+        <Cell ss:StyleID="TableHeaderTeal"><Data ss:Type="String">Waktu Konfirmasi / Update</Data></Cell>
+      </Row>
+    `;
+
+    if (filteredStatuses.length === 0) {
+      sheet2RowsXml += `
+        <Row ss:Height="22">
+          <Cell ss:StyleID="CellCenter" ss:MergeAcross="8">
+            <Data ss:Type="String">-- Tidak ada data log status operasional dapur pada filter &amp; periode yang dipilih --</Data>
+          </Cell>
+        </Row>
+      `;
+    } else {
+      filteredStatuses.forEach((s, idx) => {
+        const isRunning = s.status === 'BERJALAN';
+        const badgeStyle = isRunning ? "BadgeGreen" : "BadgeAmber";
+        const statusLabel = isRunning ? "BERJALAN (NORMAL)" : "BERHENTI / LIBUR";
+        const dayName = getIndoDay(s.date);
+        const reasonText = !isRunning ? (s.reason || '-') : '-';
+
+        sheet2RowsXml += `
+          <Row ss:Height="20">
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${idx + 1}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(s.date)}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(dayName)}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(s.kitchenId || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(s.kitchenName || '-')}</Data></Cell>
+            <Cell ss:StyleID="${badgeStyle}"><Data ss:Type="String">${xmlEscape(statusLabel)}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(reasonText)}</Data></Cell>
+            <Cell ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(s.reportedByName || '-')}</Data></Cell>
+            <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${xmlEscape(s.updatedAt || s.createdAt || '-')}</Data></Cell>
+          </Row>
+        `;
+      });
+
+      // Baris Summary Footer Sheet 2
+      sheet2RowsXml += `
+        <Row ss:Height="24">
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="4"><Data ss:Type="String">TOTAL STATUS HARIAN TERCATAT: ${filteredStatuses.length} LOG</Data></Cell>
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="1"><Data ss:Type="String">🟢 ${runningCount} Berjalan | 🟡 ${stoppedCount} Berhenti</Data></Cell>
+          <Cell ss:StyleID="FooterTotal" ss:MergeAcross="1"><Data ss:Type="String">Kelancaran: ${kelancaranPct}%</Data></Cell>
+        </Row>
+      `;
+    }
+
+    // ==========================================
+    // COMPLETE WORKBOOK XML ASSEMBLY
+    // ==========================================
+    const workbookXml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Author>ERP Yayasan MMS</Author>
+  <LastAuthor>${xmlEscape(user.name)}</LastAuthor>
+  <Created>${now.toISOString()}</Created>
+  <Company>Yayasan Merah Putih Sejahtera</Company>
+ </DocumentProperties>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Center"/>
+   <Borders/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#000000"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="DocTitle">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#0F172A"/>
+  </Style>
+  <Style ss:ID="DocSubtitle">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#059669"/>
+  </Style>
+  <Style ss:ID="MetaLabel">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9.5" ss:Bold="1" ss:Color="#475569"/>
+  </Style>
+  <Style ss:ID="MetaVal">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9.5" ss:Color="#0F172A"/>
+  </Style>
+  <Style ss:ID="TableHeader">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#0F172A" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="TableHeaderTeal">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#047857"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#047857"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#047857"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#047857"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#065F46" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="CellText">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0F172A"/>
+  </Style>
+  <Style ss:ID="CellHyperlink">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#2563EB" ss:Underline="Single"/>
+  </Style>
+  <Style ss:ID="CellCenter">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0F172A"/>
+  </Style>
+  <Style ss:ID="CellNumber">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0F172A"/>
+   <NumberFormat ss:Format="#,##0"/>
+  </Style>
+  <Style ss:ID="CellCurrency">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0F172A"/>
+   <NumberFormat ss:Format="&quot;Rp&quot;\ #,##0"/>
+  </Style>
+  <Style ss:ID="BadgeGreen">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="9.5" ss:Bold="1" ss:Color="#065F46"/>
+   <Interior ss:Color="#D1FAE5" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="BadgeAmber">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FDE68A"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FDE68A"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FDE68A"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FDE68A"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="9.5" ss:Bold="1" ss:Color="#92400E"/>
+   <Interior ss:Color="#FEF3C7" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="BadgeRed">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FECACA"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FECACA"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FECACA"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FECACA"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="9.5" ss:Bold="1" ss:Color="#991B1B"/>
+   <Interior ss:Color="#FEE2E2" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="FooterTotal">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#0F172A"/>
+   <Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="FooterTotalCurrency">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#0F172A"/>
+   <Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/>
+   <NumberFormat ss:Format="&quot;Rp&quot;\ #,##0"/>
+  </Style>
+  <Style ss:ID="FooterTotalNumber">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#0F172A"/>
+   <Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/>
+   <NumberFormat ss:Format="#,##0"/>
+  </Style>
+ </Styles>
+
+ <Worksheet ss:Name="Pelaporan Saldo VA &amp; Transaksi">
+  <Table ss:DefaultRowHeight="19">
+   <Column ss:Width="38"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="200"/>
+   <Column ss:Width="130"/>
+   <Column ss:Width="135"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="80"/>
+   <Column ss:Width="130"/>
+   <Column ss:Width="130"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="180"/>
+   <Column ss:Width="135"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="260"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="220"/>
+   ${sheet1RowsXml}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Selected/>
+   <ProtectObjects>False</ProtectObjects>
+   <ProtectScenarios>False</ProtectScenarios>
+   <DisplayGridlines/>
+  </WorksheetOptions>
+ </Worksheet>
+
+ <Worksheet ss:Name="Laporan Status Dapur">
+  <Table ss:DefaultRowHeight="19">
+   <Column ss:Width="38"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="220"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="260"/>
+   <Column ss:Width="150"/>
+   <Column ss:Width="140"/>
+   ${sheet2RowsXml}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <ProtectObjects>False</ProtectObjects>
+   <ProtectScenarios>False</ProtectScenarios>
+   <DisplayGridlines/>
+  </WorksheetOptions>
+ </Worksheet>
+</Workbook>`;
+
+    const blob = new Blob([workbookXml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const dateFileStr = now.toISOString().slice(0, 10);
+    link.download = `Laporan_ERP_MMS_SaldoVA_StatusDapur_${dateFileStr}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    App.closeModal('modal-export-dapur-excel');
+    App.showToast(`✓ Rekapitulasi Excel Multi-Sheet (${filteredReports.length} Laporan Transaksi & ${filteredStatuses.length} Status Dapur) berhasil diunduh!`, 'success');
+  }
+};
+
+
