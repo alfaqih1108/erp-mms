@@ -169,3 +169,26 @@ Telah diperbaiki masalah hilangnya riwayat persetujuan (*Riwayat Approval Saya*)
    - Memastikan ekspor **Semua Pengajuan (Master Konsolidasi)** maupun kategori satuan merangkum seluruh riwayat yang telah diproses secara lengkap, rapi, dan berformat moneter rupiah.
 5. **Penambahan Rendering Kartu Klaim Reimburse di Antrean Pending**:
    - Menambahkan template kartu HTML `relevantRmbs` pada tab **Antrean Persetujuan** di [`js/modules/approval-center.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/approval-center.js) lengkap dengan tombol Otorisasi Direksi (`👑 Otorisasi & Teruskan ke FAT`), Penyesuaian Nominal (`✏️ Setujui dgn Penyesuaian`), Tolak (`✕ Tolak`), serta Pratinjau Struk/Bukti Nota (`📎 Lihat Bukti Struk/Nota Pembelian ↗`).
+
+---
+
+## ⚠️ 10. Sinkronisasi Status "Gagal Pengiriman" (Pemohon & Riwayat Approval)
+
+Telah diimplementasikan sinkronisasi otomatis status **"Gagal Pengiriman"** ketika status pesanan diubah oleh Tim Operator PO menjadi **"Gagal Pengiriman"** (`GAGAL_PENGIRIMAN`):
+
+### 1. Tampilan Pemohon ([`js/modules/pengajuan-barang.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/pengajuan-barang.js)):
+- **Kolom Tahap Alur Approval**: Berubah menjadi `<span style="color: #F87171; font-weight: 600;">⚠️ Gagal Pengiriman (PO)</span>`.
+- **Kolom Status**: Berubah menjadi badge merah `<span class="badge-status">GAGAL PENGIRIMAN</span>`.
+- **Kolom Deskripsi Barang**: Menampilkan callout pill berlatar merah transparan `⚠️ Kendala: [Alasan yang dicatat Operator PO]`.
+- **Kartu Ringkasan Atas**: Menampilkan metrik khusus `Gagal Pengiriman: X PR` dengan warna aksen merah.
+
+### 2. Tampilan Riwayat Approval Saya ([`js/modules/approval-center.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/approval-center.js)):
+- **Badge Keputusan**: Menampilkan badge merah `⚠️ Gagal Pengiriman`.
+- **Border Kartu Riwayat**: Menampilkan garis aksen merah (`#EF4444`) di sisi kiri kartu.
+- **Catatan / Reason**: Menampilkan catatan alasan kegagalan pengiriman yang dicatat oleh tim operator secara realtime.
+- **Ekspor Excel (.xlsx)**: File export otomatis menampilkan baris berstatus `GAGAL PENGIRIMAN` dengan warna merah dan tahap `Gagal Pengiriman (PO)`.
+
+### 3. Modal Rincian Alur (Approval & Delivery Tracker) ([`js/modules/data.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/data.js) & [`js/app.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/app.js)):
+- **Langkah 5 (Pengiriman & Penerimaan Barang)**: Berubah status menjadi `REJECTED / FAILED` lengkap dengan catatan kendala/retur barang dari supplier.
+- **Header Tracker Modal**: Menampilkan badge `⚠️ Gagal Pengiriman` dan banner informasi kendala operasional.
+

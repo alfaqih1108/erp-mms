@@ -149,6 +149,15 @@ window.ApprovalCenterModule = {
         const decisionStep = userStep || (histArr.length > 0 ? histArr[histArr.length - 1] : null);
         const timestamp = decisionStep ? decisionStep.timestamp : (p.updatedAt || p.createdAt || '-');
         const action = decisionStep ? decisionStep.action : p.status;
+
+        const isFailedDelivery = (p.orderStatus === 'GAGAL_PENGIRIMAN');
+        let failureNote = '';
+        if (isFailedDelivery) {
+          const trackHist = Array.isArray(p.orderTrackingHistory) ? p.orderTrackingHistory : [];
+          const failedStep = trackHist.slice().reverse().find(t => t.status === 'GAGAL_PENGIRIMAN');
+          failureNote = failedStep ? (failedStep.notes || 'Gagal Pengiriman') : 'Gagal Pengiriman dari Supplier';
+        }
+
         history.push({
           type: 'PR',
           id: p.id,
@@ -157,12 +166,12 @@ window.ApprovalCenterModule = {
           department: p.department || p.role,
           title: `${p.itemName} (${p.quantity} ${p.unit || 'Unit'}) — Rp ${(p.totalPrice || 0).toLocaleString('id-ID')}`,
           summary: `Kategori: ${p.category} ${p.targetKitchen ? `· Dapur: ${p.targetKitchen}` : ''} · Alasan: "${p.reason || '-'}"`,
-          stage: p.stage,
-          status: p.status,
-          decision: p.hasAdjustment ? 'ADJUSTED_APPROVED' : action,
+          stage: isFailedDelivery ? 'GAGAL_PENGIRIMAN' : p.stage,
+          status: isFailedDelivery ? 'GAGAL_PENGIRIMAN' : p.status,
+          decision: isFailedDelivery ? 'GAGAL_PENGIRIMAN' : (p.hasAdjustment ? 'ADJUSTED_APPROVED' : action),
           decisionTimestamp: timestamp,
           approverName: decisionStep ? decisionStep.actorName : user.name,
-          notes: userAdj ? `Disesuaikan (${userAdj.newQty} unit @ Rp ${Number(userAdj.newUnitPrice).toLocaleString('id-ID')})` : (decisionStep ? decisionStep.notes : (p.status === 'APPROVED' ? 'Disetujui Direktur & PO Resmi Diterbitkan' : (p.rejectionReason || '-'))),
+          notes: isFailedDelivery ? failureNote : (userAdj ? `Disesuaikan (${userAdj.newQty} unit @ Rp ${Number(userAdj.newUnitPrice).toLocaleString('id-ID')})` : (decisionStep ? decisionStep.notes : (p.status === 'APPROVED' ? 'Disetujui Direktur & PO Resmi Diterbitkan' : (p.rejectionReason || '-')))),
           raw: p
         });
       }
@@ -818,17 +827,18 @@ window.ApprovalCenterModule = {
                 const themeColor = isLeave ? '#A78BFA' : isTS ? '#60A5FA' : isPR ? '#FCD34D' : isCA ? '#34D399' : '#10B981';
                 const typeLabel = isLeave ? 'CUTI / IZIN' : isTS ? 'TIMESHEET' : isPR ? 'PENGADAAN BARANG (PR)' : isCA ? 'CASH ADVANCE (KASBON)' : 'KLAIM REIMBURSEMENT';
 
-                const isApproved = (item.decision === 'APPROVED' || item.status === 'APPROVED' || item.status === 'COMPLETED' || item.status === 'SETTLED');
-                const isRejected = (item.decision === 'REJECTED' || item.status === 'REJECTED');
-                const isAdjusted = (item.decision === 'ADJUSTED_APPROVED');
+                const isFailedDelivery = (item.decision === 'GAGAL_PENGIRIMAN' || item.status === 'GAGAL_PENGIRIMAN' || (item.raw && item.raw.orderStatus === 'GAGAL_PENGIRIMAN'));
+                const isApproved = !isFailedDelivery && (item.decision === 'APPROVED' || item.status === 'APPROVED' || item.status === 'COMPLETED' || item.status === 'SETTLED');
+                const isRejected = !isFailedDelivery && (item.decision === 'REJECTED' || item.status === 'REJECTED');
+                const isAdjusted = !isFailedDelivery && (item.decision === 'ADJUSTED_APPROVED');
 
-                const decisionBadgeBg = isRejected ? 'rgba(239, 68, 68, 0.15)' : isAdjusted ? 'rgba(245, 158, 11, 0.15)' : 'rgba(52, 211, 153, 0.15)';
-                const decisionBadgeColor = isRejected ? '#F87171' : isAdjusted ? '#FCD34D' : '#34D399';
-                const decisionBadgeBorder = isRejected ? 'rgba(239, 68, 68, 0.35)' : isAdjusted ? 'rgba(245, 158, 11, 0.35)' : 'rgba(52, 211, 153, 0.35)';
-                const decisionText = isRejected ? '✕ Ditolak' : isAdjusted ? '✏️ Disetujui Dgn Penyesuaian' : '✓ Disetujui / Tervalidasi';
+                const decisionBadgeBg = isFailedDelivery ? 'rgba(239, 68, 68, 0.18)' : isRejected ? 'rgba(239, 68, 68, 0.15)' : isAdjusted ? 'rgba(245, 158, 11, 0.15)' : 'rgba(52, 211, 153, 0.15)';
+                const decisionBadgeColor = isFailedDelivery ? '#F87171' : isRejected ? '#F87171' : isAdjusted ? '#FCD34D' : '#34D399';
+                const decisionBadgeBorder = isFailedDelivery ? 'rgba(239, 68, 68, 0.5)' : isRejected ? 'rgba(239, 68, 68, 0.35)' : isAdjusted ? 'rgba(245, 158, 11, 0.35)' : 'rgba(52, 211, 153, 0.35)';
+                const decisionText = isFailedDelivery ? '⚠️ Gagal Pengiriman' : isRejected ? '✕ Ditolak' : isAdjusted ? '✏️ Disetujui Dgn Penyesuaian' : '✓ Disetujui / Tervalidasi';
 
                 return `
-                  <div class="nalar-card" style="border-left: 3px solid ${themeColor}; padding: 18px 22px; margin-bottom: 0;">
+                  <div class="nalar-card" style="border-left: 3px solid ${isFailedDelivery ? '#EF4444' : themeColor}; padding: 18px 22px; margin-bottom: 0;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px;">
                       
                       <!-- Info Utama -->
@@ -2300,10 +2310,16 @@ window.ApprovalCenterModule = {
               const lastStep = Array.isArray(p.approvalHistory) && p.approvalHistory.length > 0 ? p.approvalHistory[p.approvalHistory.length - 1] : null;
               const approvalTime = lastStep && lastStep.action !== 'SUBMITTED' ? lastStep.timestamp : (p.status === 'COMPLETED' || p.status === 'APPROVED' ? p.createdAt : '-');
               const approver = lastStep && lastStep.action !== 'SUBMITTED' ? lastStep.actorName : (p.approver || '-');
-              const notes = lastStep ? lastStep.notes : (p.reason || '-');
+              
+              const isFailed = (p.orderStatus === 'GAGAL_PENGIRIMAN');
+              const trackHist = Array.isArray(p.orderTrackingHistory) ? p.orderTrackingHistory : [];
+              const failedStep = trackHist.slice().reverse().find(t => t.status === 'GAGAL_PENGIRIMAN');
+              const notes = isFailed ? (failedStep?.notes || 'Gagal Pengiriman') : (lastStep ? lastStep.notes : (p.reason || '-'));
 
-              let statusBg = (p.status === 'APPROVED' || p.status === 'COMPLETED') ? '#D1FAE5' : p.status === 'REJECTED' ? '#FEE2E2' : '#FEF3C7';
-              let statusColor = (p.status === 'APPROVED' || p.status === 'COMPLETED') ? '#065F46' : p.status === 'REJECTED' ? '#991B1B' : '#92400E';
+              let displayStatus = isFailed ? 'GAGAL PENGIRIMAN' : p.status;
+              let displayStage = isFailed ? 'Gagal Pengiriman (PO)' : p.stage;
+              let statusBg = isFailed ? '#FEE2E2' : (p.status === 'APPROVED' || p.status === 'COMPLETED') ? '#D1FAE5' : p.status === 'REJECTED' ? '#FEE2E2' : '#FEF3C7';
+              let statusColor = isFailed ? '#991B1B' : (p.status === 'APPROVED' || p.status === 'COMPLETED') ? '#065F46' : p.status === 'REJECTED' ? '#991B1B' : '#92400E';
 
               return `
                 <tr style="background-color: ${bgRow};">
@@ -2322,8 +2338,8 @@ window.ApprovalCenterModule = {
                   <td style="text-align: right; font-weight: bold; color: #B45309; border: 1px solid #CBD5E1;">Rp ${Number(p.totalPrice || 0).toLocaleString('id-ID')}</td>
                   <td style="border: 1px solid #CBD5E1;">${p.targetKitchen || 'Kantor / Operasional'}</td>
                   <td style="border: 1px solid #CBD5E1;">${p.reason || '-'}</td>
-                  <td style="background-color: ${statusBg}; color: ${statusColor}; font-weight: bold; text-align: center; border: 1px solid #CBD5E1;">${p.status}</td>
-                  <td style="border: 1px solid #CBD5E1; text-align: center;">${p.stage}</td>
+                  <td style="background-color: ${statusBg}; color: ${statusColor}; font-weight: bold; text-align: center; border: 1px solid #CBD5E1;">${displayStatus}</td>
+                  <td style="border: 1px solid #CBD5E1; text-align: center;">${displayStage}</td>
                   <td style="text-align: center; font-weight: bold; color: #059669; border: 1px solid #CBD5E1;">${approvalTime}</td>
                   <td style="border: 1px solid #CBD5E1;">${approver}</td>
                   <td style="border: 1px solid #CBD5E1;">${notes}</td>
@@ -2503,8 +2519,11 @@ window.ApprovalCenterModule = {
           <tbody>
             ${filteredHistory.map((h, idx) => {
               const bgRow = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC';
-              let statusBg = (h.status === 'APPROVED' || h.status === 'COMPLETED' || h.status === 'SETTLED') ? '#D1FAE5' : h.status === 'REJECTED' ? '#FEE2E2' : '#FEF3C7';
-              let statusColor = (h.status === 'APPROVED' || h.status === 'COMPLETED' || h.status === 'SETTLED') ? '#065F46' : h.status === 'REJECTED' ? '#991B1B' : '#92400E';
+              const isFailed = (h.status === 'GAGAL_PENGIRIMAN' || h.decision === 'GAGAL_PENGIRIMAN');
+              let statusBg = isFailed ? '#FEE2E2' : (h.status === 'APPROVED' || h.status === 'COMPLETED' || h.status === 'SETTLED') ? '#D1FAE5' : h.status === 'REJECTED' ? '#FEE2E2' : '#FEF3C7';
+              let statusColor = isFailed ? '#991B1B' : (h.status === 'APPROVED' || h.status === 'COMPLETED' || h.status === 'SETTLED') ? '#065F46' : h.status === 'REJECTED' ? '#991B1B' : '#92400E';
+              let displayStatus = isFailed ? 'GAGAL PENGIRIMAN' : h.status;
+              let displayStage = isFailed ? 'Gagal Pengiriman (PO)' : h.stage;
 
               return `
                 <tr style="background-color: ${bgRow};">
@@ -2516,8 +2535,8 @@ window.ApprovalCenterModule = {
                   <td style="border: 1px solid #CBD5E1;">${h.department}</td>
                   <td style="font-weight: 600; border: 1px solid #CBD5E1;">${h.title}</td>
                   <td style="border: 1px solid #CBD5E1;">${h.summary}</td>
-                  <td style="background-color: ${statusBg}; color: ${statusColor}; font-weight: bold; text-align: center; border: 1px solid #CBD5E1;">${h.status}</td>
-                  <td style="border: 1px solid #CBD5E1; text-align: center;">${h.stage}</td>
+                  <td style="background-color: ${statusBg}; color: ${statusColor}; font-weight: bold; text-align: center; border: 1px solid #CBD5E1;">${displayStatus}</td>
+                  <td style="border: 1px solid #CBD5E1; text-align: center;">${displayStage}</td>
                   <td style="text-align: center; font-weight: bold; color: #059669; border: 1px solid #CBD5E1;">${h.decisionTimestamp}</td>
                   <td style="border: 1px solid #CBD5E1;">${h.approverName || user.name}</td>
                   <td style="border: 1px solid #CBD5E1;">${h.notes}</td>

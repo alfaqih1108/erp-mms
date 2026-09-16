@@ -1259,9 +1259,10 @@ window.App = {
     const typeBadge = details.type === 'PR' ? 'Pengadaan Barang & Pembelian (PR)' : details.type === 'LEAVE' ? 'Cuti & Izin Karyawan' : 'Timesheet & Presensi';
     const typeColor = details.type === 'PR' ? '#FCD34D' : details.type === 'LEAVE' ? '#A78BFA' : '#60A5FA';
 
+    const isFailedDelivery = (details.orderStatus === 'GAGAL_PENGIRIMAN' || details.status === 'GAGAL_PENGIRIMAN');
     const activeStep = details.steps.find(s => s.status === 'ACTIVE');
-    const isCompleted = details.status === 'APPROVED' || details.status === 'COMPLETED';
-    const isRejected = details.status === 'REJECTED';
+    const isCompleted = !isFailedDelivery && (details.status === 'APPROVED' || details.status === 'COMPLETED');
+    const isRejected = !isFailedDelivery && (details.status === 'REJECTED');
 
     modalEl.innerHTML = `
       <div class="modal-box" style="max-width: 680px;">
@@ -1288,17 +1289,19 @@ window.App = {
                 </div>
               </div>
               <div>
-                <span class="badge-status ${isCompleted ? 'badge-approved' : isRejected ? 'badge-rejected' : 'badge-pending'}" style="font-size: 11px; padding: 4px 10px;">
-                  ${isCompleted ? '🟢 Disetujui Penuh' : isRejected ? '🔴 Ditolak' : '⏳ Sedang Berjalan'}
+                <span class="badge-status ${isFailedDelivery ? '' : isCompleted ? 'badge-approved' : isRejected ? 'badge-rejected' : 'badge-pending'}" style="font-size: 11px; padding: 4px 10px; ${isFailedDelivery ? 'background: rgba(239, 68, 68, 0.18); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.5); font-weight: 700;' : ''}">
+                  ${isFailedDelivery ? '⚠️ Gagal Pengiriman' : isCompleted ? '🟢 Disetujui Penuh' : isRejected ? '🔴 Ditolak' : '⏳ Sedang Berjalan'}
                 </span>
               </div>
             </div>
 
             <!-- Current Level Summary Banner -->
-            <div style="margin-top: 12px; padding: 8px 12px; border-radius: 6px; font-size: 11.5px; display: flex; align-items: center; gap: 8px; ${isCompleted ? 'background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); color: #6EE7B7;' : isRejected ? 'background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #F87171;' : 'background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: #FCD34D;'}">
-              <span>${isCompleted ? '✅' : isRejected ? '❌' : '⏳'}</span>
+            <div style="margin-top: 12px; padding: 8px 12px; border-radius: 6px; font-size: 11.5px; display: flex; align-items: center; gap: 8px; ${isFailedDelivery ? 'background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #F87171;' : isCompleted ? 'background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); color: #6EE7B7;' : isRejected ? 'background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #F87171;' : 'background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: #FCD34D;'}">
+              <span>${isFailedDelivery ? '⚠️' : isCompleted ? '✅' : isRejected ? '❌' : '⏳'}</span>
               <span>
-                ${isCompleted 
+                ${isFailedDelivery 
+                  ? '<strong>Kendala Pengiriman:</strong> Pesanan mengalami kegagalan pengiriman pada tahap operasional / vendor.'
+                  : isCompleted 
                   ? '<strong>Persetujuan Lengkap:</strong> Semua level wewenang telah menyetujui pengajuan ini.'
                   : isRejected 
                   ? '<strong>Pengajuan Ditolak:</strong> Proses approval telah dihentikan.'

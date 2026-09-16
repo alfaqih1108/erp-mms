@@ -5533,6 +5533,24 @@ class DatabaseManager {
         });
       }
 
+      if (pr.status === 'APPROVED') {
+        const trackHist = Array.isArray(pr.orderTrackingHistory) ? pr.orderTrackingHistory : [];
+        const isFailed = (pr.orderStatus === 'GAGAL_PENGIRIMAN');
+        const isReceived = (pr.orderStatus === 'SUDAH_DITERIMA' || pr.orderStatus === 'INVOICE_SUBMITTED' || pr.orderStatus === 'SETTLEMENT');
+        const latestTrack = trackHist.length > 0 ? trackHist[trackHist.length - 1] : null;
+
+        steps.push({
+          level: steps.length + 1,
+          title: 'Pengiriman & Penerimaan Barang (PO Delivery)',
+          subtitle: 'Proses Eksekusi Order, Pengiriman Supplier & Penerimaan Fisik di Lokasi',
+          actorName: latestTrack ? `${latestTrack.updatedByName || 'Operator PO'} (${latestTrack.role || 'Operator'})` : 'Muhammad Syafiq Al Ghifari & Syifa Izzatina (Operator PO)',
+          actorRole: 'Tim Eksekusi & Logistik PO',
+          timestamp: latestTrack ? latestTrack.timestamp : (isFailed ? '⚠️ Gagal Pengiriman' : '📦 Proses Pesanan Berjalan'),
+          status: isFailed ? 'REJECTED' : isReceived ? 'COMPLETED' : 'ACTIVE',
+          notes: latestTrack ? latestTrack.notes : (isFailed ? 'Barang mengalami kendala pengiriman / retur supplier.' : 'Dalam penanganan tim logistik & pengiriman.')
+        });
+      }
+
       return {
         type: 'PR',
         id: pr.id,
@@ -5551,8 +5569,10 @@ class DatabaseManager {
         requester: `${pr.employeeName} (${pr.department})`,
         attachmentUrl: pr.attachmentUrl || null,
         attachmentName: pr.attachmentName || null,
-        stage: pr.stage,
-        status: pr.status,
+        stage: (pr.orderStatus === 'GAGAL_PENGIRIMAN') ? 'GAGAL_PENGIRIMAN' : pr.stage,
+        status: (pr.orderStatus === 'GAGAL_PENGIRIMAN') ? 'GAGAL_PENGIRIMAN' : pr.status,
+        orderStatus: pr.orderStatus,
+        orderTrackingHistory: pr.orderTrackingHistory,
         steps
       };
     }

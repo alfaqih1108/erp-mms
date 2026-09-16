@@ -83,7 +83,10 @@ window.PengajuanBarangModule = {
 
               <div style="display: flex; gap: 18px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 12px; flex-wrap: wrap;">
                 <div>Menunggu Approval: <strong style="color: var(--status-pending);">${pendingPrs.length} PR</strong></div>
-                <div>Selesai / PO Terbit: <strong style="color: var(--status-approved);">${prs.length - pendingPrs.length} PR</strong></div>
+                <div>Selesai / PO Terbit: <strong style="color: var(--status-approved);">${prs.filter(p => p.status === 'APPROVED' && p.orderStatus !== 'GAGAL_PENGIRIMAN').length} PR</strong></div>
+                ${prs.some(p => p.orderStatus === 'GAGAL_PENGIRIMAN') ? `
+                  <div>Gagal Pengiriman: <strong style="color: #F87171;">${prs.filter(p => p.orderStatus === 'GAGAL_PENGIRIMAN').length} PR</strong></div>
+                ` : ''}
               </div>
             </div>
           </div>
@@ -161,7 +164,13 @@ window.PengajuanBarangModule = {
                   <tr>
                     <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 32px;">Belum ada pengajuan barang yang Anda buat.</td>
                   </tr>
-                ` : prs.map(p => `
+                ` : prs.map(p => {
+                  const isFailedDelivery = (p.orderStatus === 'GAGAL_PENGIRIMAN');
+                  const trackHist = Array.isArray(p.orderTrackingHistory) ? p.orderTrackingHistory : [];
+                  const failedStep = trackHist.slice().reverse().find(t => t.status === 'GAGAL_PENGIRIMAN');
+                  const failReason = failedStep ? (failedStep.notes || 'Gagal Pengiriman dari Supplier / Retur') : 'Gagal Pengiriman dari Supplier';
+
+                  return `
                   <tr style="cursor: pointer; transition: background 0.15s ease;" 
                       onclick="App.showApprovalTracker('pr', '${p.id}')"
                       onmouseenter="this.style.background='rgba(245, 158, 11, 0.05)'"
@@ -173,8 +182,12 @@ window.PengajuanBarangModule = {
                     </td>
                     <td>
                       <div style="display: flex; align-items: flex-start; gap: 12px;">
-                        <div style="width: 38px; height: 38px; border-radius: var(--radius-sm); background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: center; color: #FCD34D; flex-shrink: 0; margin-top: 2px;">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                        <div style="width: 38px; height: 38px; border-radius: var(--radius-sm); background: ${isFailedDelivery ? 'rgba(239, 68, 68, 0.14)' : 'rgba(245, 158, 11, 0.14)'}; border: 1px solid ${isFailedDelivery ? 'rgba(239, 68, 68, 0.35)' : 'rgba(245, 158, 11, 0.3)'}; display: flex; align-items: center; justify-content: center; color: ${isFailedDelivery ? '#F87171' : '#FCD34D'}; flex-shrink: 0; margin-top: 2px;">
+                          ${isFailedDelivery ? `
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          ` : `
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                          `}
                         </div>
                         <div>
                           <div style="font-weight: 500; color: #fff;">${p.itemName}</div>
@@ -184,6 +197,11 @@ window.PengajuanBarangModule = {
                             </div>
                           ` : ''}
                           <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">${p.reason}</div>
+                          ${isFailedDelivery ? `
+                            <div style="font-size: 10.5px; color: #F87171; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); padding: 2px 7px; border-radius: 4px; margin-top: 3px; display: inline-flex; align-items: center; gap: 4px;">
+                              <span>⚠️ <strong>Kendala:</strong> ${failReason}</span>
+                            </div>
+                          ` : ''}
                           ${(p.attachmentName || p.attachmentUrl) ? `
                             <button class="btn-preview-link" style="padding: 3px 8px; font-size: 10px;" onclick="event.stopPropagation(); PengajuanBarangModule.openLightbox('${p.id}', '${p.itemName}')">
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -214,14 +232,20 @@ window.PengajuanBarangModule = {
                       </span>
                     </td>
                     <td>
-                      <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-secondary);">
-                        ${p.stage === 'MANAGER_APPROVAL' ? '⏳ 1. Review Manager' : p.stage === 'FINANCE_VERIFICATION' ? '💼 2. Verifikasi Keuangan' : p.stage === 'DIRECTOR_APPROVAL' ? '👑 3. Persetujuan Direktur' : '✅ PO Terbit & Selesai'}
+                      <span style="font-size: 11px; font-family: var(--font-mono); color: ${isFailedDelivery ? '#F87171; font-weight: 600;' : 'var(--text-secondary);'}">
+                        ${isFailedDelivery ? '⚠️ Gagal Pengiriman (PO)' : (p.stage === 'MANAGER_APPROVAL' ? '⏳ 1. Review Manager' : p.stage === 'FINANCE_VERIFICATION' ? '💼 2. Verifikasi Keuangan' : p.stage === 'DIRECTOR_APPROVAL' ? '👑 3. Persetujuan Direktur' : '✅ PO Terbit & Selesai')}
                       </span>
                     </td>
                     <td>
-                      <span class="badge-status ${p.status === 'APPROVED' ? 'badge-approved' : p.status === 'PENDING' ? 'badge-pending' : 'badge-rejected'}">
-                        ${p.status}
-                      </span>
+                      ${isFailedDelivery ? `
+                        <span class="badge-status" style="background: rgba(239, 68, 68, 0.18); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.5); font-weight: 700;">
+                          GAGAL PENGIRIMAN
+                        </span>
+                      ` : `
+                        <span class="badge-status ${p.status === 'APPROVED' ? 'badge-approved' : p.status === 'PENDING' ? 'badge-pending' : 'badge-rejected'}">
+                          ${p.status}
+                        </span>
+                      `}
                     </td>
                     <td style="text-align: center;">
                       <div style="display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: nowrap;">
@@ -234,7 +258,8 @@ window.PengajuanBarangModule = {
                       </div>
                     </td>
                   </tr>
-                `).join('')}
+                `;
+                }).join('')}
               </tbody>
             </table>
           </div>
