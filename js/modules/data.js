@@ -6666,7 +6666,7 @@ class DatabaseManager {
               stage: p.stage,
               status: p.status,
               rejectionReason: p.rejection_reason,
-              approvalHistory: p.approval_history || [],
+              approvalHistory: Array.isArray(p.approval_history) ? p.approval_history : (typeof p.approval_history === 'string' ? (function() { try { const r = JSON.parse(p.approval_history); return Array.isArray(r) ? r : (r ? [r] : []); } catch(e) { return []; } })() : (p.approval_history ? [p.approval_history] : [])),
               orderStatus: p.order_status || (local && local.orderStatus) || (p.status === 'APPROVED' ? 'DALAM_ANTRIAN' : null),
               orderTrackingHistory: p.order_tracking_history || (local && local.orderTrackingHistory) || [],
               orderInvoice: p.order_invoice || (local && local.orderInvoice) || null,
@@ -6718,7 +6718,7 @@ class DatabaseManager {
               stage: l.stage,
               status: l.status,
               rejectionReason: l.rejection_reason,
-              approvalHistory: l.approval_history || [],
+              approvalHistory: Array.isArray(l.approval_history) ? l.approval_history : (typeof l.approval_history === 'string' ? (function() { try { const r = JSON.parse(l.approval_history); return Array.isArray(r) ? r : (r ? [r] : []); } catch(e) { return []; } })() : (l.approval_history ? [l.approval_history] : [])),
               createdAt: l.created_at
             };
           });
@@ -6877,7 +6877,7 @@ class DatabaseManager {
             stage: ca.stage,
             status: ca.status,
             settlement: ca.settlement,
-            approvalHistory: ca.approval_history || [],
+            approvalHistory: Array.isArray(ca.approval_history) ? ca.approval_history : (typeof ca.approval_history === 'string' ? (function() { try { const r = JSON.parse(ca.approval_history); return Array.isArray(r) ? r : (r ? [r] : []); } catch(e) { return []; } })() : (ca.approval_history ? [ca.approval_history] : [])),
             createdAt: ca.created_at
           }));
 
@@ -7020,7 +7020,7 @@ class DatabaseManager {
               status: r.status,
               rejectionReason: r.rejection_reason,
               disbursementDetails: r.disbursement_details || null,
-              approvalHistory: r.approval_history || [],
+              approvalHistory: Array.isArray(r.approval_history) ? r.approval_history : (typeof r.approval_history === 'string' ? (function() { try { const res = JSON.parse(r.approval_history); return Array.isArray(res) ? res : (res ? [res] : []); } catch(e) { return []; } })() : (r.approval_history ? [r.approval_history] : [])),
               createdAt: r.created_at,
               updatedAt: r.updated_at || r.created_at
             };

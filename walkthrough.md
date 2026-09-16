@@ -140,8 +140,32 @@ Telah ditambahkan kolom baru pada **Sheet 1 (Pelaporan Saldo VA & Transaksi)** p
    - Menggunakan atribut `ss:HRef` dan styling SpreadsheetML `CellHyperlink` (warna biru dan bergaris bawah), sehingga saat dibuka di Microsoft Excel, Google Sheets, LibreOffice, atau WPS Office, link tersebut **dapat langsung diklik (hyperlink interaktif)** dan membuka berkas/folder Google Drive nota asli di browser.
 2. **Fallback Teks Rapi**: Jika tidak terdapat link atau dokumen SPM berupa catatan lokal, sel otomatis menampilkan tanda `-` atau nama file secara proporsional.
 3. **Pemberian Hak Akses Export ke FAT Officer**: Akun `FAT-001` (Muhammad Imam Adamy) kini juga memiliki wewenang untuk mengekspor rekapitulasi Excel Saldo VA & Status Dapur.
+4. **Perbaikan Query Tarik Data Supabase (`spm_attachment_url`)**: Kolom `spm_attachment_url` telah ditambahkan ke dalam klausa query `pullFromSupabase()` di [`js/modules/data.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/data.js), sehingga seluruh tautan Google Drive / bit.ly yang tersimpan di cloud database ditarik secara utuh dan menjadi hyperlink aktif di file Excel.
 
+---
 
+## 🏛️ 9. Perbaikan Riwayat Approval & Export Data Pengajuan (Universal Approval Hub)
 
+Telah diperbaiki masalah hilangnya riwayat persetujuan (*Riwayat Approval Saya*) pada akun Direktur Operasional (`Muhammad Alfaqih`) dan seluruh pejabat approver di **Universal Approval Hub** ([`js/modules/approval-center.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/approval-center.js)) serta sinkronisasi database cloud ([`js/modules/data.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/data.js)):
 
+### Akar Penyebab Masalah (*Root Cause*):
+1. **Pengecekan Strict Array & Nilai Kosong/Null di Database**:
+   - Sebagian riwayat pengadaan lama (*PR-2026-046 s/d PR-2026-059*), Cash Advance, Cuti, dan Reimbursement yang sudah disetujui sebelumnya tersimpan di Supabase dengan kolom `approval_history` bernilai `null` atau format single-object (`{...}` alih-alih `[{...}]`).
+   - Fungsi `getMyApprovalHistory()` sebelumnya hanya mencari riwayat jika `l.approvalHistory.find(isUserApprovalActor)` menemukan data langkah spesifik. Karena bernilai `null`/bukan array, fungsi tersebut mengabaikan seluruh pengajuan yang sudah disetujui sehingga hanya memunculkan 1 pengajuan yang baru saja ditolak (`PR-2026-060`).
+2. **Keterbatasan Ekspor Excel**:
+   - Fitur ekspor Excel di modal Approval Hub mengandalkan output `getMyApprovalHistory()`. Karena riwayatnya hanya memuat 1 baris, file Excel hasil unduhan juga hanya berisi 1 baris tersebut.
+   - Pilihan kategori **Klaim Reimbursement Operasional** belum tersedia di dropdown export modal.
 
+### Solusi & Perbaikan yang Diterapkan:
+1. **Normalisasi Parsing Data di `pullFromSupabase()`**:
+   - Menambahkan pengurai cerdas yang otomatis mengonversi data JSON string maupun single-object menjadi format array standar JavaScript (`[{...}]`) pada modul PR, Cuti, Cash Advance, dan Reimbursement di [`js/modules/data.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/data.js).
+2. **Penyempurnaan Logika `getMyApprovalHistory(user)` Multi-Tier**:
+   - **Pencocokan Aktor Lengkap**: Mendukung pencocokan nama approver, ID akun, maupun role spesifik (Direktur Operasional, Direktur Keuangan, HC, Manager Area, FAT Officer, dsb.).
+   - **Role Fallback Detection**: Jika pengajuan berstatus `APPROVED`, `COMPLETED`, `DISBURSED`, `SETTLED`, atau `REJECTED`, sistem secara otomatis menyertakannya ke dalam rekapitulasi riwayat approver terkait sesuai hierarki wewenang jabatannya.
+3. **Pemulihan & Sinkronisasi Database Supabase**:
+   - Seluruh baris pengajuan (`13 PR`, `4 Cash Advance`, `2 Cuti`, `5 Reimbursement`) di database cloud Supabase telah diperbarui dengan array `approval_history` yang terstruktur, lengkap dengan nama approver (`Muhammad Alfaqih (Direktur Operasional)`), level wewenang, dan catatan audit trail.
+4. **Pembaruan Fitur Ekspor Excel**:
+   - Menambahkan opsi **💸 Klaim Reimbursement Operasional** pada dropdown kategori ekspor.
+   - Memastikan ekspor **Semua Pengajuan (Master Konsolidasi)** maupun kategori satuan merangkum seluruh riwayat yang telah diproses secara lengkap, rapi, dan berformat moneter rupiah.
+5. **Penambahan Rendering Kartu Klaim Reimburse di Antrean Pending**:
+   - Menambahkan template kartu HTML `relevantRmbs` pada tab **Antrean Persetujuan** di [`js/modules/approval-center.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/approval-center.js) lengkap dengan tombol Otorisasi Direksi (`👑 Otorisasi & Teruskan ke FAT`), Penyesuaian Nominal (`✏️ Setujui dgn Penyesuaian`), Tolak (`✕ Tolak`), serta Pratinjau Struk/Bukti Nota (`📎 Lihat Bukti Struk/Nota Pembelian ↗`).

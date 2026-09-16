@@ -44,8 +44,24 @@ window.ApprovalCenterModule = {
     const leaves = DB.getLeaves() || [];
     const prs = DB.getItemRequests() || [];
     const cas = DB.getCashAdvances() || [];
+    const rmbs = DB.getReimbursements() || [];
 
     const history = [];
+
+    // Helper untuk memastikan riwayat selalu bertipe array
+    const toArray = (h) => {
+      if (Array.isArray(h)) return h;
+      if (typeof h === 'string') {
+        try {
+          const parsed = JSON.parse(h);
+          return Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object' ? [parsed] : []);
+        } catch (e) {
+          return [];
+        }
+      }
+      if (h && typeof h === 'object') return [h];
+      return [];
+    };
 
     // Helper pengecekan: hanya step yang dieksekusi / diapprove oleh akun user saat ini
     const isUserApprovalActor = (h) => {
@@ -57,21 +73,45 @@ window.ApprovalCenterModule = {
       const currentName = (user.name || '').toLowerCase().trim();
       const actorId = (h.actorId || '').toLowerCase().trim();
       const currentId = (user.id || '').toLowerCase().trim();
+      const actorRole = (h.actorRole || '').toLowerCase().trim();
 
       if (currentId && actorId && currentId === actorId) return true;
       if (actorName && currentName && (actorName.includes(currentName) || currentName.includes(actorName))) return true;
+
+      // Pencocokan hierarki wewenang jabatan approver
+      if (user.role === 'DIREKTUR_OPERASIONAL') {
+        if (actorRole.includes('operasional') || actorName.includes('operasional') || actorName.includes('alfaqih') || h.stage === 'DIRECTOR_APPROVAL' || h.stage === 'DIR_OPS_OR_KEU_REVIEW') return true;
+      } else if (user.role === 'DIREKTUR_KEUANGAN') {
+        if (actorRole.includes('keuangan') || actorName.includes('keuangan') || actorName.includes('hafidz') || h.stage === 'DIR_KEU_REVIEW') return true;
+      } else if (user.role === 'HUMAN_CAPITAL') {
+        if (actorRole.includes('human capital') || actorName.includes('tazkia') || h.stage === 'HC_REVIEW' || h.stage === 'HC_FINAL') return true;
+      } else if (user.role === 'FAT_OFFICER') {
+        if (actorRole.includes('fat') || actorName.includes('imam') || h.stage === 'FAT_DISBURSEMENT' || h.stage === 'SETTLEMENT_SUBMITTED' || h.stage === 'SETTLEMENT_VERIFICATION') return true;
+      } else if (user.role === 'STAFF_AHLI_KEUANGAN') {
+        if (actorRole.includes('ahli keuangan') || actorName.includes('nurhaliza') || h.stage === 'FINANCE_VERIFICATION') return true;
+      } else if (user.role === 'MANAGER_AREA') {
+        if (actorRole.includes('manager area') || actorName.includes('rendy') || h.stage === 'MANAGER_APPROVAL' || h.stage === 'MANAGER_AREA_REVIEW') return true;
+      } else if (user.role === 'SUPER_ADMIN' || user.role === 'DIREKTUR_UTAMA') {
+        return true;
+      }
 
       return false;
     };
 
     // 1. LEAVES (CUTI & IZIN)
     leaves.forEach(l => {
-      if (!Array.isArray(l.approvalHistory)) return;
-      const userStep = l.approvalHistory.slice().reverse().find(isUserApprovalActor);
+      const histArr = toArray(l.approvalHistory);
+      const userStep = histArr.slice().reverse().find(isUserApprovalActor);
 
-      if (userStep) {
-        const timestamp = userStep.timestamp || l.updatedAt || l.createdAt || '-';
-        const action = userStep.action || l.status;
+      const isDirector = (user.role === 'DIREKTUR_OPERASIONAL' || user.role === 'DIREKTUR_KEUANGAN' || user.role === 'SUPER_ADMIN' || user.role === 'DIREKTUR_UTAMA');
+      const isHC = (user.role === 'HUMAN_CAPITAL');
+      const isMgr = (user.role === 'MANAGER_AREA' && (l.role === 'SURVEYOR' || l.role === 'PERWAKILAN_YAYASAN' || l.role === 'STAFF_OPERASIONAL' || l.role === 'MAKER_YAYASAN'));
+      const isDone = (l.status === 'APPROVED' || l.status === 'COMPLETED' || l.status === 'REJECTED');
+
+      if (userStep || (isDone && (isDirector || isHC || isMgr))) {
+        const decisionStep = userStep || (histArr.length > 0 ? histArr[histArr.length - 1] : null);
+        const timestamp = decisionStep ? decisionStep.timestamp : (l.updatedAt || l.createdAt || '-');
+        const action = decisionStep ? decisionStep.action : l.status;
         history.push({
           type: 'LEAVE',
           id: l.id,
@@ -84,8 +124,8 @@ window.ApprovalCenterModule = {
           status: l.status,
           decision: action,
           decisionTimestamp: timestamp,
-          approverName: userStep.actorName || user.name,
-          notes: userStep.notes || (l.status === 'APPROVED' ? 'Disetujui' : 'Diproses'),
+          approverName: decisionStep ? decisionStep.actorName : user.name,
+          notes: decisionStep ? decisionStep.notes : (l.status === 'APPROVED' ? 'Disetujui penuh & kuota dipotong' : (l.rejectionReason || 'Ditolak')),
           raw: l
         });
       }
@@ -93,14 +133,20 @@ window.ApprovalCenterModule = {
 
     // 2. PURCHASE REQUESTS (PR)
     prs.forEach(p => {
-      const userStep = Array.isArray(p.approvalHistory) ? p.approvalHistory.slice().reverse().find(isUserApprovalActor) : null;
+      const histArr = toArray(p.approvalHistory);
+      const userStep = histArr.slice().reverse().find(isUserApprovalActor);
 
       const userAdj = Array.isArray(p.adjustments) ? p.adjustments.find(a => 
         a.adjustedBy && (a.adjustedBy.toLowerCase().includes(user.name.toLowerCase()) || user.name.toLowerCase().includes(a.adjustedBy.toLowerCase()))
       ) : null;
 
-      if (userStep || userAdj) {
-        const decisionStep = userStep || (Array.isArray(p.approvalHistory) ? p.approvalHistory[p.approvalHistory.length - 1] : null);
+      const isDirector = (user.role === 'DIREKTUR_OPERASIONAL' || user.role === 'DIREKTUR_KEUANGAN' || user.role === 'SUPER_ADMIN' || user.role === 'DIREKTUR_UTAMA');
+      const isFinStaff = (user.role === 'STAFF_AHLI_KEUANGAN');
+      const isMgr = (user.role === 'MANAGER_AREA');
+      const isDone = (p.status === 'APPROVED' || p.stage === 'COMPLETED' || p.status === 'REJECTED');
+
+      if (userStep || userAdj || (isDone && (isDirector || isFinStaff || isMgr))) {
+        const decisionStep = userStep || (histArr.length > 0 ? histArr[histArr.length - 1] : null);
         const timestamp = decisionStep ? decisionStep.timestamp : (p.updatedAt || p.createdAt || '-');
         const action = decisionStep ? decisionStep.action : p.status;
         history.push({
@@ -116,7 +162,7 @@ window.ApprovalCenterModule = {
           decision: p.hasAdjustment ? 'ADJUSTED_APPROVED' : action,
           decisionTimestamp: timestamp,
           approverName: decisionStep ? decisionStep.actorName : user.name,
-          notes: userAdj ? `Disesuaikan (${userAdj.newQty} unit @ Rp ${Number(userAdj.newUnitPrice).toLocaleString('id-ID')})` : (decisionStep ? decisionStep.notes : '-'),
+          notes: userAdj ? `Disesuaikan (${userAdj.newQty} unit @ Rp ${Number(userAdj.newUnitPrice).toLocaleString('id-ID')})` : (decisionStep ? decisionStep.notes : (p.status === 'APPROVED' ? 'Disetujui Direktur & PO Resmi Diterbitkan' : (p.rejectionReason || '-'))),
           raw: p
         });
       }
@@ -124,11 +170,17 @@ window.ApprovalCenterModule = {
 
     // 3. CASH ADVANCE (CA & LPJ)
     cas.forEach(c => {
-      const userStep = Array.isArray(c.approvalHistory) ? c.approvalHistory.slice().reverse().find(isUserApprovalActor) : null;
+      const histArr = toArray(c.approvalHistory);
+      const userStep = histArr.slice().reverse().find(isUserApprovalActor);
 
-      if (userStep) {
-        const timestamp = userStep.timestamp || c.disbursedAt || c.createdAt || '-';
-        const action = userStep.action || c.status;
+      const isDirector = (user.role === 'DIREKTUR_OPERASIONAL' || user.role === 'DIREKTUR_KEUANGAN' || user.role === 'SUPER_ADMIN' || user.role === 'DIREKTUR_UTAMA');
+      const isFAT = (user.role === 'FAT_OFFICER');
+      const isDone = (c.status === 'APPROVED' || c.status === 'DISBURSED' || c.status === 'SETTLED' || c.status === 'SETTLEMENT_PENDING' || c.status === 'REJECTED');
+
+      if (userStep || (isDone && (isDirector || isFAT))) {
+        const decisionStep = userStep || (histArr.length > 0 ? histArr[histArr.length - 1] : null);
+        const timestamp = decisionStep ? decisionStep.timestamp : (c.disbursedAt || c.updatedAt || c.createdAt || '-');
+        const action = decisionStep ? decisionStep.action : (c.status === 'DISBURSED' ? 'DISBURSED' : c.status === 'SETTLED' ? 'SETTLED' : c.status);
         history.push({
           type: 'CA',
           id: c.id,
@@ -141,20 +193,28 @@ window.ApprovalCenterModule = {
           status: c.status,
           decision: action,
           decisionTimestamp: timestamp,
-          approverName: userStep.actorName || user.name,
-          notes: userStep.notes || '-',
+          approverName: decisionStep ? decisionStep.actorName : user.name,
+          notes: decisionStep ? decisionStep.notes : (c.status === 'SETTLED' ? 'Disetujui Direktur & LPJ Tuntas' : c.status === 'DISBURSED' ? 'Dana kasbon telah dicairkan FAT' : 'Disetujui Direktur'),
           raw: c
         });
       }
     });
 
     // 4. REIMBURSEMENTS (KLAIM BIAYA OPERASIONAL)
-    const rmbs = DB.getReimbursements() || [];
     rmbs.forEach(r => {
-      const userStep = Array.isArray(r.approvalHistory) ? r.approvalHistory.slice().reverse().find(isUserApprovalActor) : null;
-      if (userStep) {
-        const timestamp = userStep.timestamp || (r.disbursementDetails ? r.disbursementDetails.disbursedAt : r.updatedAt) || r.createdAt || '-';
-        const action = userStep.action || r.status;
+      const histArr = toArray(r.approvalHistory);
+      const userStep = histArr.slice().reverse().find(isUserApprovalActor);
+
+      const isDirector = (user.role === 'DIREKTUR_OPERASIONAL' || user.role === 'DIREKTUR_KEUANGAN' || user.role === 'SUPER_ADMIN' || user.role === 'DIREKTUR_UTAMA');
+      const isFAT = (user.role === 'FAT_OFFICER');
+      const isFinStaff = (user.role === 'STAFF_AHLI_KEUANGAN');
+      const isMgr = (user.role === 'MANAGER_AREA');
+      const isDone = (r.status === 'APPROVED' || r.status === 'DISBURSED' || r.status === 'SETTLED' || r.status === 'REJECTED');
+
+      if (userStep || (isDone && (isDirector || isFAT || isFinStaff || isMgr))) {
+        const decisionStep = userStep || (histArr.length > 0 ? histArr[histArr.length - 1] : null);
+        const timestamp = decisionStep ? decisionStep.timestamp : (r.disbursementDetails ? r.disbursementDetails.disbursedAt : (r.updatedAt || r.createdAt || '-'));
+        const action = decisionStep ? decisionStep.action : (r.status === 'SETTLED' ? 'SETTLED' : r.status === 'DISBURSED' ? 'DISBURSED' : r.status);
         history.push({
           type: 'REIMBURSE',
           id: r.id,
@@ -167,8 +227,8 @@ window.ApprovalCenterModule = {
           status: r.status,
           decision: r.hasAdjustment ? 'ADJUSTED_APPROVED' : action,
           decisionTimestamp: timestamp,
-          approverName: userStep.actorName || user.name,
-          notes: userStep.notes || '-',
+          approverName: decisionStep ? decisionStep.actorName : user.name,
+          notes: decisionStep ? decisionStep.notes : (r.status === 'SETTLED' ? 'Disetujui Direktur & Pencairan Selesai' : 'Disetujui'),
           raw: r
         });
       }
@@ -179,6 +239,9 @@ window.ApprovalCenterModule = {
       if (p.orderDisbursement && (
         user.role === 'FAT_OFFICER' || 
         user.role === 'SUPER_ADMIN' ||
+        user.role === 'DIREKTUR_OPERASIONAL' ||
+        user.role === 'DIREKTUR_KEUANGAN' ||
+        user.role === 'DIREKTUR_UTAMA' ||
         (p.orderDisbursement.disbursedById === user.id) ||
         (p.orderDisbursement.disbursedBy && p.orderDisbursement.disbursedBy.toLowerCase().includes(user.name.toLowerCase()))
       )) {
@@ -586,6 +649,92 @@ window.ApprovalCenterModule = {
                     ` : isSettlementReviewStage ? `
                       <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%); border-color: #60A5FA; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openVerifyCASettlementModal('${c.id}')">
                         🔍 Verifikasi LPJ & Tutup Kasbon
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              `;
+            }).join('') : ''}
+
+            <!-- Pending Reimbursements (Klaim Biaya Operasional) -->
+            ${(this.activeFilter === 'ALL' || this.activeFilter === 'REIMBURSE') ? relevantRmbs.map(r => {
+              const isManagerStage = (r.stage === 'MANAGER_APPROVAL');
+              const isFinanceStage = (r.stage === 'FINANCE_VERIFICATION');
+              const isDirectorStage = (r.stage === 'DIRECTOR_APPROVAL');
+              const isFATStage = (r.stage === 'FAT_DISBURSEMENT');
+
+              const stageName = isManagerStage 
+                ? '1. Review Manager Area' 
+                : isFinanceStage 
+                ? '2. Verifikasi Anggaran Keuangan' 
+                : isDirectorStage 
+                ? '3. Otorisasi Direksi' 
+                : '4. Pencairan Dana FAT';
+
+              return `
+                <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #10B981; margin-bottom: 0;">
+                  <div style="display: flex; align-items: flex-start; gap: 16px;">
+                    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; color: #34D399; flex-shrink: 0; font-size: 20px;">
+                      💸
+                    </div>
+                    <div>
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span class="text-mono-badge" style="color: #34D399;">REIMBURSE · ${r.id}</span>
+                        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${r.createdAt}</span>
+                        <span style="font-size: 10px; color: #A7F3D0; background: rgba(16,185,129,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                          Tahap: ${stageName}
+                        </span>
+                      </div>
+
+                      <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
+                        ${r.itemName} (${r.quantity} Unit) — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(Number(r.subtotal) || 0).toLocaleString('id-ID')}</span>
+                      </h4>
+
+                      <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
+                        Pemohon: <strong>${r.employeeName}</strong> (${r.department || r.employeeRole || r.role}) · Dapur: <strong style="color: #FCD34D;">${r.targetKitchen || '-'}</strong>
+                      </div>
+
+                      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+                        💳 Rekening Transfer: <strong>${r.bankName || '-'}</strong> (${r.bankAccountNo || '-'} a.n ${r.bankAccountName || r.employeeName}) · Tgl Beli: <strong>${r.purchaseDate || '-'}</strong>
+                      </div>
+
+                      ${(r.attachmentUrl || r.attachmentName) ? `
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                          <button type="button" class="btn-preview-link" onclick="ReimburseModule.previewAttachment('${r.id}')" style="color: #34D399; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                            <span>📎 Lihat Bukti Struk/Nota Pembelian ↗</span>
+                          </button>
+                        </div>
+                      ` : ''}
+                    </div>
+                  </div>
+
+                  <!-- Action Buttons per Stage -->
+                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectReimburse('${r.id}')">
+                      ✕ Tolak
+                    </button>
+                    
+                    ${(isFinanceStage || isDirectorStage) ? `
+                      <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustReimburseModal('${r.id}')">
+                        ✏️ Setujui dgn Penyesuaian
+                      </button>
+                    ` : ''}
+
+                    ${isManagerStage ? `
+                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); border-color: #60A5FA; color: #fff; font-weight: 600;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
+                        ✓ Setujui & Teruskan ke Staf Keuangan
+                      </button>
+                    ` : isFinanceStage ? `
+                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
+                        ✓ Verifikasi Sah & Teruskan ke Direksi
+                      </button>
+                    ` : isDirectorStage ? `
+                      <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
+                        👑 Otorisasi & Teruskan ke FAT
+                      </button>
+                    ` : isFATStage ? `
+                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseReimburseModal('${r.id}')">
+                        💸 Transfer Pembayaran Reimburse
                       </button>
                     ` : ''}
                   </div>
@@ -1879,11 +2028,12 @@ window.ApprovalCenterModule = {
           <div class="form-group">
             <label class="form-label" style="font-weight: 600;">1. Kategori Pengajuan yang Ingin Diexport <span style="color: #F87171;">*</span></label>
             <select id="export-modal-category" class="form-control" style="font-size: 13px;">
-              <option value="ALL" selected>📑 Semua Pengajuan (Master Konsolidasi: Cuti, Timesheet, PR & Kasbon)</option>
+              <option value="ALL" selected>📑 Semua Pengajuan (Master Konsolidasi: Cuti, Timesheet, PR, Kasbon & Reimburse)</option>
               <option value="LEAVE">🌴 Cuti & Izin Karyawan</option>
               <option value="TIMESHEET">⏱️ Timesheet & Presensi Kerja</option>
               <option value="PR">📦 Pengadaan Barang & Pembelian (PR)</option>
               <option value="CA">💰 Cash Advance & LPJ Kasbon</option>
+              <option value="REIMBURSE">💸 Klaim Reimbursement Operasional</option>
             </select>
           </div>
 
@@ -2253,7 +2403,77 @@ window.ApprovalCenterModule = {
         </table>
       `;
     }
-    // 5. EXPORT KONSOLIDASI SEMUA PENGAJUAN
+    // 5. EXPORT KHUSUS REIMBURSEMENT
+    else if (category === 'REIMBURSE') {
+      categoryTitle = 'KLAIM REIMBURSEMENT OPERASIONAL';
+      filenameSuffix = 'Klaim_Reimbursement';
+      const rmbs = DB.getReimbursements() || [];
+      const filteredRmbs = rmbs.filter(r => isDateInRange(r.purchaseDate || r.createdAt) && isStatusMatch(r.status));
+
+      tableHtml = `
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-family: 'Segoe UI', Arial, sans-serif; width: 100%;">
+          <thead>
+            <tr style="background-color: #047857; color: #FFFFFF; font-weight: bold; text-align: center;">
+              <th style="padding: 10px;">No</th>
+              <th style="padding: 10px;">ID Reimburse</th>
+              <th style="padding: 10px;">Tgl Pengajuan</th>
+              <th style="padding: 10px;">Nama Pemohon</th>
+              <th style="padding: 10px;">Divisi / Jabatan</th>
+              <th style="padding: 10px;">Kategori Biaya</th>
+              <th style="padding: 10px;">Nama Barang / Keperluan</th>
+              <th style="padding: 10px;">Qty</th>
+              <th style="padding: 10px;">Harga Satuan (Rp)</th>
+              <th style="padding: 10px;">Total Nominal (Rp)</th>
+              <th style="padding: 10px;">Target Dapur / Lokasi</th>
+              <th style="padding: 10px;">Tgl Transaksi / Beli</th>
+              <th style="padding: 10px;">Rekening Pencairan</th>
+              <th style="padding: 10px;">Status Klaim</th>
+              <th style="padding: 10px;">Tahap Alur</th>
+              <th style="padding: 10px;">Waktu Approval (Tgl & Jam)</th>
+              <th style="padding: 10px;">Pejabat Penyetuju (Approver)</th>
+              <th style="padding: 10px;">Catatan Keputusan</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredRmbs.map((r, idx) => {
+              const bgRow = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC';
+              const histArr = Array.isArray(r.approvalHistory) ? r.approvalHistory : [];
+              const lastStep = histArr.length > 0 ? histArr[histArr.length - 1] : null;
+              const approvalTime = lastStep && lastStep.action !== 'SUBMITTED' ? lastStep.timestamp : (r.disbursementDetails?.disbursedAt || r.updatedAt || r.createdAt || '-');
+              const approver = lastStep && lastStep.action !== 'SUBMITTED' ? lastStep.actorName : (r.approver || '-');
+              const notes = lastStep ? lastStep.notes : (r.notes || '-');
+
+              let statusBg = (r.status === 'APPROVED' || r.status === 'COMPLETED' || r.status === 'SETTLED' || r.status === 'DISBURSED') ? '#D1FAE5' : r.status === 'REJECTED' ? '#FEE2E2' : '#FEF3C7';
+              let statusColor = (r.status === 'APPROVED' || r.status === 'COMPLETED' || r.status === 'SETTLED' || r.status === 'DISBURSED') ? '#065F46' : r.status === 'REJECTED' ? '#991B1B' : '#92400E';
+
+              return `
+                <tr style="background-color: ${bgRow};">
+                  <td style="text-align: center; border: 1px solid #CBD5E1;">${idx + 1}</td>
+                  <td style="text-align: center; font-weight: bold; border: 1px solid #CBD5E1;">${r.id}</td>
+                  <td style="text-align: center; border: 1px solid #CBD5E1;">${r.createdAt || '-'}</td>
+                  <td style="font-weight: 600; border: 1px solid #CBD5E1;">${r.employeeName}</td>
+                  <td style="border: 1px solid #CBD5E1;">${r.department || r.role || '-'}</td>
+                  <td style="border: 1px solid #CBD5E1;">${r.category || '-'}</td>
+                  <td style="font-weight: 600; border: 1px solid #CBD5E1;">${r.itemName}</td>
+                  <td style="text-align: center; border: 1px solid #CBD5E1;">${r.quantity || 1}</td>
+                  <td style="text-align: right; border: 1px solid #CBD5E1;">Rp ${Number(r.unitPrice || 0).toLocaleString('id-ID')}</td>
+                  <td style="text-align: right; font-weight: bold; color: #047857; border: 1px solid #CBD5E1;">Rp ${Number(r.subtotal || 0).toLocaleString('id-ID')}</td>
+                  <td style="border: 1px solid #CBD5E1;">${r.targetKitchen || '-'}</td>
+                  <td style="text-align: center; border: 1px solid #CBD5E1;">${r.purchaseDate || '-'}</td>
+                  <td style="border: 1px solid #CBD5E1;">${r.bankName || '-'} (${r.bankAccountNo || '-'} a.n ${r.bankAccountName || r.employeeName})</td>
+                  <td style="background-color: ${statusBg}; color: ${statusColor}; font-weight: bold; text-align: center; border: 1px solid #CBD5E1;">${r.status}</td>
+                  <td style="border: 1px solid #CBD5E1; text-align: center;">${r.stage}</td>
+                  <td style="text-align: center; font-weight: bold; color: #059669; border: 1px solid #CBD5E1;">${approvalTime}</td>
+                  <td style="border: 1px solid #CBD5E1;">${approver}</td>
+                  <td style="border: 1px solid #CBD5E1;">${notes}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+    // 6. EXPORT KONSOLIDASI SEMUA PENGAJUAN
     else {
       categoryTitle = 'SELURUH DATA PENGAJUAN OPERASIONAL & KEUANGAN';
       filenameSuffix = 'Semua_Pengajuan_Master';
