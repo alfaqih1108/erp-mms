@@ -5263,8 +5263,6 @@ class DatabaseManager {
 
     const realTimestamp = getRealtimeTimestamp();
     const response = responseData.response || responseData.notes || 'Telah ditinjau dan ditindaklanjuti oleh Manager Area.';
-    const user = this.getCurrentUser();
-    const realTimestamp = getRealtimeTimestamp();
 
     issue.actionTaken = response;
     issue.respondedBy = `${user.name} (${user.roleLabel})`;

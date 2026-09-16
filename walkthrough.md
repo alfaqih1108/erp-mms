@@ -273,5 +273,17 @@ Telah diinvestigasi dan diperbaiki secara tuntas akar masalah mengapa data yang 
 
 ---
 
+## 🛠️ 14. Pemulihan Masalah Layar Blank / Tidak Respon
 
+Telah diidentifikasi dan diperbaiki penyebab utama layar menjadi blank putih / tidak merespons setelah diunggah ke GitHub:
 
+### 🔍 Akar Masalah:
+- Pada file [`js/modules/data.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/data.js) di dalam fungsi `respondFieldIssue()`, terdapat deklarasi variabel ganda `const user` dan `const realTimestamp` dalam satu scope fungsi yang sama.
+- Dalam JavaScript modern (ECMAScript 6+), deklarasi `const` duplikat menyebabkan `SyntaxError: Identifier 'user' has already been declared` pada saat browser melakukan parsing file JS sebelum kode sempat dieksekusi.
+- Akibat error parsing ini, objek global `window.DB` gagal terdefinisi, sehingga siklus inisialisasi aplikasi (`App.init()`) terhenti seketika dan membuat tampilan layar menjadi kosong/blank.
+
+### 🛠️ Solusi & Pengujian:
+1. **Pembersihan Deklarasi**: Menghapus deklarasi ganda `const user` dan `const realTimestamp` pada `respondFieldIssue()` di [`js/modules/data.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/data.js).
+2. **Verifikasi Script & DOM Rendering**: Diuji menggunakan browser headless Microsoft Edge pada `index.html` — seluruh file JavaScript berhasil dimuat dengan status `0 Error`, `window.DB initialized: true`, dan antarmuka UI ERP MMS v3.2 ter-render penuh secara sempurna.
+
+---
