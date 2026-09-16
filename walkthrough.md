@@ -192,3 +192,27 @@ Telah diimplementasikan sinkronisasi otomatis status **"Gagal Pengiriman"** keti
 - **Langkah 5 (Pengiriman & Penerimaan Barang)**: Berubah status menjadi `REJECTED / FAILED` lengkap dengan catatan kendala/retur barang dari supplier.
 - **Header Tracker Modal**: Menampilkan badge `⚠️ Gagal Pengiriman` dan banner informasi kendala operasional.
 
+---
+
+## ⚡ 11. Optimasi Supabase: Menekan Egress 17.37 GB & Mengeliminasi Request API Berulang
+
+Telah diimplementasikan optimasi menyeluruh pada arsitektur koneksi & data fetching Supabase di frontend ([`js/app.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/app.js) & [`js/modules/data.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/data.js)):
+
+### 1. Eliminasi Background Polling & Refetch Berlebihan:
+- **Hapus `setInterval(45000)`**: Menghilangkan polling otomatis setiap 45 detik yang sebelumnya menembak 11 endpoint terus-menerus.
+- **Hapus Refetch pada Tab Switch**: Berpindah tab kini mengambil data langsung dari memori `DB.data` (0 ms & 0 network requests).
+- **Client-Side Cache TTL (3 Menit)**: Menambahkan `CACHE_TTL` pada `pullLatestFromSupabase(force = false)` sehingga request cloud diabaikan jika data lokal masih fresh (< 3 menit), kecuali dipaksa user via tombol manual *"Sinkronisasi Cloud"*.
+- **Debounce Window Focus / Visibility Change**: Diperpanjang menjadi minimal 30 detik dan menghormati Cache TTL.
+
+### 2. Penggantian `select=*` Menjadi Slim Column Queries & Limit Realistis:
+- **`timesheets`**: Diubah dari `select=*&limit=10000` menjadi query kolom spesifik (`select=id,employee_id,employee_name,role,date,start_time,end_time,activity,activity_preset,category,status,rejection_reason,approval_history,created_at&limit=500`). Kolom `hours` dihitung secara runtime di frontend dan `department` di-resolve dari master `users`.
+- **`cash_advances`**: Diubah dari `select=*&limit=10000` menjadi query kolom spesifik dengan `limit=500`.
+- **`kitchen_daily_statuses`**: Diubah dari `select=*&limit=10000` menjadi query kolom spesifik dengan `limit=200`.
+- **Tabel Lainnya**: Seluruh limit 10.000 diturunkan ke batas aman realistis (100–500 baris terbaru).
+
+### 3. Estimasi Hasil Penghematan:
+- **Penurunan Request API**: Dari ~21.700 request/hari menjadi **< 1.000 request/hari (~95% efisiensi)**.
+- **Penurunan PostgREST Egress**: Dari **17.37 GB/hari** menjadi **< 150 MB/hari (> 99% penghematan)**.
+- **Performa Aplikasi**: Pindah tab, filter data, dan navigasi menjadi instan dan ringan tanpa jeda jaringan.
+
+

@@ -48,13 +48,13 @@ window.App = {
 
       let lastSyncTime = Date.now();
 
-      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif atau terlihat (Debounce 3s)
+      // 1. Multi-Device Real-Time Auto-Sync saat jendela / tab kembali aktif (Menggunakan Cache TTL 3-5 menit)
       const handleReactivationSync = async () => {
-        if (Date.now() - lastSyncTime < 3000) return;
+        if (Date.now() - lastSyncTime < 30000) return; // Minimal jeda 30 detik antar cek
         try {
           lastSyncTime = Date.now();
-          console.log('🔄 [Multi-Device Auto-Sync] Memuat data terbaru dari Cloud...');
-          await window.DB.pullLatestFromSupabase();
+          // pullLatestFromSupabase akan memeriksa Cache TTL (jika masih fresh, 0 network request)
+          await window.DB.pullLatestFromSupabase(false);
           this.updateSidebarBadges();
           this.updateCloudBadge();
           this.refreshCurrentTab();
@@ -69,19 +69,6 @@ window.App = {
           handleReactivationSync();
         }
       });
-
-      // 2. Multi-Device Periodic Background Polling setiap 45 detik (Hanya saat tab aktif)
-      setInterval(async () => {
-        if (document.visibilityState === 'hidden') return;
-        try {
-          lastSyncTime = Date.now();
-          await window.DB.pullLatestFromSupabase();
-          this.updateSidebarBadges();
-          this.updateCloudBadge();
-        } catch (err) {
-          console.warn('Periodic sync notice:', err);
-        }
-      }, 45000);
     }
   },
 
@@ -562,7 +549,7 @@ window.App = {
     this.showToast('🔄 Menyinkronkan data multi-perangkat dari Cloud Supabase...', 'info');
     if (window.DB && typeof window.DB.pullLatestFromSupabase === 'function') {
       try {
-        await window.DB.pullLatestFromSupabase();
+        await window.DB.pullLatestFromSupabase(true);
         this.updateUserHeader();
         this.applyRoleRestrictions();
         this.updateSidebarBadges();
