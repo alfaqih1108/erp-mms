@@ -6513,7 +6513,7 @@ class DatabaseManager {
         fetch(`${url}/rest/v1/kitchens?select=id,id_sppg,nama_dapur,nama_yayasan,provinsi,kota_kabupaten,kecamatan,kelurahan,alamat_lengkap,location,maker_yayasan,perwakilan_yayasan,manager_area,status,kapasitas_porsi,created_at&limit=2000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,order_status,order_tracking_history,order_invoice,order_disbursement,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
-        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,va_bank_name,va_balance,notes,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,spm_attachment_url,va_bank_name,va_balance,notes,created_at&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/timesheets?select=*&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/cash_advances?select=*&order=created_at.desc&limit=10000&offset=0`, { headers }),
         fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc&limit=5000&offset=0`, { headers }),
@@ -6740,7 +6740,7 @@ class DatabaseManager {
             let cleanRemoteUrl = (kr.spm_attachment_url && !kr.spm_attachment_url.includes('unsplash.com')) ? kr.spm_attachment_url : null;
             let cleanLocalUrl = (local && local.spmAttachmentUrl && !local.spmAttachmentUrl.includes('unsplash.com')) ? local.spmAttachmentUrl : null;
 
-            const finalUrl = cleanLocalUrl || cleanRemoteUrl || null;
+            const finalUrl = cleanRemoteUrl || cleanLocalUrl || null;
             const finalFileName = (finalUrl && (finalUrl.startsWith('http://') || finalUrl.startsWith('https://'))) 
               ? 'Link Google Drive SPM' 
               : (kr.spm_file_name || (local && local.spmFileName ? local.spmFileName : null));
