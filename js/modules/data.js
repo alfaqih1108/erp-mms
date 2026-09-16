@@ -2658,7 +2658,19 @@ class DatabaseManager {
       const deleted = this.data.guidelineDocuments.splice(idx, 1)[0];
       this.addLog(`Human Capital menghapus dokumen panduan: "${deleted.title}"`, 'hc');
       this.save();
-      await this.deleteFromSupabase('guideline_documents', docId);
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/guideline_documents?id=eq.${docId}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus dokumen dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -2867,7 +2879,24 @@ class DatabaseManager {
       const deleted = this.data.users.splice(idx, 1)[0];
       this.addLog(`Human Capital menonaktifkan akun: ${deleted.name} (${deleted.username})`, 'hc');
       this.save();
-      await this.deleteFromSupabase('users', userId);
+
+      // Hapus permanen dari Supabase Cloud
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/users?id=eq.${userId}`, {
+            method: 'DELETE',
+            headers: {
+              'apikey': key,
+              'Authorization': `Bearer ${key}`
+            }
+          });
+          console.log(`✅ [Supabase Delete] User ${userId} (${deleted.name}) berhasil dihapus dari database Supabase.`);
+        } catch (e) {
+          console.warn('Gagal menghapus user dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -3060,14 +3089,13 @@ class DatabaseManager {
     return kitchen;
   }
 
-  async deleteKitchen(id) {
+  deleteKitchen(id) {
     if (!Array.isArray(this.data.kitchens)) this.data.kitchens = [...INITIAL_DATABASE.kitchens];
     const idx = this.data.kitchens.findIndex(k => k.id === id || k.idSppg === id);
     if (idx !== -1) {
       const deleted = this.data.kitchens.splice(idx, 1)[0];
       this.addLog(`Dapur ${deleted.idSppg} — ${deleted.namaDapur} dinonaktifkan/dihapus dari database SPPG`, 'admin');
       this.save();
-      await this.deleteFromSupabase('kitchens', deleted.id || id);
       return true;
     }
     return false;
@@ -3304,7 +3332,20 @@ class DatabaseManager {
       const deleted = this.data.kitchenReports.splice(idx, 1)[0];
       this.addLog(`${this.getCurrentUser().name} menghapus laporan transaksi dapur: ${deleted.kitchenName} (${deleted.id})`, 'kitchen');
       this.save();
-      await this.deleteFromSupabase('kitchen_reports', reportId);
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/kitchen_reports?id=eq.${reportId}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+          console.log(`✅ [Supabase DELETE] Berhasil menghapus laporan transaksi "${reportId}" dari Supabase.`);
+        } catch (e) {
+          console.warn('Gagal menghapus kitchen report dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -3681,7 +3722,24 @@ class DatabaseManager {
       const realTimestamp = getRealtimeTimestamp();
       this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus permohonan Cuti ${deleted.id} (${deleted.type || deleted.leaveType} · ${deleted.duration} hari) pada ${realTimestamp}`, 'leave');
       this.save();
-      await this.deleteFromSupabase('leaves', id);
+
+      // Hapus permanen dari database cloud Supabase
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/leaves?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: {
+              'apikey': key,
+              'Authorization': `Bearer ${key}`
+            }
+          });
+          console.log(`✅ [Supabase Delete] Permohonan Cuti ${id} berhasil dihapus permanen dari Supabase.`);
+        } catch (e) {
+          console.warn('Gagal menghapus cuti dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -3875,7 +3933,19 @@ class DatabaseManager {
       const deleted = this.data.timesheets.splice(idx, 1)[0];
       this.addLog(`${this.getCurrentUser().name} menghapus log timesheet: ${deleted.activityPreset || deleted.activity} (${deleted.startTime} - ${deleted.endTime})`, 'timesheet');
       this.save();
-      await this.deleteFromSupabase('timesheets', id);
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/timesheets?id=eq.${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus timesheet dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -4164,7 +4234,7 @@ class DatabaseManager {
     return true;
   }
 
-  async deleteItemRequest(id) {
+  deleteItemRequest(id) {
     if (!Array.isArray(this.data.itemRequests)) {
       this.data.itemRequests = [...(INITIAL_DATABASE.itemRequests || [])];
     }
@@ -4175,7 +4245,6 @@ class DatabaseManager {
       const realTimestamp = getRealtimeTimestamp();
       this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus pengajuan Purchase Request ${deletedPR.id} (${deletedPR.itemName} · ${deletedPR.quantity} unit) pada ${realTimestamp}`, 'procurement');
       this.save();
-      await this.deleteFromSupabase('item_requests', id);
       return true;
     }
     return false;
@@ -4787,7 +4856,19 @@ class DatabaseManager {
       const realTimestamp = getRealtimeTimestamp();
       this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus Cash Advance ${deleted.id} pada ${realTimestamp}`, 'procurement');
       this.save();
-      await this.deleteFromSupabase('cash_advances', id);
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/cash_advances?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus cash advance dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -5071,7 +5152,19 @@ class DatabaseManager {
       const realTimestamp = getRealtimeTimestamp();
       this.addLog(`${user.name} (${user.roleLabel}) membatalkan/menghapus Klaim Reimburse ${deleted.id} pada ${realTimestamp}`, 'procurement');
       this.save();
-      await this.deleteFromSupabase('reimbursements', id);
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/reimbursements?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus reimburse dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -5263,20 +5356,24 @@ class DatabaseManager {
 
     const realTimestamp = getRealtimeTimestamp();
     const response = responseData.response || responseData.notes || 'Telah ditinjau dan ditindaklanjuti oleh Manager Area.';
-
-    issue.actionTaken = response;
-    issue.respondedBy = `${user.name} (${user.roleLabel})`;
-    issue.respondedAt = realTimestamp;
-
+    
+    // Mark all pending points as SUDAH_SELESAI or SUDAH_DITANGGAPI
     if (Array.isArray(issue.points)) {
-      issue.points = issue.points.map(pt => ({ ...pt, isResolved: true }));
+      issue.points.forEach(p => {
+        if (p.status !== 'SUDAH_SELESAI') {
+          p.status = 'SUDAH_DITANGGAPI';
+          p.response = response;
+          p.respondedAt = realTimestamp;
+          p.respondedBy = `${user.name} (${user.roleLabel})`;
+        }
+      });
     }
 
     issue.status = 'IN_PROGRESS';
     this.addLog(`Manager Area (${user.name}) memberikan tanggapan kendala lapangan ${id} (${issue.kitchenName}) pada ${realTimestamp}`, 'kitchen');
     this.save();
 
-    await this.syncToSupabase('field_issues', {
+    this.syncToSupabase('field_issues', {
       id: issue.id,
       issue_description: JSON.stringify(issue.points),
       action_taken: response,
@@ -5292,7 +5389,19 @@ class DatabaseManager {
     if (idx !== -1) {
       this.data.fieldIssues.splice(idx, 1);
       this.save();
-      await this.deleteFromSupabase('field_issues', id);
+
+      if (window.SupabaseConfig && window.SupabaseConfig.isConfigured()) {
+        try {
+          const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+          const key = window.SupabaseConfig.getAnonKey();
+          await fetch(`${url}/rest/v1/field_issues?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+          });
+        } catch (e) {
+          console.warn('Gagal menghapus kendala lapangan dari Supabase:', e);
+        }
+      }
       return true;
     }
     return false;
@@ -5909,34 +6018,6 @@ class DatabaseManager {
     } catch (e) {
       console.error(`❌ [Supabase Sync Exception] pada tabel ${table}:`, e);
       return null;
-    }
-  }
-
-  // Hapus baris secara permanen dari Supabase Cloud (Universal Hard Delete)
-  async deleteFromSupabase(table, id, idColumn = 'id') {
-    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return false;
-    try {
-      const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
-      const key = window.SupabaseConfig.getAnonKey();
-      const res = await fetch(`${url}/rest/v1/${table}?${idColumn}=eq.${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: {
-          'apikey': key,
-          'Authorization': `Bearer ${key}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal'
-        }
-      });
-      if (!res.ok) {
-        const errText = await res.text();
-        console.warn(`❌ [Supabase DELETE Error] Gagal menghapus dari tabel ${table} (${idColumn}=${id}): HTTP ${res.status} - ${errText}`);
-        return false;
-      }
-      console.log(`✅ [Supabase DELETE] Berhasil menghapus permanen dari ${table} (${idColumn}=${id})`);
-      return true;
-    } catch (err) {
-      console.warn(`❌ [Supabase DELETE Exception] Gagal menghapus dari ${table}:`, err);
-      return false;
     }
   }
 
@@ -6775,8 +6856,33 @@ class DatabaseManager {
             };
           });
 
-          // Remote Supabase is authoritative single source of truth for Timesheets
-          this.data.timesheets = remoteTS;
+          // Two-Way Smart Merge: Gabungkan remote dari Supabase dengan data lokal yang belum sempat terunggah
+          const existingTS = this.data.timesheets || [];
+          const unsyncedTS = existingTS.filter(local => 
+            local && local.id && !tss.some(remote => remote.id === local.id)
+          );
+
+          this.data.timesheets = [...remoteTS, ...unsyncedTS];
+
+          // Auto-push record lokal yang belum terkirim ke Supabase
+          if (unsyncedTS.length > 0) {
+            console.log(`⚡ [Auto-Push TS] Mengunggah ${unsyncedTS.length} data timesheet lokal ke Supabase...`);
+            for (const item of unsyncedTS) {
+              this.syncToSupabase('timesheets', {
+                id: item.id,
+                employee_id: item.employeeId,
+                employee_name: item.employeeName,
+                role: item.role,
+                date: item.date,
+                start_time: item.startTime,
+                end_time: item.endTime,
+                activity: item.activity || item.activityPreset || 'Log Kehadiran',
+                activity_preset: item.activityPreset || null,
+                category: item.category || 'Operasional',
+                status: item.status || 'RECORDED'
+              }).catch(err => console.warn('Auto-push TS notice:', err));
+            }
+          }
         }
       }
 
@@ -6813,7 +6919,7 @@ class DatabaseManager {
       // 8. Process Guideline Documents (Metadata only, fileData is Lazy-Loaded On-Demand)
       if (docRes.status === 'fulfilled' && docRes.value.ok) {
         const dList = await docRes.value.json();
-        if (Array.isArray(dList)) {
+        if (Array.isArray(dList) && dList.length > 0) {
           const localDocs = this.data.guidelineDocuments || [];
           this.data.guidelineDocuments = dList.map(d => {
             const local = localDocs.find(ld => ld.id === d.id);
@@ -6838,7 +6944,7 @@ class DatabaseManager {
       // 9. Process Field Issues
       if (issueRes.status === 'fulfilled' && issueRes.value.ok) {
         const fList = await issueRes.value.json();
-        if (Array.isArray(fList)) {
+        if (Array.isArray(fList) && fList.length > 0) {
           this.data.fieldIssues = fList.map(f => {
             let parsedPoints = [];
             try {
@@ -6861,12 +6967,13 @@ class DatabaseManager {
         }
       }
 
-      // 10. Process Kitchen Daily Statuses
+      // 10. Process Kitchen Daily Statuses (Smart Two-Way Merge & Auto-Push)
       if (kdsRes && kdsRes.status === 'fulfilled' && kdsRes.value.ok) {
         const kdsList = await kdsRes.value.json();
         if (Array.isArray(kdsList)) {
           const existingKDS = this.data.kitchenDailyStatuses || [];
           
+          // 1. Map data dari remote Supabase
           const remoteKDS = kdsList.map(s => {
             const local = existingKDS.find(item => item.id === s.id || (item.date === s.date && item.kitchenId === s.kitchen_id));
             return {
@@ -6883,7 +6990,31 @@ class DatabaseManager {
             };
           });
 
-          this.data.kitchenDailyStatuses = remoteKDS;
+          // 2. Temukan record lokal yang belum sempat terunggah ke Supabase (misal dibuat saat offline/tabel baru dibuat)
+          const unsyncedLocal = existingKDS.filter(local => 
+            !kdsList.some(remote => remote.id === local.id || (remote.date === local.date && remote.kitchen_id === local.kitchenId))
+          );
+
+          // 3. Gabungkan remote dan unsynced local agar data di laptop tidak hilang
+          this.data.kitchenDailyStatuses = [...remoteKDS, ...unsyncedLocal];
+
+          // 4. Otomatis push record lokal yang belum sinkron ke database cloud Supabase
+          if (unsyncedLocal.length > 0) {
+            console.log(`⚡ [Auto-Push KDS] Mengunggah ${unsyncedLocal.length} data status dapur lokal ke Supabase...`);
+            for (const item of unsyncedLocal) {
+              this.syncToSupabase('kitchen_daily_statuses', {
+                id: item.id,
+                date: item.date,
+                kitchen_id: item.kitchenId,
+                kitchen_name: item.kitchenName,
+                status: item.status,
+                reason: item.reason,
+                reported_by_id: item.reportedById,
+                reported_by_name: item.reportedByName,
+                updated_at: item.updatedAt
+              }).catch(err => console.warn('Auto-push KDS notice:', err));
+            }
+          }
         }
       }
 

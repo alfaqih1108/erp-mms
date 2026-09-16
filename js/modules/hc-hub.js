@@ -1163,7 +1163,6 @@ window.HCHubModule = {
     const idx = org.connections.findIndex(c => c.id === connId);
     if (idx !== -1) {
       org.connections.splice(idx, 1);
-      DB.saveOrgStructure(org);
       App.showToast('Jalur koordinasi/hirarki berhasil dihapus.', 'info');
       this.render(document.getElementById('main-content-area'));
     }
@@ -1177,7 +1176,6 @@ window.HCHubModule = {
     if (confirm(`Hapus posisi "${node.name}" (${node.roleLabel}) dari bagan struktur?`)) {
       org.nodes = org.nodes.filter(n => n.id !== nodeId);
       org.connections = org.connections.filter(c => c.fromNodeId !== nodeId && c.toNodeId !== nodeId);
-      DB.saveOrgStructure(org);
       App.showToast(`Posisi "${node.name}" berhasil dihapus.`, 'info');
       this.render(document.getElementById('main-content-area'));
     }

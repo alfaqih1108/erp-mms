@@ -789,7 +789,7 @@ window.TimesheetModule = {
     }
   },
 
-  deleteEntry: async function(tsId, authorId) {
+  deleteEntry: function(tsId, authorId) {
     const user = DB.getCurrentUser();
     const normalizeStr = (str) => (str || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
     const isOwner = !authorId || authorId === user.id || normalizeStr(authorId) === normalizeStr(user.id) || normalizeStr(authorId) === normalizeStr(user.name);
@@ -801,9 +801,9 @@ window.TimesheetModule = {
     }
 
     if (confirm('Apakah Anda yakin ingin menghapus catatan aktivitas ini?')) {
-      const success = await DB.deleteTimesheet(tsId);
+      const success = DB.deleteTimesheet(tsId);
       if (success) {
-        App.showToast('Catatan aktivitas berhasil dihapus permanen!', 'success');
+        App.showToast('Catatan aktivitas berhasil dihapus!', 'success');
         this.render(document.getElementById('main-content-area'));
       }
     }
@@ -1025,10 +1025,10 @@ window.TimesheetModule = {
     this.render(document.getElementById('main-content-area'));
   },
 
-  deleteFieldIssueEntry: async function(id) {
+  deleteFieldIssueEntry: function(id) {
     if (confirm('Hapus catatan laporan kendala ini?')) {
-      await DB.deleteFieldIssue(id);
-      App.showToast('Laporan kendala berhasil dihapus permanen!', 'info');
+      DB.deleteFieldIssue(id);
+      App.showToast('Laporan kendala berhasil dihapus!', 'info');
       this.render(document.getElementById('main-content-area'));
     }
   }
