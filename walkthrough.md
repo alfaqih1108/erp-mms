@@ -236,5 +236,42 @@ Tepat di bawah tombol **"Simpan Aktivitas & Update Summary"**, ditambahkan tombo
 
 ---
 
+## 🗑️ 13. Perbaikan Universal Tombol "Delete": Penghapusan Permanen di UI & Supabase Cloud
+
+Telah diinvestigasi dan diperbaiki secara tuntas akar masalah mengapa data yang dihapus sebelumnya sempat muncul kembali saat refresh atau login ulang:
+
+### 🔍 Akar Masalah yang Ditemukan:
+1. **Beberapa Fungsi Delete Tidak Mengirim Request ke Supabase**:
+   - `deleteItemRequest` (Pengajuan PR) dan `deleteKitchen` (Dapur) sebelumnya hanya melakukan `.splice()` pada memori lokal/LocalStorage tanpa pernah mengirim request `DELETE` HTTP ke endpoint Supabase. Akibatnya, saat browser refresh / login ulang, `pullLatestFromSupabase()` menarik ulang data PR dari database PostgreSQL dan memunculkannya kembali.
+2. **Pemanggilan Delete Tidak Di-`await` di Level UI**:
+   - Di modul Timesheet dan Pengajuan Barang, pemanggilan method delete dilakukan secara sinkron tanpa `await`, sehingga rendering ulang atau navigasi berjalan sebelum proses network Supabase tuntas.
+3. **Logika "Two-Way Smart Merge" yang Mengunggah Ulang Data Lama**:
+   - Pada `pullLatestFromSupabase()`, terdapat auto-push yang membandingkan record lokal dengan remote dan menganggap record yang tidak ada di remote sebagai "data lokal baru yang belum terunggah", sehingga data timesheet yang baru saja dihapus di-insert kembali ke Supabase.
+4. **Bagan Struktur Organisasi HC Hub**:
+   - Fungsi `deleteNode` dan `deleteConnection` menghapus elemen dari memori tanpa langsung mengeksekusi `DB.saveOrgStructure(org)`.
+
+### 🛠️ Solusi & Perbaikan Komprehensif yang Diterapkan:
+1. **Universal Helper `DB.deleteFromSupabase(table, id, idColumn)`**:
+   - Menambahkan method terpusat dan terstandarisasi untuk mengirim request `DELETE` resmi dengan header otentikasi lengkap (`apikey` + `Authorization: Bearer`), parameter query ter-encode (`encodeURIComponent`), dan response status validation.
+2. **Semua Fungsi Delete di [`js/modules/data.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/data.js) Kini Asynchronous & Terhubung Langsung ke Supabase**:
+   - `deleteItemRequest(id)` -> `await this.deleteFromSupabase('item_requests', id)`
+   - `deleteTimesheet(id)` -> `await this.deleteFromSupabase('timesheets', id)`
+   - `deleteGuidelineDocument(docId)` -> `await this.deleteFromSupabase('guideline_documents', docId)`
+   - `deleteUserAccount(userId)` -> `await this.deleteFromSupabase('users', userId)`
+   - `deleteKitchen(id)` -> `await this.deleteFromSupabase('kitchens', id)`
+   - `deleteKitchenReport(reportId)` -> `await this.deleteFromSupabase('kitchen_reports', reportId)`
+   - `deleteLeave(id)` -> `await this.deleteFromSupabase('leaves', id)`
+   - `deleteCashAdvance(id)` -> `await this.deleteFromSupabase('cash_advances', id)`
+   - `deleteReimbursement(id)` -> `await this.deleteFromSupabase('reimbursements', id)`
+   - `deleteFieldIssue(id)` -> `await this.deleteFromSupabase('field_issues', id)`
+3. **Penyempurnaan Seluruh Handler UI (`async/await`)**:
+   - [`js/modules/pengajuan-barang.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/pengajuan-barang.js): `executeDeletePR` kini menunggu (`await`) respon dari database sebelum menutup modal dan me-refresh tabel.
+   - [`js/modules/timesheet.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/timesheet.js): `deleteEntry` dan `deleteFieldIssueEntry` kini menunggu konfirmasi delete cloud.
+   - [`js/modules/hc-hub.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/hc-hub.js): `deleteConnection` dan `deleteNode` langsung memanggil `DB.saveOrgStructure(org)`.
+4. **Authoritative Single Source of Truth**:
+   - Logika pull Supabase kini menjadikan database Supabase sebagai acuan kebenaran utama sehingga record yang telah dihapus tidak akan pernah dibangkitkan kembali oleh cache lokal.
+
+---
+
 
 

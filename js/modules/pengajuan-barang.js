@@ -317,13 +317,13 @@ window.PengajuanBarangModule = {
     App.openModal('modal-delete-pr-confirm');
   },
 
-  executeDeletePR: function(prId) {
-    const success = DB.deleteItemRequest(prId);
+  executeDeletePR: async function(prId) {
+    const success = await DB.deleteItemRequest(prId);
     App.closeModal('modal-delete-pr-confirm');
     App.closeModal('modal-approval-tracker');
 
     if (success) {
-      App.showToast(`Pengajuan Purchase Request ${prId} berhasil dihapus!`, 'success');
+      App.showToast(`Pengajuan Purchase Request ${prId} berhasil dihapus permanen!`, 'success');
       App.refreshCurrentTab();
     } else {
       App.showToast(`Gagal menghapus pengajuan ${prId} atau data tidak ditemukan.`, 'warn');
