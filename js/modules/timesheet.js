@@ -27,6 +27,7 @@ window.TimesheetModule = {
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
     const user = DB.getCurrentUser();
+    const isPerwakilanYayasan = (user && user.role === 'PERWAKILAN_YAYASAN');
     const allTimesheets = DB.getTimesheets() || [];
     
     const getHours = (t) => {
@@ -361,23 +362,49 @@ window.TimesheetModule = {
                       <span id="inline-ts-duration-preview" style="color: #34D399; font-weight: 500;">⏱️ Dihitung Otomatis: 4 Jam (4.0 Jam)</span>
                     </div>
 
-                    <!-- 3. Nama Aktivitas / Pekerjaan (Input Manual dengan Tombol Silang ✕) -->
-                    <div class="form-group">
-                      <label class="form-label">3. Nama Aktivitas / Pekerjaan <span style="color: #F87171;">*</span></label>
-                      <div style="position: relative; display: flex; align-items: center;">
-                        <input type="text" id="inline-ts-activity-name" class="form-control" 
-                               placeholder="Ketik nama aktivitas / pekerjaan harian Anda..." 
-                               required value="" 
-                               style="padding-right: 36px;" 
-                               oninput="TimesheetModule.toggleClearBtn(this.value)">
-                        <button type="button" id="btn-clear-ts-activity" 
-                                onclick="TimesheetModule.clearActivityInput()" 
-                                title="Hapus / Kosongkan teks aktivitas" 
-                                style="position: absolute; right: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #9CA3AF; cursor: pointer; font-size: 12px; display: none; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; line-height: 1; transition: all 0.2s ease;">
-                          ✕
-                        </button>
+                    <!-- 3. Nama Aktivitas / Pekerjaan -->
+                    ${isPerwakilanYayasan ? `
+                      <div class="form-group">
+                        <label class="form-label">3. Nama Aktivitas / Pekerjaan <span style="color: #F87171;">*</span></label>
+                        <select id="inline-ts-activity-select" class="form-control" style="font-size: 13px;" required onchange="TimesheetModule.handleActivitySelectChange(this.value)">
+                          <option value="" disabled selected>-- Pilih Jenis Aktivitas / Pekerjaan --</option>
+                          <option value="Pengurusan Administrasi">1. Pengurusan Administrasi</option>
+                          <option value="Monitoring Aktivitas Dapur">2. Monitoring Aktivitas Dapur</option>
+                          <option value="Koordinasi dengan Tim Dapur">3. Koordinasi dengan Tim Dapur</option>
+                          <option value="Koordinasi dengan Yayasan">4. Koordinasi dengan Yayasan</option>
+                          <option value="LAINNYA">5. Lainnya (Input manual)</option>
+                        </select>
+                        <div id="inline-ts-activity-custom-wrapper" style="display: none; margin-top: 8px; position: relative;">
+                          <input type="text" id="inline-ts-activity-custom" class="form-control" 
+                                 placeholder="Ketik nama aktivitas manual lainnya..." 
+                                 style="padding-right: 36px;" 
+                                 oninput="TimesheetModule.toggleClearBtnCustom(this.value)">
+                          <button type="button" id="btn-clear-ts-activity-custom" 
+                                  onclick="TimesheetModule.clearActivityCustomInput()" 
+                                  title="Hapus / Kosongkan teks aktivitas" 
+                                  style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #9CA3AF; cursor: pointer; font-size: 12px; display: none; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; line-height: 1; transition: all 0.2s ease;">
+                            ✕
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    ` : `
+                      <div class="form-group">
+                        <label class="form-label">3. Nama Aktivitas / Pekerjaan <span style="color: #F87171;">*</span></label>
+                        <div style="position: relative; display: flex; align-items: center;">
+                          <input type="text" id="inline-ts-activity-name" class="form-control" 
+                                 placeholder="Ketik nama aktivitas / pekerjaan harian Anda..." 
+                                 required value="" 
+                                 style="padding-right: 36px;" 
+                                 oninput="TimesheetModule.toggleClearBtn(this.value)">
+                          <button type="button" id="btn-clear-ts-activity" 
+                                  onclick="TimesheetModule.clearActivityInput()" 
+                                  title="Hapus / Kosongkan teks aktivitas" 
+                                  style="position: absolute; right: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #9CA3AF; cursor: pointer; font-size: 12px; display: none; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; line-height: 1; transition: all 0.2s ease;">
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    `}
 
                     <!-- 4. Keterangan / Kegiatan Detail -->
                     <div class="form-group">
@@ -389,6 +416,18 @@ window.TimesheetModule = {
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                       Simpan Aktivitas & Update Summary
                     </button>
+
+                    ${isPerwakilanYayasan ? `
+                      <a href="https://forms.gle/GTqWX37ouFsyeao66" target="_blank" rel="noopener noreferrer" 
+                         class="btn-nalar-secondary" 
+                         style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 11px; margin-top: 10px; font-weight: 600; font-size: 13px; color: #60A5FA; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: var(--radius-sm); text-decoration: none; transition: all 0.2s ease;"
+                         onmouseover="this.style.background='rgba(59, 130, 246, 0.22)'; this.style.borderColor='#60A5FA';"
+                         onmouseout="this.style.background='rgba(59, 130, 246, 0.12)'; this.style.borderColor='rgba(59, 130, 246, 0.35)';">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        <span>Upload Foto Presensi</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7; margin-left: 2px;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      </a>
+                    ` : ''}
                   </form>
                 </div>
               </div>
@@ -713,6 +752,43 @@ window.TimesheetModule = {
     }
   },
 
+  handleActivitySelectChange: function(val) {
+    const customWrapper = document.getElementById('inline-ts-activity-custom-wrapper');
+    const customInput = document.getElementById('inline-ts-activity-custom');
+    if (customWrapper) {
+      if (val === 'LAINNYA') {
+        customWrapper.style.display = 'block';
+        if (customInput) {
+          customInput.required = true;
+          customInput.focus();
+        }
+      } else {
+        customWrapper.style.display = 'none';
+        if (customInput) {
+          customInput.required = false;
+          customInput.value = '';
+          this.toggleClearBtnCustom('');
+        }
+      }
+    }
+  },
+
+  toggleClearBtnCustom: function(val) {
+    const btn = document.getElementById('btn-clear-ts-activity-custom');
+    if (btn) {
+      btn.style.display = (val && val.trim().length > 0) ? 'inline-flex' : 'none';
+    }
+  },
+
+  clearActivityCustomInput: function() {
+    const input = document.getElementById('inline-ts-activity-custom');
+    if (input) {
+      input.value = '';
+      input.focus();
+      this.toggleClearBtnCustom('');
+    }
+  },
+
   deleteEntry: function(tsId, authorId) {
     const user = DB.getCurrentUser();
     const normalizeStr = (str) => (str || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -739,7 +815,32 @@ window.TimesheetModule = {
     const date = document.getElementById('inline-ts-date').value || this.selectedDate;
     const startTime = document.getElementById('inline-ts-start-time').value;
     const endTime = document.getElementById('inline-ts-end-time').value;
-    const activityName = (document.getElementById('inline-ts-activity-name')?.value || '').trim();
+
+    // Ambil nama aktivitas dari dropdown (khusus Perwakilan Yayasan) atau input text manual (role lain)
+    let activityName = '';
+    const selectElem = document.getElementById('inline-ts-activity-select');
+    if (selectElem) {
+      const selectedVal = selectElem.value;
+      if (!selectedVal) {
+        App.showToast('Mohon pilih jenis aktivitas / pekerjaan!', 'warn');
+        selectElem.focus();
+        return;
+      }
+      if (selectedVal === 'LAINNYA') {
+        const customVal = (document.getElementById('inline-ts-activity-custom')?.value || '').trim();
+        if (!customVal) {
+          App.showToast('Mohon ketikkan rincian nama aktivitas manual!', 'warn');
+          document.getElementById('inline-ts-activity-custom')?.focus();
+          return;
+        }
+        activityName = customVal;
+      } else {
+        activityName = selectedVal;
+      }
+    } else {
+      activityName = (document.getElementById('inline-ts-activity-name')?.value || '').trim();
+    }
+
     const detail = document.getElementById('inline-ts-detail').value;
 
     // Cek Integrasi Cuti Approved
@@ -750,8 +851,8 @@ window.TimesheetModule = {
     }
 
     if (!activityName) {
-      App.showToast('Mohon ketikkan nama aktivitas / pekerjaan Anda!', 'warn');
-      const input = document.getElementById('inline-ts-activity-name');
+      App.showToast('Mohon tentukan nama aktivitas / pekerjaan Anda!', 'warn');
+      const input = document.getElementById('inline-ts-activity-name') || document.getElementById('inline-ts-activity-custom');
       if (input) input.focus();
       return;
     }

@@ -215,4 +215,26 @@ Telah diimplementasikan optimasi menyeluruh pada arsitektur koneksi & data fetch
 - **Penurunan PostgREST Egress**: Dari **17.37 GB/hari** menjadi **< 150 MB/hari (> 99% penghematan)**.
 - **Performa Aplikasi**: Pindah tab, filter data, dan navigasi menjadi instan dan ringan tanpa jeda jaringan.
 
+---
+
+## 🕒 12. Fitur Khusus Timesheet Perwakilan Yayasan: Dropdown Aktivitas & Tombol Upload Foto Presensi
+
+Telah diimplementasikan fitur spesifik pada modul Timesheet ([`js/modules/timesheet.js`](file:///c:/Users/muham/Documents/SISTEM%20ERP/ERP%20MMS%20v3.2/js/modules/timesheet.js)) khusus untuk role **Perwakilan Yayasan** (`user.role === 'PERWAKILAN_YAYASAN'`):
+
+### 1. Dropdown Nama Aktivitas / Pekerjaan
+Kolom **3. Nama Aktivitas / Pekerjaan** khusus akun Perwakilan Yayasan berubah menjadi **Dropdown Interaktif** dengan 5 opsi terstruktur:
+1. `Pengurusan Administrasi`
+2. `Monitoring Aktivitas Dapur`
+3. `Koordinasi dengan Tim Dapur`
+4. `Koordinasi dengan Yayasan`
+5. `Lainnya (Input manual)` — *Menampilkan input text tambahan secara otomatis apabila opsi ini dipilih.*
+
+### 2. Tombol "Upload Foto Presensi"
+Tepat di bawah tombol **"Simpan Aktivitas & Update Summary"**, ditambahkan tombol baru **"📸 Upload Foto Presensi"** yang langsung membuka link form presensi resmi di tab baru:
+- **URL Target**: `https://forms.gle/GTqWX37ouFsyeao66`
+- **Atribut**: `target="_blank" rel="noopener noreferrer"` dengan visual styling modern (aksen biru semi-transparan dan ikon kamera/eksternal link).
+
+---
+
+
 
