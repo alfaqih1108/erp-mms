@@ -6,6 +6,7 @@
 window.PengajuanBarangModule = {
   currentAttachment: { url: null, name: null },
   filterScope: 'MY', // 'MY' atau 'ALL'
+  editingPrId: null,
 
   setFilterScope: function(scope) {
     this.filterScope = scope;
@@ -252,6 +253,11 @@ window.PengajuanBarangModule = {
                         <button type="button" class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; color: #FCD34D; border-color: rgba(245,158,11,0.4);" onclick="event.stopPropagation(); App.showApprovalTracker('pr', '${p.id}')">
                           🔍 Detail
                         </button>
+                        ${(DB.isItemRequestEditable ? DB.isItemRequestEditable(p) : (p.status === 'PENDING')) ? `
+                          <button type="button" class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; color: #34D399; border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.08);" onclick="event.stopPropagation(); PengajuanBarangModule.openEditPRModal('${p.id}')" title="Edit Pengajuan PR">
+                            ✏️ Edit
+                          </button>
+                        ` : ''}
                         <button type="button" class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; color: #F87171; border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.08);" onclick="event.stopPropagation(); PengajuanBarangModule.confirmDeletePR('${p.id}', '${(p.itemName || 'Barang').replace(/'/g, "\\'")}')" title="Hapus Pengajuan PR">
                           🗑️ Hapus
                         </button>
@@ -331,10 +337,22 @@ window.PengajuanBarangModule = {
   },
 
   openPRModal: function() {
+    this.editingPrId = null;
     this.removeAttachment();
     const kitchenContainer = document.getElementById('pr-kitchen-container');
     const kitchenSelect = document.getElementById('pr-kitchen-select');
     const user = DB.getCurrentUser();
+
+    // Reset Modal Title & Submit Button
+    const modalEl = document.getElementById('modal-pr');
+    if (modalEl) {
+      const titleEl = modalEl.querySelector('.modal-title');
+      if (titleEl) titleEl.textContent = 'Form Purchase Requisition (PR)';
+      const submitBtn = modalEl.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.textContent = 'Submit PR';
+      const formEl = document.getElementById('form-pr');
+      if (formEl) formEl.reset();
+    }
 
     // Tampilkan pilihan Dapur Program / Kantor
     if (kitchenContainer && kitchenSelect) {
@@ -450,6 +468,69 @@ window.PengajuanBarangModule = {
     App.openModal('modal-image-preview');
   },
 
+  openEditPRModal: function(prId) {
+    const prs = DB.getItemRequests() || [];
+    const pr = prs.find(p => p.id === prId);
+    if (!pr) {
+      App.showToast('Data pengajuan PR tidak ditemukan.', 'warn');
+      return;
+    }
+    if (DB.isItemRequestEditable && !DB.isItemRequestEditable(pr)) {
+      App.showToast('Pengajuan PR ini sudah diproses/disetujui dan tidak dapat diedit.', 'warn');
+      return;
+    }
+
+    this.editingPrId = prId;
+    this.openPRModal(); // populates kitchen select and resets form
+    this.editingPrId = prId; // re-set after openPRModal resets
+
+    const modalEl = document.getElementById('modal-pr');
+    if (modalEl) {
+      const titleEl = modalEl.querySelector('.modal-title');
+      if (titleEl) titleEl.innerHTML = `✏️ Edit Purchase Requisition: <span style="color: #FCD34D; font-family: var(--font-mono);">${pr.id}</span>`;
+      const submitBtn = modalEl.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.innerHTML = '💾 Simpan Perubahan';
+    }
+
+    // Pre-fill inputs
+    const nameEl = document.getElementById('pr-name');
+    const catEl = document.getElementById('pr-category');
+    const qtyEl = document.getElementById('pr-qty');
+    const priceEl = document.getElementById('pr-price');
+    const urgencyEl = document.getElementById('pr-urgency');
+    const reasonEl = document.getElementById('pr-reason');
+    const kitchenSelect = document.getElementById('pr-kitchen-select');
+
+    if (nameEl) nameEl.value = pr.itemName || '';
+    if (catEl) catEl.value = pr.category || 'Fasilitas Kantor & Dapur';
+    if (qtyEl) qtyEl.value = pr.quantity || 1;
+    if (priceEl) priceEl.value = pr.unitPrice || 0;
+    if (urgencyEl) urgencyEl.value = pr.urgency || 'MEDIUM';
+    if (reasonEl) reasonEl.value = pr.reason || '';
+    if (kitchenSelect && pr.targetKitchen) {
+      kitchenSelect.value = pr.targetKitchen;
+    }
+
+    // Attachment
+    if (pr.attachmentUrl || pr.attachmentName) {
+      this.currentAttachment = {
+        url: pr.attachmentUrl || null,
+        name: pr.attachmentName || 'Foto Terlampir'
+      };
+      const promptEl = document.getElementById('pr-attachment-prompt');
+      const previewEl = document.getElementById('pr-attachment-preview');
+      const previewImg = document.getElementById('pr-preview-img');
+      const previewName = document.getElementById('pr-preview-filename');
+
+      if (promptEl) promptEl.style.display = 'none';
+      if (previewEl) previewEl.style.display = 'flex';
+      if (previewImg && pr.attachmentUrl) previewImg.src = pr.attachmentUrl;
+      if (previewName) previewName.textContent = pr.attachmentName || 'Foto Terlampir';
+    } else {
+      this.removeAttachment();
+    }
+  },
+
   handleSubmit: async function(e) {
     e.preventDefault();
     const user = DB.getCurrentUser();
@@ -474,7 +555,7 @@ window.PengajuanBarangModule = {
     }
 
     const submitBtn = e.target.querySelector('button[type="submit"]');
-    const origBtnText = submitBtn ? submitBtn.innerHTML : 'Kirim Pengajuan';
+    const origBtnText = submitBtn ? submitBtn.innerHTML : (this.editingPrId ? 'Simpan Perubahan' : 'Kirim Pengajuan');
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.innerHTML = '⏳ Menyimpan ke Database Cloud...';
@@ -483,26 +564,49 @@ window.PengajuanBarangModule = {
     const totalPrice = quantity * unitPrice;
 
     try {
-      await DB.addItemRequest({
-        itemName,
-        category,
-        quantity,
-        unitPrice,
-        totalPrice,
-        urgency,
-        reason,
-        targetKitchen,
-        attachmentUrl: this.currentAttachment.url,
-        attachmentName: this.currentAttachment.name
-      });
+      if (this.editingPrId) {
+        await DB.updateItemRequest(this.editingPrId, {
+          itemName,
+          category,
+          quantity,
+          unitPrice,
+          totalPrice,
+          urgency,
+          reason,
+          targetKitchen,
+          attachmentUrl: this.currentAttachment.url,
+          attachmentName: this.currentAttachment.name
+        });
 
-      App.closeModal('modal-pr');
-      this.removeAttachment();
-      App.showToast(`Pengajuan ${itemName} (${quantity} unit untuk ${targetKitchen}) berhasil disubmit!`, 'success');
-      App.refreshCurrentTab();
+        const editedId = this.editingPrId;
+        this.editingPrId = null;
+        App.closeModal('modal-pr');
+        this.removeAttachment();
+        App.showToast(`Perubahan Purchase Request ${editedId} (${itemName}) berhasil disimpan!`, 'success');
+        App.refreshCurrentTab();
+      } else {
+        await DB.addItemRequest({
+          itemName,
+          category,
+          quantity,
+          unitPrice,
+          totalPrice,
+          urgency,
+          reason,
+          targetKitchen,
+          attachmentUrl: this.currentAttachment.url,
+          attachmentName: this.currentAttachment.name
+        });
+
+        App.closeModal('modal-pr');
+        this.removeAttachment();
+        App.showToast(`Pengajuan ${itemName} (${quantity} unit untuk ${targetKitchen}) berhasil disubmit!`, 'success');
+        App.refreshCurrentTab();
+      }
     } catch (err) {
-      console.error('Gagal mengajukan PR:', err);
-      App.showToast('Pengajuan PR tersimpan di cache lokal.', 'info');
+      console.error('Gagal memproses PR:', err);
+      App.showToast('Data PR tersimpan di cache lokal.', 'info');
+      this.editingPrId = null;
       App.closeModal('modal-pr');
       App.refreshCurrentTab();
     } finally {

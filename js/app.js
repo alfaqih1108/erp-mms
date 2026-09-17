@@ -946,25 +946,53 @@ window.App = {
       }
 
       let debounceTimer = null;
-      const triggerDebouncedSync = () => {
+      const pendingTables = new Set();
+
+      const triggerDebouncedSync = (tableName) => {
+        if (tableName) pendingTables.add(tableName);
+
+        // Hemat data & egress jika browser tab sedang tidak aktif / di background
+        if (document.hidden) return;
+
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(async () => {
           try {
-            console.log('⚡ [Supabase Realtime Sync] Menerima update database realtime...');
-            await window.DB.pullLatestFromSupabase();
+            const tablesToSync = Array.from(pendingTables);
+            pendingTables.clear();
+
+            console.log(`⚡ [Supabase Realtime Sync] Menerima update realtime untuk: ${tablesToSync.join(', ') || 'semua'}...`);
+            
+            if (tablesToSync.length > 0 && typeof window.DB.pullTableFromSupabase === 'function') {
+              for (const tbl of tablesToSync) {
+                await window.DB.pullTableFromSupabase(tbl);
+              }
+            } else {
+              await window.DB.pullLatestFromSupabase();
+            }
+
             this.updateSidebarBadges();
             this.updateCloudBadge();
             this.refreshCurrentTab();
           } catch (err) {
             console.warn('Realtime event sync notice:', err);
           }
-        }, 300);
+        }, 1200);
       };
+
+      // Listener saat tab kembali aktif (jika ada pending updates)
+      if (!this._visibilityListenerAttached) {
+        this._visibilityListenerAttached = true;
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden && pendingTables.size > 0) {
+            triggerDebouncedSync();
+          }
+        });
+      }
 
       this._realtimeChannel = client.channel('erp-public-sync')
         .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
           console.log(`⚡ [Realtime Database Event] ${payload.table} - ${payload.eventType}`);
-          triggerDebouncedSync();
+          triggerDebouncedSync(payload.table);
         })
         .subscribe((status) => {
           console.log('📡 [Supabase Realtime Status]:', status);

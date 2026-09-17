@@ -6,6 +6,7 @@
 window.ReimburseModule = {
   currentFilter: 'ALL', // 'ALL', 'PENDING', 'FAT_TRANSFER', 'SETTLED', 'REJECTED'
   currentAttachment: { url: null, name: null },
+  editingRmbId: null,
 
   setFilter: function(filter) {
     this.currentFilter = filter;
@@ -264,6 +265,11 @@ window.ReimburseModule = {
                           <button type="button" class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11.5px;" onclick="ReimburseModule.openDetailModal('${rmb.id}')" title="Lihat Riwayat & Timeline Approval">
                             👁️ Detail
                           </button>
+                          ${(DB.isReimbursementEditable ? DB.isReimbursementEditable(rmb) : (rmb.status === 'PENDING' && rmb.stage === (rmb.workflowType === 'FIELD_JALUR_1' ? 'MANAGER_APPROVAL' : 'DIRECTOR_APPROVAL'))) ? `
+                            <button type="button" class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11.5px; color: #34D399; border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.08);" onclick="ReimburseModule.openEditModal('${rmb.id}')" title="Edit Pengajuan Klaim Reimburse">
+                              ✏️ Edit
+                            </button>
+                          ` : ''}
                           ${rmb.status === 'PENDING' && rmb.stage === (rmb.workflowType === 'FIELD_JALUR_1' ? 'MANAGER_APPROVAL' : 'DIRECTOR_APPROVAL') ? `
                             <button type="button" class="btn-nalar-secondary" style="padding: 4px 6px; font-size: 11.5px; color: #F87171; border-color: rgba(248,113,113,0.3);" onclick="ReimburseModule.handleDelete('${rmb.id}')" title="Batalkan Pengajuan">
                               🗑️
@@ -570,8 +576,18 @@ window.ReimburseModule = {
   },
 
   openCreateModal: function() {
+    this.editingRmbId = null;
     this.currentAttachment = { url: null, name: null };
     this.clearAttachment();
+
+    // Reset Modal Title & Submit Button
+    const modalEl = document.getElementById('modal-reimburse-create');
+    if (modalEl) {
+      const titleEl = modalEl.querySelector('.modal-title');
+      if (titleEl) titleEl.textContent = 'Formulir Pengajuan Klaim Reimburse';
+      const submitBtn = document.getElementById('btn-submit-rmb');
+      if (submitBtn) submitBtn.innerHTML = '🚀 Ajukan Klaim Reimburse';
+    }
 
     // Reset Form fields
     const itemName = document.getElementById('rmb-item-name');
@@ -594,6 +610,101 @@ window.ReimburseModule = {
     this.calculateSubtotal();
 
     App.openModal('modal-reimburse-create');
+  },
+
+  openEditModal: function(rmbId) {
+    const rmb = DB.getReimbursementById ? DB.getReimbursementById(rmbId) : (DB.getReimbursements() || []).find(r => r.id === rmbId);
+    if (!rmb) {
+      App.showToast('Data pengajuan klaim Reimburse tidak ditemukan.', 'warn');
+      return;
+    }
+    if (DB.isReimbursementEditable && !DB.isReimbursementEditable(rmb)) {
+      App.showToast('Pengajuan Reimburse ini sudah diproses/disetujui dan tidak dapat diedit.', 'warn');
+      return;
+    }
+
+    this.editingRmbId = rmbId;
+    this.openCreateModal();
+    this.editingRmbId = rmbId; // Re-set after openCreateModal
+
+    const modalEl = document.getElementById('modal-reimburse-create');
+    if (modalEl) {
+      const titleEl = modalEl.querySelector('.modal-title');
+      if (titleEl) titleEl.innerHTML = `✏️ Edit Formulir Klaim Reimburse: <span style="color: #34D399; font-family: var(--font-mono);">${rmb.id}</span>`;
+      const submitBtn = document.getElementById('btn-submit-rmb');
+      if (submitBtn) submitBtn.innerHTML = '💾 Simpan Perubahan';
+    }
+
+    const itemName = document.getElementById('rmb-item-name');
+    const unitPrice = document.getElementById('rmb-unit-price');
+    const qty = document.getElementById('rmb-qty');
+    const notes = document.getElementById('rmb-notes');
+    const kSelect = document.getElementById('rmb-target-kitchen-select');
+    const pDate = document.getElementById('rmb-purchase-date');
+    const catEl = document.getElementById('rmb-category');
+    const bankName = document.getElementById('rmb-bank-name');
+    const bankNo = document.getElementById('rmb-bank-account-no');
+    const bankHolder = document.getElementById('rmb-bank-account-name');
+
+    if (itemName) itemName.value = rmb.itemName || '';
+    if (unitPrice) unitPrice.value = rmb.unitPrice || 0;
+    if (qty) qty.value = rmb.quantity || 1;
+    if (notes) notes.value = rmb.notes || '';
+    if (pDate) pDate.value = rmb.purchaseDate || getRealtimeDateStr();
+    if (catEl) catEl.value = rmb.category || 'Bahan Baku & Dapur';
+    if (bankName) bankName.value = rmb.bankName || '';
+    if (bankNo) bankNo.value = rmb.bankAccountNo || '';
+    if (bankHolder) bankHolder.value = rmb.bankAccountName || '';
+
+    if (kSelect) {
+      if (rmb.isManualKitchen) {
+        kSelect.value = '__MANUAL__';
+        this.handleKitchenSelectChange('__MANUAL__');
+        const manualInput = document.getElementById('rmb-manual-kitchen-input');
+        if (manualInput) manualInput.value = rmb.targetKitchen || '';
+      } else {
+        let found = false;
+        for (let opt of kSelect.options) {
+          if (opt.value === rmb.targetKitchen) {
+            kSelect.value = rmb.targetKitchen;
+            found = true;
+            break;
+          }
+        }
+        if (!found && rmb.targetKitchen) {
+          kSelect.value = '__MANUAL__';
+          this.handleKitchenSelectChange('__MANUAL__');
+          const manualInput = document.getElementById('rmb-manual-kitchen-input');
+          if (manualInput) manualInput.value = rmb.targetKitchen;
+        } else {
+          this.handleKitchenSelectChange(kSelect.value);
+        }
+      }
+    }
+
+    this.calculateSubtotal();
+
+    // Attachment
+    if (rmb.attachmentUrl) {
+      this.currentAttachment = {
+        url: rmb.attachmentUrl,
+        name: rmb.attachmentName || 'Struk Nota Pembelian'
+      };
+      const placeholder = document.getElementById('rmb-file-preview-placeholder');
+      const active = document.getElementById('rmb-file-preview-active');
+      const filename = document.getElementById('rmb-preview-filename');
+      const imgEl = document.getElementById('rmb-preview-img');
+
+      if (placeholder) placeholder.style.display = 'none';
+      if (active) active.style.display = 'flex';
+      if (filename) filename.textContent = rmb.attachmentName || 'Struk Nota Pembelian';
+      if (imgEl) {
+        imgEl.src = rmb.attachmentUrl;
+        imgEl.style.display = 'block';
+      }
+    } else {
+      this.clearAttachment();
+    }
   },
 
   handleFileSelect: async function(event) {
@@ -697,33 +808,61 @@ window.ReimburseModule = {
     const origHtml = btn ? btn.innerHTML : '';
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = '<span>Menyimpan Klaim...</span>';
+      btn.innerHTML = '<span>⏳ Menyimpan ke Database...</span>';
     }
 
     try {
-      const newRmb = await DB.addReimbursement({
-        itemName,
-        unitPrice,
-        quantity: qty,
-        subtotal,
-        purchaseDate,
-        category,
-        targetKitchen,
-        isManualKitchen,
-        bankName,
-        bankAccountNo,
-        bankAccountName,
-        attachmentUrl: this.currentAttachment.url,
-        attachmentName: this.currentAttachment.name,
-        notes
-      });
+      if (this.editingRmbId) {
+        await DB.updateReimbursement(this.editingRmbId, {
+          itemName,
+          unitPrice,
+          quantity: qty,
+          subtotal,
+          purchaseDate,
+          category,
+          targetKitchen,
+          isManualKitchen,
+          bankName,
+          bankAccountNo,
+          bankAccountName,
+          attachmentUrl: this.currentAttachment.url,
+          attachmentName: this.currentAttachment.name,
+          notes
+        });
 
-      App.closeModal('modal-reimburse-create');
-      App.showToast(`✅ Pengajuan Reimburse ${newRmb.id} berhasil diajukan!`, 'success');
-      this.render(document.getElementById('main-content-area'));
+        const editedId = this.editingRmbId;
+        this.editingRmbId = null;
+        App.closeModal('modal-reimburse-create');
+        App.showToast(`✅ Perubahan Klaim Reimburse ${editedId} berhasil disimpan!`, 'success');
+        this.render(document.getElementById('main-content-area'));
+      } else {
+        const newRmb = await DB.addReimbursement({
+          itemName,
+          unitPrice,
+          quantity: qty,
+          subtotal,
+          purchaseDate,
+          category,
+          targetKitchen,
+          isManualKitchen,
+          bankName,
+          bankAccountNo,
+          bankAccountName,
+          attachmentUrl: this.currentAttachment.url,
+          attachmentName: this.currentAttachment.name,
+          notes
+        });
+
+        App.closeModal('modal-reimburse-create');
+        App.showToast(`✅ Klaim Reimburse ${newRmb.id} sebesar Rp ${subtotal.toLocaleString('id-ID')} berhasil disubmit!`, 'success');
+        this.render(document.getElementById('main-content-area'));
+      }
     } catch (err) {
-      console.error('Error adding reimbursement:', err);
-      App.showToast('Gagal mengajukan reimbursement: ' + err.message, 'danger');
+      console.error('Gagal memproses klaim reimburse:', err);
+      App.showToast('Gagal memproses klaim reimburse.', 'danger');
+      this.editingRmbId = null;
+      App.closeModal('modal-reimburse-create');
+      this.render(document.getElementById('main-content-area'));
     } finally {
       if (btn) {
         btn.disabled = false;

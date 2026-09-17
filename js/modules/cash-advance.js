@@ -11,6 +11,7 @@
 window.CashAdvanceModule = {
   currentFilter: 'ALL',
   selectedCaId: null,
+  editingCaId: null,
   settlementItems: [
     { name: '', qty: 1, unitPrice: 0 }
   ],
@@ -305,6 +306,12 @@ window.CashAdvanceModule = {
                     <td style="padding: 14px 10px; text-align: center;" onclick="event.stopPropagation()">
                       <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">
                         
+                        ${(DB.isCashAdvanceEditable ? DB.isCashAdvanceEditable(ca) : (ca.status === 'PENDING' && ca.stage === 'DIRECTOR_REVIEW')) ? `
+                          <button type="button" class="btn-nalar-secondary" style="padding: 4px 8px; font-size: 11px; color: #34D399; border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.08);" onclick="CashAdvanceModule.openEditModal('${ca.id}')" title="Edit Pengajuan Kasbon">
+                            ✏️ Edit
+                          </button>
+                        ` : ''}
+
                         ${isWaitingLPJ ? `
                           <button type="button" class="btn-nalar-primary" style="padding: 4px 10px; font-size: 11px; background: linear-gradient(135deg, #EC4899 0%, #DB2777 100%); border-color: #F472B6; color: #fff; font-weight: 600;" onclick="CashAdvanceModule.openSettlementModal('${ca.id}')">
                             📝 Input LPJ
@@ -699,10 +706,20 @@ window.CashAdvanceModule = {
   },
 
   openCreateModal: function() {
+    this.editingCaId = null;
     const user = DB.getCurrentUser();
     const today = new Date().toISOString().split('T')[0];
     const nextWeek = new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString().split('T')[0];
     
+    // Reset Modal Title & Submit Button
+    const modalEl = document.getElementById('modal-cash-advance');
+    if (modalEl) {
+      const titleEl = modalEl.querySelector('.modal-title');
+      if (titleEl) titleEl.textContent = 'Form Pengajuan Cash Advance (Kasbon Operasional)';
+      const submitBtn = modalEl.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.innerHTML = 'Kirim Pengajuan Kasbon';
+    }
+
     const usageDateEl = document.getElementById('ca-usage-date');
     const settleDateEl = document.getElementById('ca-settlement-date');
     if (usageDateEl) usageDateEl.value = today;
@@ -733,6 +750,73 @@ window.CashAdvanceModule = {
     if (bankHolderEl && user) bankHolderEl.value = user.rekeningName || user.name;
 
     App.openModal('modal-cash-advance');
+  },
+
+  openEditModal: function(caId) {
+    const ca = DB.getCashAdvanceById ? DB.getCashAdvanceById(caId) : (DB.getCashAdvances() || []).find(c => c.id === caId);
+    if (!ca) {
+      App.showToast('Data pengajuan Cash Advance tidak ditemukan.', 'warn');
+      return;
+    }
+    if (DB.isCashAdvanceEditable && !DB.isCashAdvanceEditable(ca)) {
+      App.showToast('Pengajuan Kasbon ini sudah diproses/disetujui dan tidak dapat diedit.', 'warn');
+      return;
+    }
+
+    this.editingCaId = caId;
+    this.openCreateModal();
+    this.editingCaId = caId; // Re-assign after openCreateModal
+
+    const modalEl = document.getElementById('modal-cash-advance');
+    if (modalEl) {
+      const titleEl = modalEl.querySelector('.modal-title');
+      if (titleEl) titleEl.innerHTML = `✏️ Edit Pengajuan Cash Advance: <span style="color: #FCD34D; font-family: var(--font-mono);">${ca.id}</span>`;
+      const submitBtn = modalEl.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.innerHTML = '💾 Simpan Perubahan';
+    }
+
+    const titleEl = document.getElementById('ca-title');
+    if (titleEl) titleEl.value = ca.title || '';
+    const catEl = document.getElementById('ca-category');
+    if (catEl) catEl.value = ca.category || 'Operasional Lapangan';
+    const amountEl = document.getElementById('ca-amount');
+    if (amountEl) {
+      amountEl.value = ca.amountRequested || '';
+      this.formatAmountPreview(ca.amountRequested || 0);
+    }
+    const usageDateEl = document.getElementById('ca-usage-date');
+    if (usageDateEl) usageDateEl.value = ca.usagePlanDate || '';
+    const settleDateEl = document.getElementById('ca-settlement-date');
+    if (settleDateEl) settleDateEl.value = ca.settlementPlanDate || '';
+
+    const kSelect = document.getElementById('ca-target-kitchen-select');
+    if (kSelect) {
+      let found = false;
+      for (let opt of kSelect.options) {
+        if (opt.value === ca.targetLocation) {
+          kSelect.value = ca.targetLocation;
+          found = true;
+          break;
+        }
+      }
+      if (!found && ca.targetLocation) {
+        kSelect.value = '__MANUAL__';
+        this.handleKitchenSelectChange('__MANUAL__');
+        const manualInput = document.getElementById('ca-manual-kitchen-input');
+        if (manualInput) manualInput.value = ca.targetLocation;
+      } else {
+        this.handleKitchenSelectChange(kSelect.value);
+      }
+    }
+
+    const bankNameEl = document.getElementById('ca-bank-name');
+    if (bankNameEl) bankNameEl.value = ca.bankName || '';
+    const bankNoEl = document.getElementById('ca-bank-no');
+    if (bankNoEl) bankNoEl.value = ca.bankAccountNo || '';
+    const bankHolderEl = document.getElementById('ca-bank-holder');
+    if (bankHolderEl) bankHolderEl.value = ca.bankAccountName || '';
+    const reasonEl = document.getElementById('ca-reason');
+    if (reasonEl) reasonEl.value = ca.reason || '';
   },
 
   formatAmountPreview: function(val) {
@@ -775,32 +859,54 @@ window.CashAdvanceModule = {
     }
 
     const submitBtn = e?.target?.querySelector ? e.target.querySelector('button[type="submit"]') : null;
-    const origBtnText = submitBtn ? submitBtn.innerHTML : 'Ajukan Kasbon';
+    const origBtnText = submitBtn ? submitBtn.innerHTML : (this.editingCaId ? 'Simpan Perubahan' : 'Ajukan Kasbon');
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.innerHTML = '⏳ Menyimpan ke Database Cloud...';
     }
 
     try {
-      const newCA = await DB.addCashAdvance({
-        title,
-        category,
-        targetLocation,
-        amountRequested,
-        usagePlanDate,
-        settlementPlanDate,
-        bankName,
-        bankAccountNo,
-        bankAccountName,
-        reason
-      });
+      if (this.editingCaId) {
+        await DB.updateCashAdvance(this.editingCaId, {
+          title,
+          category,
+          targetLocation,
+          amountRequested,
+          usagePlanDate,
+          settlementPlanDate,
+          bankName,
+          bankAccountNo,
+          bankAccountName,
+          reason
+        });
 
-      App.closeModal('modal-cash-advance');
-      App.showToast(`Pengajuan Cash Advance ${newCA.id} sebesar Rp ${amountRequested.toLocaleString('id-ID')} berhasil dibuat! Menunggu otorisasi Direksi.`, 'success');
-      this.render(document.getElementById('main-content-area'));
+        const editedId = this.editingCaId;
+        this.editingCaId = null;
+        App.closeModal('modal-cash-advance');
+        App.showToast(`Perubahan Cash Advance ${editedId} berhasil disimpan!`, 'success');
+        this.render(document.getElementById('main-content-area'));
+      } else {
+        const newCA = await DB.addCashAdvance({
+          title,
+          category,
+          targetLocation,
+          amountRequested,
+          usagePlanDate,
+          settlementPlanDate,
+          bankName,
+          bankAccountNo,
+          bankAccountName,
+          reason
+        });
+
+        App.closeModal('modal-cash-advance');
+        App.showToast(`Pengajuan Cash Advance ${newCA.id} sebesar Rp ${amountRequested.toLocaleString('id-ID')} berhasil dibuat! Menunggu otorisasi Direksi.`, 'success');
+        this.render(document.getElementById('main-content-area'));
+      }
     } catch (err) {
-      console.error('Gagal mengajukan CA:', err);
-      App.showToast('Pengajuan Cash Advance tersimpan di cache lokal.', 'info');
+      console.error('Gagal memproses CA:', err);
+      App.showToast('Data Cash Advance tersimpan di cache lokal.', 'info');
+      this.editingCaId = null;
       App.closeModal('modal-cash-advance');
       this.render(document.getElementById('main-content-area'));
     } finally {

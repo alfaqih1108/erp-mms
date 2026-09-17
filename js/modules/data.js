@@ -2911,6 +2911,8 @@ class DatabaseManager {
 
     await this.syncToSupabase('users', {
       id: user.id,
+      name: user.name,
+      role: user.role,
       password: newPassword
     });
 
@@ -4234,6 +4236,74 @@ class DatabaseManager {
     return true;
   }
 
+  isItemRequestEditable(pr) {
+    if (!pr || typeof pr !== 'object') return false;
+    if (pr.status !== 'PENDING') return false;
+    const history = Array.isArray(pr.approvalHistory) ? pr.approvalHistory : [];
+    const hasApproval = history.some(h => h.action === 'APPROVED' || h.action === 'ADJUSTED_AND_APPROVED');
+    if (hasApproval) return false;
+    return true;
+  }
+
+  async updateItemRequest(id, updatedData) {
+    const prs = this.getItemRequests() || [];
+    const pr = prs.find(p => p.id === id);
+    if (!pr) return false;
+
+    if (!this.isItemRequestEditable(pr)) {
+      console.warn(`[PR Update] Pengajuan ${id} tidak dapat diedit karena sudah diproses/disetujui.`);
+      return false;
+    }
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    if (updatedData.itemName !== undefined) pr.itemName = updatedData.itemName;
+    if (updatedData.category !== undefined) pr.category = updatedData.category;
+    if (updatedData.quantity !== undefined) pr.quantity = Number(updatedData.quantity) || 1;
+    if (updatedData.unitPrice !== undefined) pr.unitPrice = Number(updatedData.unitPrice) || 0;
+    pr.totalPrice = pr.quantity * pr.unitPrice;
+    if (updatedData.urgency !== undefined) pr.urgency = updatedData.urgency;
+    if (updatedData.reason !== undefined) pr.reason = updatedData.reason;
+    if (updatedData.targetKitchen !== undefined) pr.targetKitchen = updatedData.targetKitchen;
+    if (updatedData.attachmentUrl !== undefined) pr.attachmentUrl = updatedData.attachmentUrl;
+    if (updatedData.attachmentName !== undefined) pr.attachmentName = updatedData.attachmentName;
+
+    pr.updatedAt = realTimestamp;
+
+    if (Array.isArray(pr.approvalHistory) && pr.approvalHistory.length > 0) {
+      pr.approvalHistory[0].notes = `Kebutuhan: "${pr.itemName}" (${pr.quantity} unit @ Rp ${Number(pr.unitPrice).toLocaleString('id-ID')}) — ${pr.reason || 'Kebutuhan operasional'} (Diedit oleh pemohon pada ${realTimestamp})`;
+    }
+
+    this.addLog(`${user.name} memperbarui data pengajuan Purchase Request ${pr.id} (${pr.itemName} · ${pr.quantity} unit · Rp ${Number(pr.totalPrice).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    // Direct Cloud Sync to Supabase
+    await this.syncToSupabase('item_requests', {
+      id: pr.id,
+      employee_id: pr.employeeId,
+      employee_name: pr.employeeName,
+      role: pr.role,
+      department: pr.department,
+      item_name: pr.itemName,
+      category: pr.category,
+      quantity: pr.quantity,
+      unit_price: pr.unitPrice,
+      total_price: pr.totalPrice,
+      urgency: pr.urgency,
+      reason: pr.reason,
+      target_kitchen: pr.targetKitchen,
+      attachment_url: pr.attachmentUrl || null,
+      attachment_name: pr.attachmentName || null,
+      stage: pr.stage,
+      status: pr.status,
+      rejection_reason: pr.rejectionReason || null,
+      approval_history: pr.approvalHistory
+    });
+
+    return true;
+  }
+
   deleteItemRequest(id) {
     if (!Array.isArray(this.data.itemRequests)) {
       this.data.itemRequests = [...(INITIAL_DATABASE.itemRequests || [])];
@@ -4597,6 +4667,73 @@ class DatabaseManager {
     });
 
     return newCA;
+  }
+
+  isCashAdvanceEditable(ca) {
+    if (!ca || typeof ca !== 'object') return false;
+    if (ca.status !== 'PENDING') return false;
+    if (ca.stage !== 'DIRECTOR_REVIEW') return false;
+    const history = Array.isArray(ca.approvalHistory) ? ca.approvalHistory : [];
+    const hasApproval = history.some(h => h.action === 'APPROVED' || h.action === 'ADJUSTED_AND_APPROVED');
+    if (hasApproval) return false;
+    return true;
+  }
+
+  async updateCashAdvance(id, updatedData) {
+    const ca = this.getCashAdvanceById(id);
+    if (!ca) return false;
+
+    if (!this.isCashAdvanceEditable(ca)) {
+      console.warn(`[CA Update] Kasbon ${id} tidak dapat diedit karena sudah diproses/disetujui.`);
+      return false;
+    }
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    if (updatedData.title !== undefined) ca.title = updatedData.title;
+    if (updatedData.category !== undefined) ca.category = updatedData.category;
+    if (updatedData.targetLocation !== undefined) ca.targetLocation = updatedData.targetLocation;
+    if (updatedData.amountRequested !== undefined) {
+      ca.amountRequested = Number(updatedData.amountRequested) || 0;
+      ca.amountApproved = ca.amountRequested;
+    }
+    if (updatedData.usagePlanDate !== undefined) ca.usagePlanDate = updatedData.usagePlanDate;
+    if (updatedData.settlementPlanDate !== undefined) ca.settlementPlanDate = updatedData.settlementPlanDate;
+    if (updatedData.bankName !== undefined) ca.bankName = updatedData.bankName;
+    if (updatedData.bankAccountNo !== undefined) ca.bankAccountNo = updatedData.bankAccountNo;
+    if (updatedData.bankAccountName !== undefined) ca.bankAccountName = updatedData.bankAccountName;
+    if (updatedData.reason !== undefined) ca.reason = updatedData.reason;
+
+    ca.updatedAt = realTimestamp;
+
+    if (Array.isArray(ca.approvalHistory) && ca.approvalHistory.length > 0) {
+      ca.approvalHistory[0].notes = `Pengajuan Kasbon: Rp ${Number(ca.amountRequested).toLocaleString('id-ID')} untuk "${ca.title}" (Diedit oleh pemohon pada ${realTimestamp})`;
+    }
+
+    this.addLog(`${user.name} memperbarui data Cash Advance ${id} (Rp ${Number(ca.amountRequested).toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('cash_advances', {
+      id: ca.id,
+      employee_id: ca.employeeId,
+      employee_name: ca.employeeName,
+      role: ca.employeeRole,
+      department: ca.department,
+      purpose: ca.title || ca.reason,
+      amount_requested: ca.amountRequested,
+      amount_approved: ca.amountApproved,
+      amount_disbursed: ca.amountDisbursed,
+      target_kitchen: ca.targetLocation,
+      bank_name: ca.bankName,
+      rekening_no: ca.bankAccountNo,
+      rekening_name: ca.bankAccountName,
+      stage: ca.stage,
+      status: ca.status,
+      approval_history: ca.approvalHistory
+    });
+
+    return true;
   }
 
   async approveCashAdvanceDirector(id, decisionData = {}) {
@@ -4985,6 +5122,81 @@ class DatabaseManager {
     }).catch(e => console.warn('Sync reimburse notice:', e));
 
     return newRMB;
+  }
+
+  isReimbursementEditable(rmb) {
+    if (!rmb || typeof rmb !== 'object') return false;
+    if (rmb.status !== 'PENDING') return false;
+    const history = Array.isArray(rmb.approvalHistory) ? rmb.approvalHistory : [];
+    const hasApproval = history.some(h => h.action === 'APPROVED' || h.action === 'ADJUSTED_AND_APPROVED');
+    if (hasApproval) return false;
+    const initialStage = (rmb.workflowType === 'FIELD_JALUR_1') ? 'MANAGER_APPROVAL' : 'DIRECTOR_APPROVAL';
+    if (rmb.stage !== initialStage) return false;
+    return true;
+  }
+
+  async updateReimbursement(id, updatedData) {
+    const rmb = this.getReimbursementById(id);
+    if (!rmb) return false;
+
+    if (!this.isReimbursementEditable(rmb)) {
+      console.warn(`[Reimburse Update] Klaim ${id} tidak dapat diedit karena sudah diproses/disetujui.`);
+      return false;
+    }
+
+    const user = this.getCurrentUser();
+    const realTimestamp = getRealtimeTimestamp();
+
+    if (updatedData.itemName !== undefined) rmb.itemName = updatedData.itemName;
+    if (updatedData.unitPrice !== undefined) rmb.unitPrice = Number(updatedData.unitPrice) || 0;
+    if (updatedData.quantity !== undefined) rmb.quantity = Number(updatedData.quantity) || 1;
+    rmb.subtotal = Number(updatedData.subtotal) || (rmb.unitPrice * rmb.quantity);
+    rmb.originalSubtotal = rmb.subtotal;
+    if (updatedData.purchaseDate !== undefined) rmb.purchaseDate = updatedData.purchaseDate;
+    if (updatedData.category !== undefined) rmb.category = updatedData.category;
+    if (updatedData.targetKitchen !== undefined) rmb.targetKitchen = updatedData.targetKitchen;
+    if (updatedData.isManualKitchen !== undefined) rmb.isManualKitchen = Boolean(updatedData.isManualKitchen);
+    if (updatedData.bankName !== undefined) rmb.bankName = updatedData.bankName;
+    if (updatedData.bankAccountNo !== undefined) rmb.bankAccountNo = updatedData.bankAccountNo;
+    if (updatedData.bankAccountName !== undefined) rmb.bankAccountName = updatedData.bankAccountName;
+    if (updatedData.attachmentUrl !== undefined) rmb.attachmentUrl = updatedData.attachmentUrl;
+    if (updatedData.attachmentName !== undefined) rmb.attachmentName = updatedData.attachmentName;
+    if (updatedData.notes !== undefined) rmb.notes = updatedData.notes;
+
+    rmb.updatedAt = realTimestamp;
+
+    if (Array.isArray(rmb.approvalHistory) && rmb.approvalHistory.length > 0) {
+      rmb.approvalHistory[0].notes = `Pengajuan Klaim Reimburse: "${rmb.itemName}" (${rmb.quantity} unit @ Rp ${rmb.unitPrice.toLocaleString('id-ID')}, Subtotal: Rp ${rmb.subtotal.toLocaleString('id-ID')}) untuk "${rmb.targetKitchen}" (Diedit oleh pemohon pada ${realTimestamp})`;
+    }
+
+    this.addLog(`${user.name} memperbarui data Klaim Reimburse ${id} (${rmb.itemName} · Rp ${rmb.subtotal.toLocaleString('id-ID')}) pada ${realTimestamp}`, 'procurement');
+    this.save();
+
+    await this.syncToSupabase('reimbursements', {
+      id: rmb.id,
+      employee_id: rmb.employeeId,
+      employee_name: rmb.employeeName,
+      role: rmb.employeeRole,
+      department: rmb.department,
+      item_name: rmb.itemName,
+      unit_price: rmb.unitPrice,
+      quantity: rmb.quantity,
+      subtotal: rmb.subtotal,
+      purchase_date: rmb.purchaseDate,
+      category: rmb.category,
+      target_kitchen: rmb.targetKitchen,
+      bank_name: rmb.bankName,
+      bank_account_no: rmb.bankAccountNo,
+      bank_account_name: rmb.bankAccountName,
+      attachment_url: rmb.attachmentUrl,
+      attachment_name: rmb.attachmentName,
+      workflow_type: rmb.workflowType,
+      stage: rmb.stage,
+      status: rmb.status,
+      approval_history: rmb.approvalHistory
+    }).catch(e => console.warn('Sync reimburse notice:', e));
+
+    return true;
   }
 
   async advanceReimbursementStage(id, nextStage, finalStatus, decisionData = {}) {
@@ -5949,9 +6161,15 @@ class DatabaseManager {
             console.warn(`[Supabase PATCH Non-OK] HTTP ${patchRes.status} pada tabel "${table}":`, patchErrText);
             
             // Retry PATCH with fallback foreign keys if constraint failed
-            if (table === 'kitchen_reports' && patchErrText.includes('foreign key constraint')) {
+            if (patchErrText.includes('foreign key constraint') || patchErrText.includes('violates foreign key')) {
               console.log(`[Supabase PATCH Retry] Mencoba fallback foreign key untuk "${table}"...`);
-              const retryData = { ...data, reporter_id: null, kitchen_id: 'DAPUR-01' };
+              let retryData = { ...data };
+              if (table === 'kitchen_reports') {
+                retryData.reporter_id = null;
+                retryData.kitchen_id = 'DAPUR-01';
+              } else if (data.employee_id) {
+                retryData.employee_id = null;
+              }
               const retryRes = await fetch(`${url}/rest/v1/${table}?id=eq.${encodeURIComponent(idVal)}`, {
                 method: 'PATCH',
                 headers: {
@@ -5999,9 +6217,15 @@ class DatabaseManager {
         console.error(`❌ [Supabase Sync REST Error] HTTP ${response.status} pada tabel ${table}:`, errText);
 
         // Retry POST with fallback foreign keys if constraint failed
-        if (table === 'kitchen_reports' && errText.includes('foreign key constraint')) {
+        if (errText.includes('foreign key constraint') || errText.includes('violates foreign key')) {
           console.log(`[Supabase POST Retry] Mencoba fallback POST foreign key untuk "${table}"...`);
-          const retryData = { ...data, reporter_id: null, kitchen_id: 'DAPUR-01' };
+          let retryData = { ...data };
+          if (table === 'kitchen_reports') {
+            retryData.reporter_id = null;
+            retryData.kitchen_id = 'DAPUR-01';
+          } else if (data.employee_id) {
+            retryData.employee_id = null;
+          }
           const retryRes = await fetch(endpoint, {
             method: 'POST',
             headers: headers,
@@ -6542,8 +6766,8 @@ class DatabaseManager {
         fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,order_status,order_tracking_history,order_invoice,order_disbursement,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
         fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
         fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,spm_attachment_url,va_bank_name,va_balance,notes,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
-        fetch(`${url}/rest/v1/timesheets?select=id,employee_id,employee_name,role,date,start_time,end_time,activity,activity_preset,category,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
-        fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,title,purpose,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,stage,status,settlement,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/timesheets?select=id,employee_id,employee_name,role,date,start_time,end_time,activity,activity_preset,category,status,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
+        fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,purpose,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,stage,status,settlement,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers }),
         fetch(`${url}/rest/v1/guideline_documents?select=id,title,file_type,category,target_role,target_label,file_size,description,uploaded_by,upload_date,created_at&order=created_at.desc&limit=200&offset=0`, { headers }),
         fetch(`${url}/rest/v1/field_issues?select=id,author_id,author_name,date,kitchen_id,kitchen_name,issue_description,status,created_at&order=created_at.desc&limit=300&offset=0`, { headers }),
         fetch(`${url}/rest/v1/kitchen_daily_statuses?select=id,date,kitchen_id,kitchen_name,status,reason,reported_by_id,reported_by_name,created_at,updated_at&order=date.desc&limit=200&offset=0`, { headers }),
@@ -7103,6 +7327,293 @@ class DatabaseManager {
       console.log('✅ [Supabase Pull] Data tersinkronisasi instan & payload slim (~15KB). Cache TTL aktif 3 menit.');
     } catch (err) {
       console.warn('⚠️ [Supabase Pull] Gagal mengambil data:', err);
+    }
+  }
+
+  // Targeted single table pull from Supabase to prevent egress spikes & API storms
+  async pullTableFromSupabase(table) {
+    if (!window.SupabaseConfig || !window.SupabaseConfig.isConfigured()) return;
+    const url = window.SupabaseConfig.getUrl().replace(/\/+$/, '');
+    const key = window.SupabaseConfig.getAnonKey();
+    const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
+
+    try {
+      if (table === 'item_requests') {
+        const res = await fetch(`${url}/rest/v1/item_requests?select=id,employee_id,employee_name,role,department,item_name,category,quantity,unit_price,total_price,urgency,reason,target_kitchen,attachment_name,stage,status,rejection_reason,approval_history,order_status,order_tracking_history,order_invoice,order_disbursement,created_at&order=created_at.desc&limit=500&offset=0`, { headers });
+        if (res.ok) {
+          const prs = await res.json();
+          if (Array.isArray(prs)) {
+            const existingPRs = this.data.itemRequests || [];
+            this.data.itemRequests = prs.map(p => {
+              const local = existingPRs.find(item => item.id === p.id);
+              return {
+                id: p.id,
+                employeeId: p.employee_id,
+                employeeName: p.employee_name,
+                role: p.role,
+                department: p.department,
+                itemName: p.item_name,
+                category: p.category,
+                quantity: p.quantity,
+                unitPrice: Number(p.unit_price) || 0,
+                totalPrice: Number(p.total_price) || 0,
+                urgency: p.urgency,
+                reason: p.reason,
+                targetKitchen: p.target_kitchen,
+                attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : (p.attachment_url || null),
+                attachmentName: p.attachment_name,
+                stage: p.stage,
+                status: p.status,
+                rejectionReason: p.rejection_reason,
+                approvalHistory: Array.isArray(p.approval_history) ? p.approval_history : (typeof p.approval_history === 'string' ? (function() { try { const r = JSON.parse(p.approval_history); return Array.isArray(r) ? r : (r ? [r] : []); } catch(e) { return []; } })() : (p.approval_history ? [p.approval_history] : [])),
+                orderStatus: p.order_status || (local && local.orderStatus) || (p.status === 'APPROVED' ? 'DALAM_ANTRIAN' : null),
+                orderTrackingHistory: p.order_tracking_history || (local && local.orderTrackingHistory) || [],
+                orderInvoice: p.order_invoice || (local && local.orderInvoice) || null,
+                orderDisbursement: p.order_disbursement || (local && local.orderDisbursement) || null,
+                createdAt: p.created_at
+              };
+            });
+            this.save();
+          }
+        }
+      } else if (table === 'cash_advances') {
+        const res = await fetch(`${url}/rest/v1/cash_advances?select=id,employee_id,employee_name,role,department,purpose,target_kitchen,amount_requested,amount_approved,amount_disbursed,bank_name,rekening_no,rekening_name,stage,status,settlement,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers });
+        if (res.ok) {
+          const cas = await res.json();
+          if (Array.isArray(cas)) {
+            this.data.cashAdvances = cas.map(ca => ({
+              id: ca.id,
+              title: ca.purpose,
+              employeeId: ca.employee_id,
+              employeeName: ca.employee_name,
+              employeeRole: ca.role,
+              department: ca.department,
+              targetLocation: ca.target_kitchen,
+              amountRequested: Number(ca.amount_requested) || 0,
+              amountApproved: Number(ca.amount_approved) || 0,
+              amountDisbursed: Number(ca.amount_disbursed) || 0,
+              bankName: ca.bank_name,
+              bankAccountNo: ca.rekening_no,
+              bankAccountName: ca.rekening_name,
+              reason: ca.purpose,
+              stage: ca.stage,
+              status: ca.status,
+              settlement: ca.settlement,
+              approvalHistory: Array.isArray(ca.approval_history) ? ca.approval_history : (typeof ca.approval_history === 'string' ? (function() { try { const r = JSON.parse(ca.approval_history); return Array.isArray(r) ? r : (r ? [r] : []); } catch(e) { return []; } })() : (ca.approval_history ? [ca.approval_history] : [])),
+              createdAt: ca.created_at
+            }));
+            this.save();
+          }
+        }
+      } else if (table === 'reimbursements') {
+        const res = await fetch(`${url}/rest/v1/reimbursements?select=id,employee_id,employee_name,role,department,item_name,unit_price,quantity,subtotal,purchase_date,category,target_kitchen,bank_name,bank_account_no,bank_account_name,attachment_name,workflow_type,stage,status,rejection_reason,disbursement_details,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers });
+        if (res.ok) {
+          const rmbs = await res.json();
+          if (Array.isArray(rmbs)) {
+            const existingRMBs = this.data.reimbursements || [];
+            const remoteRMBs = rmbs.map(r => {
+              const local = existingRMBs.find(item => item.id === r.id);
+              return {
+                id: r.id,
+                employeeId: r.employee_id,
+                employeeName: r.employee_name,
+                employeeRole: r.role,
+                department: r.department,
+                itemName: r.item_name,
+                unitPrice: Number(r.unit_price) || 0,
+                quantity: Number(r.quantity) || 1,
+                subtotal: Number(r.subtotal) || 0,
+                originalSubtotal: local ? local.originalSubtotal : (Number(r.subtotal) || 0),
+                purchaseDate: r.purchase_date,
+                category: r.category,
+                targetKitchen: r.target_kitchen,
+                isManualKitchen: local ? local.isManualKitchen : false,
+                bankName: r.bank_name,
+                bankAccountNo: r.bank_account_no,
+                bankAccountName: r.bank_account_name,
+                attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : (r.attachment_url || null),
+                attachmentName: r.attachment_name,
+                notes: local ? local.notes : '',
+                workflowType: r.workflow_type || 'FIELD_JALUR_1',
+                stage: r.stage,
+                status: r.status,
+                rejectionReason: r.rejection_reason,
+                disbursementDetails: r.disbursement_details || null,
+                approvalHistory: Array.isArray(r.approval_history) ? r.approval_history : (typeof r.approval_history === 'string' ? (function() { try { const res = JSON.parse(r.approval_history); return Array.isArray(res) ? res : (res ? [res] : []); } catch(e) { return []; } })() : (r.approval_history ? [r.approval_history] : [])),
+                createdAt: r.created_at,
+                updatedAt: r.updated_at || r.created_at
+              };
+            });
+            const unsyncedRMB = existingRMBs.filter(local => local && local.id && !rmbs.some(remote => remote.id === local.id));
+            this.data.reimbursements = [...remoteRMBs, ...unsyncedRMB];
+            this.save();
+          }
+        }
+      } else if (table === 'timesheets') {
+        const res = await fetch(`${url}/rest/v1/timesheets?select=id,employee_id,employee_name,role,date,start_time,end_time,activity,activity_preset,category,status,created_at&order=created_at.desc&limit=500&offset=0`, { headers });
+        if (res.ok) {
+          const tss = await res.json();
+          if (Array.isArray(tss)) {
+            const allUsers = this.data.users || [];
+            const remoteTS = tss.map(ts => {
+              let hours = 0;
+              if (ts.start_time && ts.end_time) {
+                const s = ts.start_time.split(':').map(Number);
+                const e = ts.end_time.split(':').map(Number);
+                hours = Math.max(0, (e[0] + (e[1] || 0)/60) - (s[0] + (s[1] || 0)/60));
+                hours = Math.round(hours * 10) / 10;
+              }
+              const normTsName = (ts.employee_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const normTsId = (ts.employee_id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const matchedUser = allUsers.find(u => {
+                const uId = (u.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                const uName = (u.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return (normTsId && uId === normTsId) || (normTsName && uName === normTsName);
+              });
+              return {
+                id: ts.id,
+                employeeId: matchedUser ? matchedUser.id : (ts.employee_id || ''),
+                employeeName: matchedUser ? matchedUser.name : (ts.employee_name || 'Karyawan'),
+                department: matchedUser ? matchedUser.department : (ts.department || 'Operasional'),
+                role: matchedUser ? matchedUser.role : (ts.role || 'STAFF'),
+                date: ts.date ? String(ts.date).slice(0, 10) : '',
+                startTime: ts.start_time,
+                endTime: ts.end_time,
+                hours: hours || 0,
+                activity: ts.activity,
+                activityPreset: ts.activity_preset,
+                category: ts.category || 'Operasional',
+                status: ts.status || 'RECORDED',
+                approvalHistory: [],
+                createdAt: ts.created_at
+              };
+            });
+            const existingTS = this.data.timesheets || [];
+            const unsyncedTS = existingTS.filter(local => local && local.id && !tss.some(remote => remote.id === local.id));
+            this.data.timesheets = [...remoteTS, ...unsyncedTS];
+            this.save();
+          }
+        }
+      } else if (table === 'leaves') {
+        const res = await fetch(`${url}/rest/v1/leaves?select=id,employee_id,employee_name,role,department,leave_type,start_date,end_date,duration,reason,emergency_contact,attachment_name,stage,status,rejection_reason,approval_history,created_at&order=created_at.desc&limit=500&offset=0`, { headers });
+        if (res.ok) {
+          const leaves = await res.json();
+          if (Array.isArray(leaves)) {
+            const existingLeaves = this.data.leaves || [];
+            this.data.leaves = leaves.map(l => {
+              const local = existingLeaves.find(item => item.id === l.id);
+              const userMatch = (this.data.users || []).find(u => u.id === l.employee_id || u.name === l.employee_name);
+              const deductType = resolveLeaveDeductionType({
+                leaveType: l.leave_type,
+                type: l.leave_type,
+                quotaDeductionType: (local && local.quotaDeductionType) ? local.quotaDeductionType : undefined
+              }, userMatch ? userMatch.joinDate : null);
+              const isHalf = (local && local.isHalfDay !== undefined) ? local.isHalfDay : (Number(l.duration) === 0.5 || (l.leave_type && l.leave_type.includes('0.5')));
+              return {
+                id: l.id,
+                employeeId: l.employee_id,
+                employeeName: l.employee_name,
+                role: l.role,
+                department: l.department,
+                leaveType: l.leave_type,
+                type: l.leave_type,
+                startDate: l.start_date,
+                endDate: l.end_date,
+                duration: Number(l.duration) || 1,
+                isHalfDay: isHalf,
+                quotaDeductionType: deductType,
+                quotaDeducted: deductType === 'NONE' ? 0 : (Number(l.duration) || 1),
+                reason: l.reason,
+                emergencyContact: l.emergency_contact,
+                attachmentUrl: (local && local.attachmentUrl) ? local.attachmentUrl : (l.attachment_url || null),
+                attachmentName: l.attachment_name,
+                stage: l.stage,
+                status: l.status,
+                rejectionReason: l.rejection_reason,
+                approvalHistory: Array.isArray(l.approval_history) ? l.approval_history : [],
+                createdAt: l.created_at
+              };
+            });
+            this.recalculateUserLeaveBalances();
+            this.save();
+          }
+        }
+      } else if (table === 'kitchen_reports') {
+        const res = await fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,spm_attachment_url,va_bank_name,va_balance,notes,created_at&order=created_at.desc&limit=500&offset=0`, { headers });
+        if (res.ok) {
+          const krs = await res.json();
+          if (Array.isArray(krs)) {
+            const existingKRs = this.data.kitchenReports || [];
+            this.data.kitchenReports = krs.map(kr => {
+              const local = existingKRs.find(item => item.id === kr.id);
+              let cleanRemoteUrl = (kr.spm_attachment_url && !kr.spm_attachment_url.includes('unsplash.com')) ? kr.spm_attachment_url : null;
+              let cleanLocalUrl = (local && local.spmAttachmentUrl && !local.spmAttachmentUrl.includes('unsplash.com')) ? local.spmAttachmentUrl : null;
+              const finalUrl = cleanRemoteUrl || cleanLocalUrl || null;
+              const finalFileName = (finalUrl && (finalUrl.startsWith('http://') || finalUrl.startsWith('https://'))) ? 'Link Google Drive SPM' : (kr.spm_file_name || (local && local.spmFileName ? local.spmFileName : null));
+              return {
+                id: kr.id,
+                kitchenId: (local && local.updatedAt && local.kitchenId) ? local.kitchenId : (kr.kitchen_id || 'DAPUR-01'),
+                kitchenName: (local && local.updatedAt && local.kitchenName) ? local.kitchenName : (kr.kitchen_name || ''),
+                date: kr.date,
+                reporterId: kr.reporter_id || (local ? local.reporterId : null),
+                reporterName: kr.reporter_name || (local ? local.reporterName : ''),
+                rawMaterialCost: Number(kr.raw_material_cost) || 0,
+                operationalCost: Number(kr.operational_cost) || 0,
+                carRentalCost: Number(kr.car_rental_cost) || 0,
+                foundationIncentive: Number(kr.foundation_incentive) || 0,
+                incentiveNotes: kr.incentive_notes || '',
+                totalDailyExpense: Number(kr.total_daily_expense) || 0,
+                porsiBesar: Number(kr.porsi_besar) || 0,
+                porsiKecil: Number(kr.porsi_kecil) || 0,
+                beneficiariesCount: Number(kr.beneficiaries_count) || 0,
+                targetBudget: Number(kr.target_budget) || 0,
+                costPerPortion: Number(kr.cost_per_portion) || 0,
+                costPerPortionAllIn: Number(kr.cost_per_portion_all_in) || 0,
+                spmFileName: finalFileName,
+                spmAttachmentUrl: finalUrl,
+                vaBankName: kr.va_bank_name || 'Bank Mandiri VA',
+                vaBalance: Number(kr.va_balance) || 0,
+                notes: kr.notes || '',
+                updatedAt: local ? local.updatedAt : undefined,
+                createdAt: kr.created_at || ''
+              };
+            });
+            this.save();
+          }
+        }
+      } else if (table === 'field_issues') {
+        const res = await fetch(`${url}/rest/v1/field_issues?select=id,author_id,author_name,date,kitchen_id,kitchen_name,issue_description,status,created_at&order=created_at.desc&limit=300&offset=0`, { headers });
+        if (res.ok) {
+          const fList = await res.json();
+          if (Array.isArray(fList)) {
+            this.data.fieldIssues = fList.map(f => {
+              let parsedPoints = [];
+              try { parsedPoints = JSON.parse(f.issue_description); } catch (e) { parsedPoints = [{ id: 'PT-1', text: f.issue_description, status: 'BELUM_DIRESPON' }]; }
+              return { id: f.id, authorId: f.author_id, authorName: f.author_name, date: f.date, kitchenId: f.kitchen_id, kitchenName: f.kitchen_name, points: Array.isArray(parsedPoints) ? parsedPoints : [], status: f.status, createdAt: f.created_at };
+            });
+            this.save();
+          }
+        }
+      } else if (table === 'kitchen_daily_statuses') {
+        const res = await fetch(`${url}/rest/v1/kitchen_daily_statuses?select=id,date,kitchen_id,kitchen_name,status,reason,reported_by_id,reported_by_name,created_at,updated_at&order=date.desc&limit=200&offset=0`, { headers });
+        if (res.ok) {
+          const kdsList = await res.json();
+          if (Array.isArray(kdsList)) {
+            const existingKDS = this.data.kitchenDailyStatuses || [];
+            const remoteKDS = kdsList.map(s => {
+              const local = existingKDS.find(item => item.id === s.id || (item.date === s.date && item.kitchenId === s.kitchen_id));
+              return { id: s.id, date: s.date, kitchenId: s.kitchen_id, kitchenName: s.kitchen_name, status: s.status || 'BERJALAN', reason: s.reason || '', reportedById: s.reported_by_id, reportedByName: s.reported_by_name, createdAt: s.created_at || (local ? local.createdAt : ''), updatedAt: s.updated_at || (local ? local.updatedAt : '') };
+            });
+            const unsyncedLocal = existingKDS.filter(local => !kdsList.some(remote => remote.id === local.id || (remote.date === local.date && remote.kitchen_id === local.kitchenId)));
+            this.data.kitchenDailyStatuses = [...remoteKDS, ...unsyncedLocal];
+            this.save();
+          }
+        }
+      } else {
+        await this.pullLatestFromSupabase();
+      }
+    } catch (err) {
+      console.warn(`[Supabase Pull Single Table] Gagal menarik tabel "${table}":`, err);
     }
   }
 
