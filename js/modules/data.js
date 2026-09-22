@@ -6139,6 +6139,15 @@ class DatabaseManager {
       // 1. Jika data memiliki ID spesifik, gunakan PATCH terlebih dahulu untuk memperbarui sebagian kolom tanpa melanggar constraint NOT NULL
       if (idVal) {
         try {
+          // Safeguard: Jangan pernah menimpa attachment_url / spm_attachment_url dengan null saat update status / approval
+          const patchPayload = { ...data };
+          if (patchPayload.attachment_url === null || patchPayload.attachment_url === undefined) {
+            delete patchPayload.attachment_url;
+          }
+          if (patchPayload.spm_attachment_url === null || patchPayload.spm_attachment_url === undefined) {
+            delete patchPayload.spm_attachment_url;
+          }
+
           const patchRes = await fetch(`${url}/rest/v1/${table}?id=eq.${encodeURIComponent(idVal)}`, {
             method: 'PATCH',
             headers: {
@@ -6147,7 +6156,7 @@ class DatabaseManager {
               'Authorization': `Bearer ${key}`,
               'Prefer': 'return=representation'
             },
-            body: JSON.stringify(data)
+            body: JSON.stringify(patchPayload)
           });
 
           if (patchRes.ok) {

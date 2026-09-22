@@ -449,11 +449,13 @@ window.PengajuanBarangModule = {
 
   openLightbox: async function(prIdOrUrl, title) {
     let imgUrl = prIdOrUrl;
+    let fileName = '';
     if (typeof prIdOrUrl === 'string' && prIdOrUrl.length < 50 && !prIdOrUrl.startsWith('data:') && !prIdOrUrl.startsWith('http')) {
       const prs = DB.getItemRequests() || [];
       const pr = prs.find(p => p.id === prIdOrUrl);
       if (pr) {
         title = title || pr.itemName;
+        fileName = pr.attachmentName || '';
         imgUrl = pr.attachmentUrl;
         if (!imgUrl && pr.attachmentName) {
           App.showToast('Memuat foto spesifikasi barang dari cloud...', 'info');
@@ -461,6 +463,12 @@ window.PengajuanBarangModule = {
         }
       }
     }
+
+    if (!imgUrl) {
+      App.showToast(fileName ? `Berkas "${fileName}" belum memiliki data foto di cloud atau ter-reset saat approval.` : 'Lampiran foto tidak tersedia.', 'warn');
+      return;
+    }
+
     const lightboxImg = document.getElementById('lightbox-img');
     const lightboxTitle = document.getElementById('lightbox-title');
     if (lightboxImg) lightboxImg.src = imgUrl || '';
