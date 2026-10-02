@@ -61,7 +61,7 @@ window.CashAdvanceModule = {
             <span class="text-mono-badge" style="color: #F59E0B;">OPERATIONAL FINANCE & DISBURSEMENT</span>
             <h1 style="font-size: 26px; font-weight: 600; margin-top: 2px;">Cash Advance (Kasbon & Uang Muka Operasional)</h1>
             <p style="color: var(--text-secondary); font-size: 13.5px; margin-top: 4px;">
-              Pengajuan kasbon operasional, otorisasi 2-layer Direksi & FAT, dan pertanggungjawaban realisasi belanja (LPJ).
+              Pengajuan kasbon operasional, verifikasi berkas FAT Officer, otorisasi Direksi, pencairan dana, dan pertanggungjawaban LPJ.
             </p>
           </div>
 
@@ -122,13 +122,13 @@ window.CashAdvanceModule = {
                 </div>
                 <span class="kpi-chip-title">Antrean Review & Pencairan</span>
               </div>
-              <span class="text-mono-badge" style="color: #60A5FA; background: rgba(59, 130, 246, 0.12); padding: 2px 8px; border-radius: 4px;">2-Layer Flow</span>
+              <span class="text-mono-badge" style="color: #60A5FA; background: rgba(59, 130, 246, 0.12); padding: 2px 8px; border-radius: 4px;">FAT & Direksi Flow</span>
             </div>
             <div class="kpi-chip-value" style="color: #60A5FA; font-family: var(--font-mono); font-size: 28px; font-weight: 700;">
               ${pendingReviewCount} <span style="font-size: 14px; font-weight: 400; color: var(--text-muted);">Pengajuan</span>
             </div>
             <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;">
-              Menunggu otorisasi Direksi atau eksekusi transfer dana oleh tim FAT.
+              Menunggu verifikasi FAT Officer, otorisasi Direksi, atau eksekusi transfer dana.
             </p>
             <div class="kpi-chip-footer" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 4px; font-size: 11.5px; font-family: var(--font-mono);">
               ${pendingReviewCount === 0 ? '<span style="color: #34D399; display: flex; align-items: center; gap: 4px;">✓ Tidak ada antrean pending</span>' : '<span style="color: #FCD34D; display: flex; align-items: center; gap: 4px;">● Sedang dalam proses review</span>'}
@@ -232,14 +232,16 @@ window.CashAdvanceModule = {
                 const isRejected = (ca.status === 'REJECTED');
 
                 let stageBadge = '';
-                if (ca.stage === 'DIRECTOR_REVIEW') {
-                  stageBadge = '<span class="status-badge" style="background: rgba(245,158,11,0.15); color: #FCD34D; border: 1px solid rgba(245,158,11,0.3);">👑 Otorisasi Direksi</span>';
+                if (ca.stage === 'FINANCE_VERIFICATION') {
+                  stageBadge = '<span class="status-badge" style="background: rgba(59,130,246,0.15); color: #60A5FA; border: 1px solid rgba(59,130,246,0.3);">💼 1. Verif FAT Officer</span>';
+                } else if (ca.stage === 'DIRECTOR_REVIEW') {
+                  stageBadge = '<span class="status-badge" style="background: rgba(245,158,11,0.15); color: #FCD34D; border: 1px solid rgba(245,158,11,0.3);">👑 2. Otorisasi Direksi</span>';
                 } else if (ca.stage === 'FAT_DISBURSEMENT') {
-                  stageBadge = '<span class="status-badge" style="background: rgba(59,130,246,0.15); color: #60A5FA; border: 1px solid rgba(59,130,246,0.3);">💰 Pencairan FAT</span>';
+                  stageBadge = '<span class="status-badge" style="background: rgba(52,211,153,0.15); color: #34D399; border: 1px solid rgba(52,211,153,0.3);">💰 3. Pencairan FAT</span>';
                 } else if (ca.stage === 'DISBURSED') {
-                  stageBadge = '<span class="status-badge" style="background: rgba(236,72,153,0.15); color: #F472B6; border: 1px solid rgba(236,72,153,0.3);">📝 Perlu Input LPJ</span>';
+                  stageBadge = '<span class="status-badge" style="background: rgba(236,72,153,0.15); color: #F472B6; border: 1px solid rgba(236,72,153,0.3);">📝 4. Perlu Input LPJ</span>';
                 } else if (ca.stage === 'SETTLEMENT_SUBMITTED') {
-                  stageBadge = '<span class="status-badge" style="background: rgba(167,139,250,0.15); color: #C4B5FD; border: 1px solid rgba(167,139,250,0.3);">🔍 Verifikasi LPJ FAT</span>';
+                  stageBadge = '<span class="status-badge" style="background: rgba(167,139,250,0.15); color: #C4B5FD; border: 1px solid rgba(167,139,250,0.3);">🔍 5. Verifikasi LPJ FAT</span>';
                 } else if (ca.stage === 'SETTLED') {
                   stageBadge = '<span class="status-badge" style="background: rgba(16,185,129,0.15); color: #34D399; border: 1px solid rgba(16,185,129,0.3);">✓ Selesai & Lunas</span>';
                 } else {
@@ -353,8 +355,8 @@ window.CashAdvanceModule = {
               <div>
                 <h3 class="modal-title" style="font-size: 19px; font-weight: 600; color: #fff;">Form Pengajuan Cash Advance (Kasbon Operasional)</h3>
                 <div style="display: flex; align-items: center; gap: 8px; margin-top: 3px;">
-                  <span class="text-mono-badge" style="color: #FCD34D; background: rgba(245,158,11,0.12); padding: 2px 8px; border-radius: 4px; font-size: 10.5px;">Alur Otorisasi 2-Layer</span>
-                  <span style="font-size: 11.5px; color: var(--text-muted);">Persetujuan Direksi & Eksekusi Pencairan FAT</span>
+                  <span class="text-mono-badge" style="color: #FCD34D; background: rgba(245,158,11,0.12); padding: 2px 8px; border-radius: 4px; font-size: 10.5px;">Alur Bertingkat</span>
+                  <span style="font-size: 11.5px; color: var(--text-muted);">Verifikasi FAT Officer, Otorisasi Direksi & Pencairan FAT</span>
                 </div>
               </div>
             </div>
@@ -927,7 +929,7 @@ window.CashAdvanceModule = {
         });
 
         App.closeModal('modal-cash-advance');
-        App.showToast(`Pengajuan Cash Advance ${newCA.id} sebesar Rp ${amountRequested.toLocaleString('id-ID')} berhasil dibuat! Menunggu otorisasi Direksi.`, 'success');
+        App.showToast(`Pengajuan Cash Advance ${newCA.id} sebesar Rp ${amountRequested.toLocaleString('id-ID')} berhasil dibuat! Menunggu verifikasi berkas oleh FAT Officer.`, 'success');
         this.render(document.getElementById('main-content-area'));
       }
     } catch (err) {

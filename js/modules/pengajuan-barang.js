@@ -235,7 +235,7 @@ window.PengajuanBarangModule = {
                     </td>
                     <td>
                       <span style="font-size: 11px; font-family: var(--font-mono); color: ${isFailedDelivery ? '#F87171; font-weight: 600;' : 'var(--text-secondary);'}">
-                        ${isFailedDelivery ? '⚠️ Gagal Pengiriman (PO)' : (p.stage === 'MANAGER_APPROVAL' ? '⏳ 1. Review Manager' : p.stage === 'FINANCE_VERIFICATION' ? '💼 2. Verifikasi Keuangan' : p.stage === 'DIRECTOR_APPROVAL' ? '👑 3. Persetujuan Direktur' : '✅ PO Terbit & Selesai')}
+                        ${isFailedDelivery ? '⚠️ Gagal Pengiriman (PO)' : (p.stage === 'MANAGER_APPROVAL' ? '⏳ 1. Review Manager' : p.stage === 'FINANCE_VERIFICATION' ? '💼 2. Verif FAT Officer' : p.stage === 'DIRECTOR_APPROVAL' ? '👑 3. Persetujuan Direktur' : '✅ PO Terbit & Selesai')}
                       </span>
                     </td>
                     <td>

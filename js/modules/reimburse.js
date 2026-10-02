@@ -324,8 +324,8 @@ window.ReimburseModule = {
                   <div style="font-size: 11px; color: var(--text-muted);">Alur Approval Otomatis:</div>
                   <div style="font-size: 11.5px; color: #FCD34D; font-weight: 600; margin-top: 2px;">
                     ${['PERWAKILAN_YAYASAN', 'SURVEYOR', 'MAKER_YAYASAN', 'MAKER'].includes(user.role) 
-                      ? 'Jalur 1: Lapangan ➔ Mgr Area ➔ Staf Ahli Keu ➔ Direksi ➔ FAT' 
-                      : 'Jalur 2: Kantor ➔ Direksi ➔ FAT'}
+                      ? 'Jalur 1: Lapangan ➔ Mgr Area ➔ FAT Officer ➔ Direksi ➔ FAT Transfer' 
+                      : 'Jalur 2: Kantor ➔ FAT Officer ➔ Direksi ➔ FAT Transfer'}
                   </div>
                 </div>
               </div>
@@ -943,7 +943,7 @@ window.ReimburseModule = {
     if (rmb.stage === 'FINANCE_VERIFICATION') {
       return `
         <span class="badge-nalar badge-pending" style="background: rgba(245, 158, 11, 0.15); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.35); padding: 4px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">
-          <span class="live-dot" style="background: #F59E0B;"></span> Verif Staf Ahli Keu
+          <span class="live-dot" style="background: #F59E0B;"></span> Verif FAT Officer
         </span>
       `;
     }

@@ -479,20 +479,22 @@ window.ApprovalCenterModule = {
     }
     // 6. FAT Officer
     else if (user.role === 'FAT_OFFICER') {
-      relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
-      relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FAT_DISBURSEMENT');
+      relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION');
+      relevantCAs = cas.filter(c => (c.status === 'PENDING' && (c.stage === 'FINANCE_VERIFICATION' || c.stage === 'FAT_DISBURSEMENT')) || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
+      relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && (r.stage === 'FINANCE_VERIFICATION' || r.stage === 'FAT_DISBURSEMENT'));
       relevantOrderInvoices = prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED');
     }
     // 7. Staff Ahli Keuangan
     else if (user.role === 'STAFF_AHLI_KEUANGAN') {
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION');
       relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FINANCE_VERIFICATION');
+      relevantCAs = cas.filter(c => c.status === 'PENDING' && c.stage === 'FINANCE_VERIFICATION');
     }
     // 8. Direktur Utama & Super Admin
     else if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING');
       relevantPrs = prs.filter(p => p.status === 'PENDING');
-      relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
+      relevantCAs = cas.filter(c => (c.status === 'PENDING' && (c.stage === 'FINANCE_VERIFICATION' || c.stage === 'DIRECTOR_REVIEW' || c.stage === 'FAT_DISBURSEMENT')) || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
       relevantRmbs = rmbs.filter(r => r.status === 'PENDING');
       relevantOrderInvoices = prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED');
     }
@@ -784,7 +786,7 @@ window.ApprovalCenterModule = {
     const stageName = isManagerStage 
       ? '1. Review Manager Area' 
       : isFinanceStage 
-      ? '2. Verifikasi Anggaran Staf Ahli Keuangan' 
+      ? '2. Verifikasi Anggaran FAT Officer' 
       : '3. Otorisasi Direksi (Penerbitan PO)';
 
     return `
@@ -838,7 +840,7 @@ window.ApprovalCenterModule = {
 
           ${isManagerStage ? `
             <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); border-color: #60A5FA; color: #fff; font-weight: 600;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
-              ✓ Setujui & Teruskan ke Staf Ahli Keu
+              ✓ Setujui & Teruskan ke FAT Officer
             </button>
           ` : isFinanceStage ? `
             <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
@@ -856,15 +858,18 @@ window.ApprovalCenterModule = {
 
   renderPendingCACard: function(c) {
     const formattedDate = this.formatDisplayDateTime(c.createdAt);
+    const isFinanceStage = (c.stage === 'FINANCE_VERIFICATION');
     const isDirectorStage = (c.stage === 'DIRECTOR_REVIEW');
     const isDisburseStage = (c.stage === 'FAT_DISBURSEMENT');
     const isSettlementReviewStage = (c.stage === 'SETTLEMENT_SUBMITTED');
 
-    const stageName = isDirectorStage 
-      ? '1. Review & Otorisasi Direksi' 
+    const stageName = isFinanceStage 
+      ? '1. Verifikasi Plafon & Justifikasi FAT Officer' 
+      : isDirectorStage 
+      ? '2. Review & Otorisasi Direksi' 
       : isDisburseStage 
-      ? '2. Pencairan Kasir FAT' 
-      : '3. Verifikasi LPJ Kasir FAT';
+      ? '3. Pencairan Transfer FAT' 
+      : '4. Verifikasi LPJ Kasir FAT';
 
     return `
       <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #10B981; margin-bottom: 0;">
@@ -905,7 +910,17 @@ window.ApprovalCenterModule = {
 
         <!-- Action Buttons per Stage -->
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-          ${isDirectorStage ? `
+          ${isFinanceStage ? `
+            <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectCA('${c.id}')">
+              ✕ Tolak
+            </button>
+            <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustCAModal('${c.id}')">
+              ✏️ Setujui dgn Penyesuaian
+            </button>
+            <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advanceCA('${c.id}', '${c.stage}')">
+              ✓ Verifikasi Sah & Teruskan ke Direksi
+            </button>
+          ` : isDirectorStage ? `
             <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectCA('${c.id}')">
               ✕ Tolak
             </button>
@@ -913,7 +928,7 @@ window.ApprovalCenterModule = {
               ✏️ Setujui dgn Penyesuaian
             </button>
             <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 600;" onclick="ApprovalCenterModule.approveCADirector('${c.id}')">
-              ✓ Setujui Kasbon
+              👑 Otorisasi Kasbon
             </button>
           ` : isDisburseStage ? `
             <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseCAModal('${c.id}')">
@@ -939,10 +954,10 @@ window.ApprovalCenterModule = {
     const stageName = isManagerStage 
       ? '1. Review Manager Area' 
       : isFinanceStage 
-      ? '2. Verifikasi Anggaran Keuangan' 
+      ? (r.workflowType === 'FIELD_JALUR_1' ? '2. Verifikasi FAT Officer' : '1. Verifikasi FAT Officer') 
       : isDirectorStage 
-      ? '3. Otorisasi Direksi' 
-      : '4. Pencairan Dana FAT';
+      ? (r.workflowType === 'FIELD_JALUR_1' ? '3. Otorisasi Direksi' : '2. Otorisasi Direksi') 
+      : (r.workflowType === 'FIELD_JALUR_1' ? '4. Pencairan Dana FAT' : '3. Pencairan Dana FAT');
 
     return `
       <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #10B981; margin-bottom: 0;">
@@ -995,7 +1010,7 @@ window.ApprovalCenterModule = {
 
           ${isManagerStage ? `
             <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); border-color: #60A5FA; color: #fff; font-weight: 600;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
-              ✓ Setujui & Teruskan ke Staf Keuangan
+              ✓ Setujui & Teruskan ke FAT Officer
             </button>
           ` : isFinanceStage ? `
             <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
@@ -1564,10 +1579,10 @@ window.ApprovalCenterModule = {
   advancePR: async function(id, currentStage) {
     if (currentStage === 'MANAGER_APPROVAL') {
       await DB.advanceItemRequestStage(id, 'FINANCE_VERIFICATION', 'PENDING');
-      App.showToast(`PR ${id} disetujui Manager & diteruskan ke Verifikasi Anggaran Keuangan (Staff Ahli/FAT)!`, 'success');
+      App.showToast(`PR ${id} disetujui Manager Area & diteruskan ke Verifikasi Anggaran (FAT Officer)!`, 'success');
     } else if (currentStage === 'FINANCE_VERIFICATION') {
       await DB.advanceItemRequestStage(id, 'DIRECTOR_APPROVAL', 'PENDING');
-      App.showToast(`Anggaran PR ${id} telah diverifikasi & diteruskan ke Direktur untuk persetujuan akhir!`, 'success');
+      App.showToast(`Anggaran & spesifikasi PR ${id} telah diverifikasi FAT Officer & diteruskan ke Direktur untuk persetujuan!`, 'success');
     } else if (currentStage === 'DIRECTOR_APPROVAL') {
       await DB.advanceItemRequestStage(id, 'COMPLETED', 'APPROVED');
       App.showToast(`Persetujuan Direktur disahkan & Purchase Order resmi (PO) untuk PR ${id} diterbitkan!`, 'success');
@@ -1791,8 +1806,22 @@ window.ApprovalCenterModule = {
   currentDisbursingCAId: null,
   currentVerifyingCAId: null,
 
+  advanceCA: async function(id, currentStage) {
+    const ca = DB.getCashAdvanceById(id);
+    if (!ca) return;
+
+    if (currentStage === 'FINANCE_VERIFICATION') {
+      await DB.advanceCashAdvanceStage(id, 'DIRECTOR_REVIEW', 'PENDING');
+      App.showToast(`Cash Advance ${id} diverifikasi sah oleh FAT Officer & diteruskan ke Direksi untuk otorisasi!`, 'success');
+    } else if (currentStage === 'DIRECTOR_REVIEW') {
+      await DB.advanceCashAdvanceStage(id, 'FAT_DISBURSEMENT', 'PENDING');
+      App.showToast(`Cash Advance ${id} disetujui Direksi dan diteruskan ke Tim FAT untuk pencairan transfer!`, 'success');
+    }
+    App.refreshCurrentTab();
+  },
+
   approveCADirector: async function(id) {
-    await DB.approveCashAdvanceDirector(id, { action: 'APPROVED', notes: 'Disetujui penuh oleh Direksi' });
+    await DB.advanceCashAdvanceStage(id, 'FAT_DISBURSEMENT', 'PENDING', { action: 'APPROVED', notes: 'Disetujui penuh oleh Direksi' });
     App.showToast(`Cash Advance ${id} disetujui Direksi dan diteruskan ke Tim FAT untuk pencairan dana transfer!`, 'success');
     App.refreshCurrentTab();
   },
@@ -1800,7 +1829,7 @@ window.ApprovalCenterModule = {
   rejectCA: async function(id) {
     const reason = prompt('Masukkan alasan penolakan Cash Advance:', 'Kebutuhan belum memenuhi kriteria pengajuan kasbon');
     if (reason !== null) {
-      await DB.approveCashAdvanceDirector(id, { action: 'REJECTED', notes: reason.trim() });
+      await DB.advanceCashAdvanceStage(id, 'REJECTED', 'REJECTED', { action: 'REJECTED', notes: reason.trim() });
       App.showToast(`Cash Advance ${id} ditolak.`, 'warn');
       App.refreshCurrentTab();
     }
@@ -1812,6 +1841,7 @@ window.ApprovalCenterModule = {
 
     this.currentAdjustingCAId = id;
     const user = DB.getCurrentUser();
+    const isFinanceStage = (ca.stage === 'FINANCE_VERIFICATION');
 
     let modalEl = document.getElementById('modal-ca-adjust');
     if (!modalEl) {
@@ -1821,11 +1851,14 @@ window.ApprovalCenterModule = {
       document.body.appendChild(modalEl);
     }
 
+    const stageTitle = isFinanceStage ? 'Verifikasi FAT Officer' : 'Otorisasi Direksi';
+    const nextTarget = isFinanceStage ? 'Direksi' : 'FAT';
+
     modalEl.innerHTML = `
       <div class="modal-box" style="max-width: 560px;">
         <div class="modal-header">
           <div>
-            <span class="text-mono-badge" style="color: #FCD34D;">Otorisasi Direksi</span>
+            <span class="text-mono-badge" style="color: #FCD34D;">${stageTitle}</span>
             <h3 class="modal-title" style="margin-top: 2px;">Setujui Kasbon dgn Penyesuaian Plafon</h3>
           </div>
           <button class="modal-close-btn" onclick="App.closeModal('modal-ca-adjust')">
@@ -1851,7 +1884,7 @@ window.ApprovalCenterModule = {
 
             <div class="form-group">
               <label class="form-label">Nominal Plafon Disetujui (Rp) <span style="color: #F87171;">*</span></label>
-              <input type="number" id="adjust-ca-amount" class="form-control" value="${ca.amountRequested}" min="10000" step="10000" required>
+              <input type="number" id="adjust-ca-amount" class="form-control" value="${ca.amountApproved || ca.amountRequested}" min="10000" step="10000" required>
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
@@ -1864,7 +1897,7 @@ window.ApprovalCenterModule = {
           <div class="modal-footer">
             <button type="button" class="btn-nalar-secondary" onclick="App.closeModal('modal-ca-adjust')">Batal</button>
             <button type="submit" class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B, #D97706); color: #000; font-weight: 700;">
-              ✓ Sahkan Penyesuaian & Teruskan ke FAT
+              ✓ Sahkan Penyesuaian & Teruskan ke ${nextTarget}
             </button>
           </div>
         </form>
@@ -1879,6 +1912,9 @@ window.ApprovalCenterModule = {
     const id = this.currentAdjustingCAId;
     if (!id) return;
 
+    const ca = DB.getCashAdvanceById(id);
+    if (!ca) return;
+
     const adjustedAmount = Number(document.getElementById('adjust-ca-amount')?.value || 0);
     const notes = document.getElementById('adjust-ca-notes')?.value || '';
 
@@ -1887,14 +1923,17 @@ window.ApprovalCenterModule = {
       return;
     }
 
-    await DB.approveCashAdvanceDirector(id, {
+    const nextStage = (ca.stage === 'FINANCE_VERIFICATION') ? 'DIRECTOR_REVIEW' : 'FAT_DISBURSEMENT';
+    const nextTargetName = (ca.stage === 'FINANCE_VERIFICATION') ? 'Direksi' : 'FAT';
+
+    await DB.advanceCashAdvanceStage(id, nextStage, 'PENDING', {
       action: 'APPROVED',
       adjustedAmount,
       notes: notes.trim()
     });
 
     App.closeModal('modal-ca-adjust');
-    App.showToast(`Cash Advance ${id} disetujui dengan plafon Rp ${adjustedAmount.toLocaleString('id-ID')} dan diteruskan ke FAT!`, 'success');
+    App.showToast(`Cash Advance ${id} disetujui dengan penyesuaian plafon Rp ${adjustedAmount.toLocaleString('id-ID')} dan diteruskan ke ${nextTargetName}!`, 'success');
     App.refreshCurrentTab();
   },
 
@@ -2173,7 +2212,7 @@ window.ApprovalCenterModule = {
 
     if (currentStage === 'MANAGER_APPROVAL') {
       await DB.advanceReimbursementStage(id, 'FINANCE_VERIFICATION', 'PENDING');
-      App.showToast(`Klaim Reimburse ${id} disetujui Manager Area & diteruskan ke Verifikasi Staf Ahli Keuangan!`, 'success');
+      App.showToast(`Klaim Reimburse ${id} disetujui Manager Area & diteruskan ke Verifikasi FAT Officer!`, 'success');
     } else if (currentStage === 'FINANCE_VERIFICATION') {
       await DB.advanceReimbursementStage(id, 'DIRECTOR_APPROVAL', 'PENDING');
       App.showToast(`Verifikasi Keuangan untuk ${id} selesai & diteruskan ke Direksi untuk otorisasi!`, 'success');

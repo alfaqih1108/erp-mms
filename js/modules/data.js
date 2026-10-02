@@ -4151,7 +4151,7 @@ class DatabaseManager {
         actorName: `${user.name} (${user.roleLabel})`,
         actorRole: user.roleLabel,
         timestamp: realTimestamp,
-        notes: finalStatus === 'REJECTED' ? `Ditolak oleh ${user.name}` : 'Kebutuhan telah divalidasi & disetujui untuk diteruskan ke Keuangan'
+        notes: finalStatus === 'REJECTED' ? `Ditolak oleh ${user.name}` : 'Kebutuhan telah divalidasi & disetujui untuk diteruskan ke FAT Officer'
       });
     } else if (pr.stage === 'FINANCE_VERIFICATION') {
       pr.approvalHistory.push({
@@ -4164,8 +4164,8 @@ class DatabaseManager {
         notes: finalStatus === 'REJECTED' 
           ? `Ditolak oleh ${user.name}` 
           : adjustmentData 
-          ? `✓ Disetujui dengan penyesuaian: ${pr.quantity} unit @ Rp ${pr.unitPrice.toLocaleString('id-ID')} (Total: Rp ${pr.totalPrice.toLocaleString('id-ID')}). Catatan: "${adjustmentData.notes}"` 
-          : 'Plafon anggaran terverifikasi sesuai pagu dana operasional',
+          ? `✓ Disetujui dengan penyesuaian oleh FAT Officer: ${pr.quantity} unit @ Rp ${pr.unitPrice.toLocaleString('id-ID')} (Total: Rp ${pr.totalPrice.toLocaleString('id-ID')}). Catatan: "${adjustmentData.notes}"` 
+          : 'Plafon anggaran & spesifikasi barang terverifikasi sah oleh FAT Officer, diteruskan ke Direksi',
         adjustment: adjustmentData
       });
     } else if (pr.stage === 'DIRECTOR_APPROVAL') {
@@ -4634,7 +4634,7 @@ class DatabaseManager {
       applicantEmail: (caData.applicantEmail || caData.email || user.email || '').trim(),
       email: (caData.applicantEmail || caData.email || user.email || '').trim(),
       reason: caData.reason || 'Kebutuhan dana tunai operasional mendesak',
-      stage: 'DIRECTOR_REVIEW',
+      stage: 'FINANCE_VERIFICATION',
       status: 'PENDING',
       createdAt: realTimestamp,
       disbursementDetails: null,
@@ -4682,7 +4682,7 @@ class DatabaseManager {
   isCashAdvanceEditable(ca) {
     if (!ca || typeof ca !== 'object') return false;
     if (ca.status !== 'PENDING') return false;
-    if (ca.stage !== 'DIRECTOR_REVIEW') return false;
+    if (ca.stage !== 'FINANCE_VERIFICATION' && ca.stage !== 'DIRECTOR_REVIEW') return false;
     const history = Array.isArray(ca.approvalHistory) ? ca.approvalHistory : [];
     const hasApproval = history.some(h => h.action === 'APPROVED' || h.action === 'ADJUSTED_AND_APPROVED');
     if (hasApproval) return false;
@@ -4750,50 +4750,64 @@ class DatabaseManager {
     return true;
   }
 
-  async approveCashAdvanceDirector(id, decisionData = {}) {
+  async advanceCashAdvanceStage(id, nextStage, finalStatus = 'PENDING', decisionData = {}) {
     const user = this.getCurrentUser();
     const ca = this.getCashAdvanceById(id);
     if (!ca) return false;
 
     const realTimestamp = getRealtimeTimestamp();
-    const isApproved = decisionData.action === 'APPROVED';
-    const isAdjusted = Boolean(decisionData.adjustedAmount && Number(decisionData.adjustedAmount) !== Number(ca.amountRequested));
+    const currentStage = ca.stage;
+    const isRejected = (finalStatus === 'REJECTED' || decisionData.action === 'REJECTED');
+    const isAdjusted = Boolean(decisionData.adjustedAmount && Number(decisionData.adjustedAmount) > 0 && Number(decisionData.adjustedAmount) !== Number(ca.amountRequested));
 
-    if (isApproved) {
-      if (isAdjusted) {
-        ca.amountApproved = Number(decisionData.adjustedAmount);
-      }
-      ca.stage = 'FAT_DISBURSEMENT';
-      ca.status = 'PENDING';
+    if (isAdjusted) {
+      ca.amountApproved = Number(decisionData.adjustedAmount);
+      ca.hasAdjustment = true;
+    }
 
-      ca.approvalHistory.push({
-        stage: 'DIRECTOR_APPROVAL',
-        level: 2,
-        action: isAdjusted ? 'ADJUSTED_AND_APPROVED' : 'APPROVED',
-        actorName: `${user.name} (${user.roleLabel})`,
-        actorRole: user.roleLabel,
-        timestamp: realTimestamp,
-        notes: isAdjusted 
-          ? `Disetujui dengan penyesuaian plafon: Rp ${Number(ca.amountApproved).toLocaleString('id-ID')} (Semula Rp ${Number(ca.amountRequested).toLocaleString('id-ID')}). Catatan: "${decisionData.notes || '-'}"`
-          : `Disetujui penuh oleh Direksi. Catatan: "${decisionData.notes || '-'}"`
-      });
-
-      this.addLog(`${user.name} menyetujui Cash Advance ${id} (Rp ${Number(ca.amountApproved).toLocaleString('id-ID')}) untuk pencairan FAT`, 'procurement');
-    } else {
+    if (isRejected) {
       ca.stage = 'REJECTED';
       ca.status = 'REJECTED';
-
+      const rejectionReason = decisionData.notes || 'Pengajuan kasbon ditolak.';
+      
       ca.approvalHistory.push({
-        stage: 'DIRECTOR_APPROVAL',
-        level: 2,
+        stage: currentStage,
         action: 'REJECTED',
         actorName: `${user.name} (${user.roleLabel})`,
         actorRole: user.roleLabel,
         timestamp: realTimestamp,
-        notes: `Ditolak oleh ${user.name}. Alasan: "${decisionData.notes || 'Kebutuhan belum memenuhi syarat pengajuan kasbon'}"`
+        notes: `Ditolak oleh ${user.name}. Alasan: "${rejectionReason}"`
       });
 
-      this.addLog(`${user.name} menolak Cash Advance ${id} pada ${realTimestamp}`, 'procurement');
+      this.addLog(`${user.name} (${user.roleLabel}) menolak Cash Advance ${id} pada ${realTimestamp}`, 'procurement');
+    } else {
+      ca.stage = nextStage;
+      ca.status = finalStatus;
+      ca.updatedAt = realTimestamp;
+
+      let actionLabel = isAdjusted ? 'ADJUSTED_AND_APPROVED' : 'APPROVED';
+      let stageNote = `Disetujui oleh ${user.name} (${user.roleLabel}).`;
+
+      if (currentStage === 'FINANCE_VERIFICATION') {
+        stageNote = isAdjusted 
+          ? `✓ Diverifikasi & disetujui dengan penyesuaian plafon oleh FAT Officer: Rp ${Number(ca.amountApproved).toLocaleString('id-ID')} (Semula Rp ${Number(ca.amountRequested).toLocaleString('id-ID')}). Catatan: "${decisionData.notes || 'Pagu anggaran dan justifikasi kasbon terverifikasi'}"`
+          : (decisionData.notes ? `Verifikasi FAT Selesai: "${decisionData.notes}"` : 'Plafon anggaran dan justifikasi kasbon terverifikasi sah oleh FAT Officer, diteruskan ke Direksi untuk otorisasi.');
+      } else if (currentStage === 'DIRECTOR_REVIEW') {
+        stageNote = isAdjusted
+          ? `✓ Otorisasi Direksi disetujui dengan penyesuaian plafon: Rp ${Number(ca.amountApproved).toLocaleString('id-ID')} (Semula Rp ${Number(ca.amountRequested).toLocaleString('id-ID')}). Catatan: "${decisionData.notes || 'Disetujui Direksi'}"`
+          : (decisionData.notes ? `Otorisasi Direksi Selesai: "${decisionData.notes}"` : 'Otorisasi kasbon disetujui penuh oleh Direksi, diteruskan ke FAT untuk pencairan transfer.');
+      }
+
+      ca.approvalHistory.push({
+        stage: currentStage,
+        action: actionLabel,
+        actorName: `${user.name} (${user.roleLabel})`,
+        actorRole: user.roleLabel,
+        timestamp: realTimestamp,
+        notes: stageNote
+      });
+
+      this.addLog(`${user.name} (${user.roleLabel}) menyetujui Cash Advance ${id} (Tahap: ${currentStage} ➔ ${nextStage}) pada ${realTimestamp}`, 'procurement');
     }
 
     this.save();
@@ -4819,6 +4833,15 @@ class DatabaseManager {
     });
 
     return true;
+  }
+
+  async approveCashAdvanceDirector(id, decisionData = {}) {
+    const isApproved = (decisionData.action !== 'REJECTED');
+    if (isApproved) {
+      return this.advanceCashAdvanceStage(id, 'FAT_DISBURSEMENT', 'PENDING', decisionData);
+    } else {
+      return this.advanceCashAdvanceStage(id, 'REJECTED', 'REJECTED', decisionData);
+    }
   }
 
   async disburseCashAdvanceFAT(id, disburseData = {}) {
@@ -5053,11 +5076,11 @@ class DatabaseManager {
     const id = `RMB-2026-${String(maxNum + 1).padStart(3, '0')}`;
     const realTimestamp = getRealtimeTimestamp();
 
-    // Jalur 1: Mitra & Lapangan (Perwakilan Yayasan, Surveyor, Maker) -> Review Manager Area -> Verif Staf Ahli Keuangan -> Otorisasi Direksi -> Transfer FAT
-    // Jalur 2: Tim Kantor & Internal -> Otorisasi Direksi -> Transfer FAT
+    // Jalur 1: Mitra & Lapangan (Perwakilan Yayasan, Surveyor, Maker) -> Review Manager Area -> Verif FAT Officer -> Otorisasi Direksi -> Transfer FAT
+    // Jalur 2: Tim Kantor & Internal -> Verif FAT Officer -> Otorisasi Direksi -> Transfer FAT
     const isFieldJalur1 = ['PERWAKILAN_YAYASAN', 'SURVEYOR', 'MAKER_YAYASAN', 'MAKER'].includes(user.role);
     const workflowType = isFieldJalur1 ? 'FIELD_JALUR_1' : 'INTERNAL_JALUR_2';
-    const initialStage = isFieldJalur1 ? 'MANAGER_APPROVAL' : 'DIRECTOR_APPROVAL';
+    const initialStage = isFieldJalur1 ? 'MANAGER_APPROVAL' : 'FINANCE_VERIFICATION';
 
     const unitPrice = Number(rmbData.unitPrice) || 0;
     const quantity = Number(rmbData.quantity) || 1;
@@ -5146,7 +5169,7 @@ class DatabaseManager {
     const history = Array.isArray(rmb.approvalHistory) ? rmb.approvalHistory : [];
     const hasApproval = history.some(h => h.action === 'APPROVED' || h.action === 'ADJUSTED_AND_APPROVED');
     if (hasApproval) return false;
-    const initialStage = (rmb.workflowType === 'FIELD_JALUR_1') ? 'MANAGER_APPROVAL' : 'DIRECTOR_APPROVAL';
+    const initialStage = (rmb.workflowType === 'FIELD_JALUR_1') ? 'MANAGER_APPROVAL' : 'FINANCE_VERIFICATION';
     if (rmb.stage !== initialStage) return false;
     return true;
   }
@@ -5257,9 +5280,9 @@ class DatabaseManager {
       let stageNote = `Disetujui oleh ${user.name} (${user.roleLabel}).`;
 
       if (currentStage === 'MANAGER_APPROVAL') {
-        stageNote = decisionData.notes ? `Disetujui Manager Area: "${decisionData.notes}"` : 'Telah diverifikasi dan disetujui Manager Area, diteruskan ke Staf Ahli Keuangan.';
+        stageNote = decisionData.notes ? `Disetujui Manager Area: "${decisionData.notes}"` : 'Telah diverifikasi dan disetujui Manager Area, diteruskan ke FAT Officer.';
       } else if (currentStage === 'FINANCE_VERIFICATION') {
-        stageNote = decisionData.notes ? `Verifikasi Keuangan Selesai: "${decisionData.notes}"` : 'Dokumen bukti bayar dan pagu anggaran terverifikasi sah oleh Staf Ahli Keuangan, diteruskan ke Direksi.';
+        stageNote = decisionData.notes ? `Verifikasi FAT Officer Selesai: "${decisionData.notes}"` : 'Dokumen bukti bayar, pagu anggaran, dan kesesuaian nota terverifikasi sah oleh FAT Officer, diteruskan ke Direksi.';
       } else if (currentStage === 'DIRECTOR_APPROVAL') {
         stageNote = decisionData.notes ? `Otorisasi Direksi Selesai: "${decisionData.notes}"` : 'Otorisasi Direksi disetujui penuh, diteruskan ke FAT Officer untuk pencairan transfer.';
       }
@@ -5695,13 +5718,13 @@ class DatabaseManager {
 
         steps.push({
           level: 2,
-          title: 'Verifikasi Anggaran Keuangan & FAT',
+          title: 'Verifikasi Plafon & Anggaran (FAT Officer)',
           subtitle: 'Pengecekan Plafon Biaya, Budget Satuan & Ketersediaan Dana',
-          actorName: histFin ? histFin.actorName : 'Sakhiyah Karomah Salam (Staf Ahli Keuangan) / Muhammad Imam Adamy (FAT)',
-          actorRole: 'Staf Ahli Keuangan & FAT Officer',
+          actorName: histFin ? histFin.actorName : 'Muhammad Imam Adamy (FAT Officer)',
+          actorRole: 'FAT Officer',
           timestamp: histFin ? histFin.timestamp : isFinCurrent ? '⏳ Sedang Menunggu Verifikasi Anggaran' : isFinRejected ? pr.createdAt : '⚪ Menunggu Giliran',
           status: histFin ? (histFin.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isFinRejected ? 'REJECTED' : isFinCurrent ? 'ACTIVE' : 'UPCOMING',
-          notes: histFin ? histFin.notes : isFinCurrent ? 'Sedang diverifikasi ketersediaan dana kas operasional' : 'Menunggu tahap sebelumnya'
+          notes: histFin ? histFin.notes : isFinCurrent ? 'Sedang diverifikasi ketersediaan dana kas operasional oleh FAT Officer' : 'Menunggu tahap sebelumnya'
         });
 
         const histDir = history.find(h => h.stage === 'DIRECTOR_APPROVAL' || h.level === 3);
@@ -5742,13 +5765,13 @@ class DatabaseManager {
 
         steps.push({
           level: 3,
-          title: 'Verifikasi Anggaran Keuangan & FAT',
-          subtitle: 'Pengecekan Plafon Biaya, Budget Satuan & Ketersediaan Dana',
-          actorName: hist3 ? hist3.actorName : 'Sakhiyah Karomah Salam (Staf Ahli Keuangan) / Muhammad Imam Adamy (FAT)',
-          actorRole: 'Staf Ahli Keuangan & FAT Officer',
+          title: 'Verifikasi Plafon & Anggaran (FAT Officer)',
+          subtitle: 'Pengecekan Plafon Biaya, Spesifikasi Barang & Ketersediaan Dana',
+          actorName: hist3 ? hist3.actorName : 'Muhammad Imam Adamy (FAT Officer)',
+          actorRole: 'FAT Officer',
           timestamp: hist3 ? hist3.timestamp : isStep3Current ? '⏳ Sedang Menunggu Verifikasi Anggaran' : isStep3Rejected ? pr.createdAt : '⚪ Menunggu Giliran',
           status: hist3 ? (hist3.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep3Rejected ? 'REJECTED' : isStep3Current ? 'ACTIVE' : 'UPCOMING',
-          notes: hist3 ? hist3.notes : isStep3Current ? 'Sedang diverifikasi ketersediaan dana kas operasional' : 'Menunggu tahap sebelumnya'
+          notes: hist3 ? hist3.notes : isStep3Current ? 'Sedang diverifikasi ketersediaan dana kas operasional oleh FAT Officer' : 'Menunggu tahap sebelumnya'
         });
 
         const hist4 = history.find(h => h.stage === 'DIRECTOR_APPROVAL' || (h.level === 4 && h.stage !== 'SUBMISSION' && h.stage !== 'MANAGER_APPROVAL' && h.stage !== 'FINANCE_VERIFICATION'));
@@ -5976,62 +5999,77 @@ class DatabaseManager {
         notes: hist1 ? hist1.notes : `Pengajuan Kasbon: Rp ${Number(ca.amountRequested).toLocaleString('id-ID')} untuk "${ca.title}". Target: ${ca.targetLocation}. Rekening: ${ca.bankName} ${ca.bankAccountNo} a.n ${ca.bankAccountName}`
       });
 
-      // Level 2: Director Approval
-      const hist2 = history.find(h => h.level === 2 || h.stage === 'DIRECTOR_APPROVAL');
-      const isStep2Current = (ca.stage === 'DIRECTOR_REVIEW' && ca.status === 'PENDING');
-      const isStep2Rejected = (ca.stage === 'REJECTED' && !hist2);
+      // Level 2: FAT Officer Verification
+      const histFin = history.find(h => h.stage === 'FINANCE_VERIFICATION');
+      const isFinCurrent = (ca.stage === 'FINANCE_VERIFICATION' && ca.status === 'PENDING');
+      const isFinRejected = (ca.stage === 'REJECTED' && !histFin);
       steps.push({
         level: 2,
-        title: 'Otorisasi & Persetujuan Direksi',
-        subtitle: 'Validasi Urgensi & Penetapan Plafon Kasbon oleh Direktur',
-        actorName: hist2 ? hist2.actorName : 'Muhammad Arrasyid (Direktur Ops) / Kody Suryo Nugroho (Direktur Keu)',
-        actorRole: 'Direktur Operasional / Keuangan',
-        timestamp: hist2 ? hist2.timestamp : isStep2Current ? '⏳ Sedang Menunggu Otorisasi Direksi' : isStep2Rejected ? ca.createdAt : '⚪ Menunggu Giliran',
-        status: hist2 ? (hist2.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isStep2Rejected ? 'REJECTED' : isStep2Current ? 'ACTIVE' : 'UPCOMING',
-        notes: hist2 ? hist2.notes : isStep2Current ? 'Sedang ditelaah oleh Jajaran Direksi' : 'Menunggu tahap sebelumnya'
+        title: 'Verifikasi Plafon & Justifikasi Biaya (FAT Officer)',
+        subtitle: 'Pemeriksaan Kesesuaian Nota/Justifikasi Kebutuhan & Batas Pagu Kasbon',
+        actorName: histFin ? histFin.actorName : 'Muhammad Imam Adamy (FAT Officer)',
+        actorRole: 'FAT Officer',
+        timestamp: histFin ? histFin.timestamp : isFinCurrent ? '⏳ Sedang Menunggu Verifikasi FAT Officer' : isFinRejected ? ca.createdAt : '⚪ Menunggu Giliran',
+        status: histFin ? (histFin.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isFinRejected ? 'REJECTED' : isFinCurrent ? 'ACTIVE' : 'UPCOMING',
+        notes: histFin ? histFin.notes : isFinCurrent ? 'Sedang diverifikasi rincian kebutuhan dan pagu anggaran oleh FAT Officer' : 'Menunggu tahap sebelumnya'
       });
 
-      // Level 3: FAT Disbursement / Transfer
-      const hist3 = history.find(h => h.level === 3 || h.stage === 'FAT_DISBURSEMENT');
-      const isStep3Current = (ca.stage === 'FAT_DISBURSEMENT' && ca.status === 'PENDING');
+      // Level 3: Director Approval
+      const histDir = history.find(h => h.stage === 'DIRECTOR_APPROVAL' || h.stage === 'DIRECTOR_REVIEW');
+      const isDirCurrent = (ca.stage === 'DIRECTOR_REVIEW' && ca.status === 'PENDING');
+      const isDirRejected = (ca.stage === 'REJECTED' && !histDir && ca.stage === 'DIRECTOR_REVIEW');
       steps.push({
         level: 3,
-        title: 'Pencairan & Transfer Dana Kas Operasional (FAT)',
-        subtitle: 'Eksekusi Transfer Bank ke Rekening Pemohon oleh Finance & Accounting',
-        actorName: hist3 ? hist3.actorName : 'Muhammad Imam Adamy (FAT Officer) / Sakhiyah Karomah Salam (Staf Ahli Keuangan)',
-        actorRole: 'FAT Officer & Keuangan',
-        timestamp: hist3 ? hist3.timestamp : isStep3Current ? '⏳ Menunggu Transfer Dana oleh FAT' : (ca.stage === 'REJECTED' ? '✕ Batal (Pengajuan Ditolak)' : '⚪ Menunggu Giliran'),
-        status: hist3 ? 'COMPLETED' : isStep3Current ? 'ACTIVE' : (ca.stage === 'REJECTED' ? 'REJECTED' : 'UPCOMING'),
-        notes: hist3 
-          ? hist3.notes 
-          : isStep3Current ? `Plafon Rp ${Number(ca.amountApproved || ca.amountRequested).toLocaleString('id-ID')} siap dicairkan ke rekening pemohon` : 'Menunggu otorisasi Direksi'
+        title: 'Otorisasi & Persetujuan Direksi',
+        subtitle: 'Validasi Urgensi & Penetapan Plafon Kasbon oleh Direktur',
+        actorName: histDir ? histDir.actorName : 'Muhammad Arrasyid (Direktur Ops) / Kody Suryo Nugroho (Direktur Keu)',
+        actorRole: 'Direksi Eksekutif',
+        timestamp: histDir ? histDir.timestamp : isDirCurrent ? '⏳ Sedang Menunggu Otorisasi Direksi' : isDirRejected ? ca.createdAt : '⚪ Menunggu Giliran',
+        status: histDir ? (histDir.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isDirRejected ? 'REJECTED' : isDirCurrent ? 'ACTIVE' : 'UPCOMING',
+        notes: histDir ? histDir.notes : isDirCurrent ? 'Sedang ditelaah dan diotorisasi oleh Jajaran Direksi' : 'Menunggu verifikasi FAT Officer'
       });
 
-      // Level 4: Settlement LPJ & Pengembalian Sisa Dana
-      const hist4Sub = history.find(h => h.stage === 'SETTLEMENT_SUBMISSION');
-      const hist4Ver = history.find(h => h.stage === 'SETTLEMENT_VERIFIED');
+      // Level 4: FAT Disbursement / Transfer
+      const histDisb = history.find(h => h.stage === 'FAT_DISBURSEMENT');
+      const isDisbCurrent = (ca.stage === 'FAT_DISBURSEMENT' && ca.status === 'PENDING');
+      steps.push({
+        level: 4,
+        title: 'Pencairan & Transfer Dana Kas Operasional (FAT)',
+        subtitle: 'Eksekusi Transfer Bank ke Rekening Pemohon oleh Finance & Accounting',
+        actorName: histDisb ? histDisb.actorName : 'Muhammad Imam Adamy (FAT Officer)',
+        actorRole: 'FAT Officer',
+        timestamp: histDisb ? histDisb.timestamp : isDisbCurrent ? '⏳ Menunggu Transfer Dana oleh FAT' : (ca.stage === 'REJECTED' ? '✕ Batal (Pengajuan Ditolak)' : '⚪ Menunggu Giliran'),
+        status: histDisb ? 'COMPLETED' : isDisbCurrent ? 'ACTIVE' : (ca.stage === 'REJECTED' ? 'REJECTED' : 'UPCOMING'),
+        notes: histDisb 
+          ? histDisb.notes 
+          : isDisbCurrent ? `Plafon Rp ${Number(ca.amountApproved || ca.amountRequested).toLocaleString('id-ID')} siap dicairkan ke rekening pemohon` : 'Menunggu otorisasi Direksi'
+      });
+
+      // Level 5: Settlement LPJ & Pengembalian Sisa Dana
+      const hist5Sub = history.find(h => h.stage === 'SETTLEMENT_SUBMISSION');
+      const hist5Ver = history.find(h => h.stage === 'SETTLEMENT_VERIFIED');
       const isWaitingLPJ = (ca.stage === 'DISBURSED' && ca.status === 'DISBURSED');
       const isLPJSubmitted = (ca.stage === 'SETTLEMENT_SUBMITTED' && ca.status === 'SETTLEMENT_PENDING');
       const isSettled = (ca.stage === 'SETTLED' || ca.status === 'SETTLED');
 
-      let step4Notes = 'Menunggu pencairan kasbon';
+      let step5Notes = 'Menunggu pencairan kasbon';
       if (isWaitingLPJ) {
-        step4Notes = 'Dana telah diterima pemohon. Menunggu penggunaan dana dan pengunggahan nota/kwitansi realisasi LPJ';
+        step5Notes = 'Dana telah diterima pemohon. Menunggu penggunaan dana dan pengunggahan nota/kwitansi realisasi LPJ';
       } else if (isLPJSubmitted) {
-        step4Notes = `Laporan LPJ dikirim oleh ${ca.settlement?.submittedBy || 'Pemohon'} (Total Realisasi: Rp ${Number(ca.settlement?.totalSpent || 0).toLocaleString('id-ID')}). Sedang diverifikasi Tim FAT.`;
+        step5Notes = `Laporan LPJ dikirim oleh ${ca.settlement?.submittedBy || 'Pemohon'} (Total Realisasi: Rp ${Number(ca.settlement?.totalSpent || 0).toLocaleString('id-ID')}). Sedang diverifikasi Tim FAT.`;
       } else if (isSettled) {
-        step4Notes = hist4Ver ? hist4Ver.notes : 'Laporan Realisasi & Nota Kwitansi Sah. Transaksi Kasbon Ditutup (Lunas & Selesai).';
+        step5Notes = hist5Ver ? hist5Ver.notes : 'Laporan Realisasi & Nota Kwitansi Sah. Transaksi Kasbon Ditutup (Lunas & Selesai).';
       }
 
       steps.push({
-        level: 4,
+        level: 5,
         title: 'Pelaporan Realisasi Belanja (LPJ) & Settlement Sisa Dana',
         subtitle: 'Unggah Kwitansi / Struk Nota & Rekonsiliasi Pengembalian / Reimbursement',
-        actorName: isSettled ? (hist4Ver ? hist4Ver.actorName : 'FAT Officer') : (hist4Sub ? hist4Sub.actorName : `${ca.employeeName} (Pemohon)`),
+        actorName: isSettled ? (hist5Ver ? hist5Ver.actorName : 'FAT Officer') : (hist5Sub ? hist5Sub.actorName : `${ca.employeeName} (Pemohon)`),
         actorRole: isSettled ? 'FAT Officer' : 'Pemohon & FAT',
-        timestamp: hist4Ver ? hist4Ver.timestamp : hist4Sub ? hist4Sub.timestamp : isWaitingLPJ ? '⏳ Menunggu Pemohon Mengunggah Nota LPJ' : '⚪ Menunggu Giliran',
+        timestamp: hist5Ver ? hist5Ver.timestamp : hist5Sub ? hist5Sub.timestamp : isWaitingLPJ ? '⏳ Menunggu Pemohon Mengunggah Nota LPJ' : '⚪ Menunggu Giliran',
         status: isSettled ? 'COMPLETED' : (isLPJSubmitted || isWaitingLPJ) ? 'ACTIVE' : 'UPCOMING',
-        notes: step4Notes,
+        notes: step5Notes,
         settlement: ca.settlement || null
       });
 
@@ -6053,6 +6091,155 @@ class DatabaseManager {
         stage: ca.stage,
         status: ca.status,
         settlement: ca.settlement,
+        steps
+      };
+    }
+
+    // 5. REIMBURSEMENT (KLAIM BIAYA OPERASIONAL)
+    if (typeUpper === 'RMB' || typeUpper === 'REIMBURSE' || typeUpper === 'REIMBURSEMENT') {
+      const rmb = this.getReimbursements().find(r => r.id === id);
+      if (!rmb) return null;
+
+      const isFieldJalur1 = (rmb.workflowType === 'FIELD_JALUR_1');
+      const history = Array.isArray(rmb.approvalHistory) ? rmb.approvalHistory : [];
+      const steps = [];
+
+      // Level 1: Submission
+      const hist1 = history.find(h => h.level === 1 || h.stage === 'SUBMISSION');
+      steps.push({
+        level: 1,
+        title: isFieldJalur1 ? 'Pengajuan Klaim Reimburse (Jalur Lapangan)' : 'Pengajuan Klaim Reimburse (Jalur Kantor)',
+        subtitle: 'Inisiasi Penggantian Biaya Operasional',
+        actorName: hist1 ? hist1.actorName : rmb.employeeName,
+        actorRole: hist1 ? hist1.actorRole : (rmb.employeeRole ? rmb.employeeRole.replace(/_/g, ' ') : 'Pemohon'),
+        department: rmb.department,
+        timestamp: hist1 ? hist1.timestamp : rmb.createdAt,
+        status: 'COMPLETED',
+        notes: hist1 ? hist1.notes : `Klaim: "${rmb.itemName}" (${rmb.quantity} unit @ Rp ${Number(rmb.unitPrice).toLocaleString('id-ID')}, Subtotal: Rp ${Number(rmb.subtotal).toLocaleString('id-ID')})`
+      });
+
+      // Jalur 1: Manager Area -> FAT Officer -> Direksi -> Transfer FAT
+      if (isFieldJalur1) {
+        const histMgr = history.find(h => h.stage === 'MANAGER_APPROVAL');
+        const isMgrCurrent = (rmb.stage === 'MANAGER_APPROVAL' && rmb.status === 'PENDING');
+        const isMgrRejected = (rmb.stage === 'REJECTED' && !histMgr);
+        steps.push({
+          level: 2,
+          title: 'Review & Validasi Manager Area',
+          subtitle: 'Pengecekan Urgensi & Validitas Pengeluaran Lapangan/Dapur',
+          actorName: histMgr ? histMgr.actorName : 'Manager Area Terkait (Rendy Seftiana / Bivaldie A.R. / Dian Ekawati)',
+          actorRole: 'Manager Area',
+          timestamp: histMgr ? histMgr.timestamp : isMgrCurrent ? '⏳ Sedang Menunggu Review Manager Area' : isMgrRejected ? rmb.createdAt : '⚪ Menunggu Giliran',
+          status: histMgr ? (histMgr.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isMgrRejected ? 'REJECTED' : isMgrCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histMgr ? histMgr.notes : isMgrCurrent ? 'Dalam antrean review Manager Area' : 'Menunggu tahap sebelumnya'
+        });
+
+        const histFin = history.find(h => h.stage === 'FINANCE_VERIFICATION');
+        const isFinCurrent = (rmb.stage === 'FINANCE_VERIFICATION' && rmb.status === 'PENDING');
+        const isFinRejected = (rmb.stage === 'REJECTED' && !histFin && rmb.stage === 'FINANCE_VERIFICATION');
+        steps.push({
+          level: 3,
+          title: 'Verifikasi Struk, Nota & Pagu (FAT Officer)',
+          subtitle: 'Pemeriksaan Kesesuaian Nota, Pagu Anggaran & Bukti Struk',
+          actorName: histFin ? histFin.actorName : 'Muhammad Imam Adamy (FAT Officer)',
+          actorRole: 'FAT Officer',
+          timestamp: histFin ? histFin.timestamp : isFinCurrent ? '⏳ Sedang Menunggu Verifikasi FAT Officer' : isFinRejected ? rmb.createdAt : '⚪ Menunggu Giliran',
+          status: histFin ? (histFin.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isFinRejected ? 'REJECTED' : isFinCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histFin ? histFin.notes : isFinCurrent ? 'Sedang diverifikasi bukti struk dan pagu anggaran oleh FAT Officer' : 'Menunggu tahap sebelumnya'
+        });
+
+        const histDir = history.find(h => h.stage === 'DIRECTOR_APPROVAL');
+        const isDirCurrent = (rmb.stage === 'DIRECTOR_APPROVAL' && rmb.status === 'PENDING');
+        const isDirRejected = (rmb.stage === 'REJECTED' && !histDir && rmb.stage === 'DIRECTOR_APPROVAL');
+        steps.push({
+          level: 4,
+          title: 'Otorisasi & Persetujuan Direksi',
+          subtitle: 'Pengesahan Pembayaran Reimburse oleh Direksi Eksekutif',
+          actorName: histDir ? histDir.actorName : 'Kody Suryo Nugroho (Direktur Keuangan) / Muhammad Arrasyid (Direktur Ops)',
+          actorRole: 'Direksi Eksekutif',
+          timestamp: histDir ? histDir.timestamp : isDirCurrent ? '⏳ Sedang Menunggu Otorisasi Direksi' : isDirRejected ? rmb.createdAt : '⚪ Menunggu Giliran',
+          status: histDir ? (histDir.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isDirRejected ? 'REJECTED' : isDirCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histDir ? histDir.notes : isDirCurrent ? 'Dalam antrean telaah dan pengesahan Direksi' : 'Menunggu tahap sebelumnya'
+        });
+
+        const histDisb = history.find(h => h.stage === 'FAT_DISBURSEMENT' || h.action === 'SETTLED');
+        const isDisbCurrent = (rmb.stage === 'FAT_DISBURSEMENT' && rmb.status === 'PENDING');
+        const isSettled = (rmb.stage === 'SETTLED' || rmb.status === 'SETTLED');
+        steps.push({
+          level: 5,
+          title: 'Pencairan & Transfer Penggantian Dana (FAT)',
+          subtitle: 'Eksekusi Transfer Bank ke Rekening Pemohon oleh Tim FAT',
+          actorName: histDisb ? histDisb.actorName : 'Muhammad Imam Adamy (FAT Officer)',
+          actorRole: 'FAT Officer',
+          timestamp: isSettled ? (rmb.disbursementDetails?.disbursedAt || histDisb?.timestamp || '✓ Selesai') : isDisbCurrent ? '⏳ Menunggu Transfer Dana oleh FAT' : (rmb.stage === 'REJECTED' ? '✕ Batal (Ditolak)' : '⚪ Menunggu Giliran'),
+          status: isSettled ? 'COMPLETED' : isDisbCurrent ? 'ACTIVE' : (rmb.stage === 'REJECTED' ? 'REJECTED' : 'UPCOMING'),
+          notes: isSettled ? (rmb.disbursementDetails?.notes || histDisb?.notes || 'Dana reimbursement telah ditransfer ke rekening pemohon.') : isDisbCurrent ? `Dana sebesar Rp ${Number(rmb.subtotal).toLocaleString('id-ID')} siap ditransfer ke ${rmb.bankName} (${rmb.bankAccountNo} a.n ${rmb.bankAccountName})` : 'Menunggu otorisasi Direksi'
+        });
+      }
+      // Jalur 2: FAT Officer -> Direksi -> Transfer FAT
+      else {
+        const histFin = history.find(h => h.stage === 'FINANCE_VERIFICATION');
+        const isFinCurrent = (rmb.stage === 'FINANCE_VERIFICATION' && rmb.status === 'PENDING');
+        const isFinRejected = (rmb.stage === 'REJECTED' && !histFin && rmb.stage === 'FINANCE_VERIFICATION');
+        steps.push({
+          level: 2,
+          title: 'Verifikasi Struk, Nota & Pagu (FAT Officer)',
+          subtitle: 'Pemeriksaan Kesesuaian Nota, Pagu Anggaran & Bukti Struk',
+          actorName: histFin ? histFin.actorName : 'Muhammad Imam Adamy (FAT Officer)',
+          actorRole: 'FAT Officer',
+          timestamp: histFin ? histFin.timestamp : isFinCurrent ? '⏳ Sedang Menunggu Verifikasi FAT Officer' : isFinRejected ? rmb.createdAt : '⚪ Menunggu Giliran',
+          status: histFin ? (histFin.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isFinRejected ? 'REJECTED' : isFinCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histFin ? histFin.notes : isFinCurrent ? 'Sedang diverifikasi bukti struk dan pagu anggaran oleh FAT Officer' : 'Menunggu tahap sebelumnya'
+        });
+
+        const histDir = history.find(h => h.stage === 'DIRECTOR_APPROVAL');
+        const isDirCurrent = (rmb.stage === 'DIRECTOR_APPROVAL' && rmb.status === 'PENDING');
+        const isDirRejected = (rmb.stage === 'REJECTED' && !histDir && rmb.stage === 'DIRECTOR_APPROVAL');
+        steps.push({
+          level: 3,
+          title: 'Otorisasi & Persetujuan Direksi',
+          subtitle: 'Pengesahan Pembayaran Reimburse oleh Direksi Eksekutif',
+          actorName: histDir ? histDir.actorName : 'Kody Suryo Nugroho (Direktur Keuangan) / Muhammad Arrasyid (Direktur Ops)',
+          actorRole: 'Direksi Eksekutif',
+          timestamp: histDir ? histDir.timestamp : isDirCurrent ? '⏳ Sedang Menunggu Otorisasi Direksi' : isDirRejected ? rmb.createdAt : '⚪ Menunggu Giliran',
+          status: histDir ? (histDir.action === 'REJECTED' ? 'REJECTED' : 'COMPLETED') : isDirRejected ? 'REJECTED' : isDirCurrent ? 'ACTIVE' : 'UPCOMING',
+          notes: histDir ? histDir.notes : isDirCurrent ? 'Dalam antrean telaah dan pengesahan Direksi' : 'Menunggu tahap sebelumnya'
+        });
+
+        const histDisb = history.find(h => h.stage === 'FAT_DISBURSEMENT' || h.action === 'SETTLED');
+        const isDisbCurrent = (rmb.stage === 'FAT_DISBURSEMENT' && rmb.status === 'PENDING');
+        const isSettled = (rmb.stage === 'SETTLED' || rmb.status === 'SETTLED');
+        steps.push({
+          level: 4,
+          title: 'Pencairan & Transfer Penggantian Dana (FAT)',
+          subtitle: 'Eksekusi Transfer Bank ke Rekening Pemohon oleh Tim FAT',
+          actorName: histDisb ? histDisb.actorName : 'Muhammad Imam Adamy (FAT Officer)',
+          actorRole: 'FAT Officer',
+          timestamp: isSettled ? (rmb.disbursementDetails?.disbursedAt || histDisb?.timestamp || '✓ Selesai') : isDisbCurrent ? '⏳ Menunggu Transfer Dana oleh FAT' : (rmb.stage === 'REJECTED' ? '✕ Batal (Ditolak)' : '⚪ Menunggu Giliran'),
+          status: isSettled ? 'COMPLETED' : isDisbCurrent ? 'ACTIVE' : (rmb.stage === 'REJECTED' ? 'REJECTED' : 'UPCOMING'),
+          notes: isSettled ? (rmb.disbursementDetails?.notes || histDisb?.notes || 'Dana reimbursement telah ditransfer ke rekening pemohon.') : isDisbCurrent ? `Dana sebesar Rp ${Number(rmb.subtotal).toLocaleString('id-ID')} siap ditransfer ke ${rmb.bankName} (${rmb.bankAccountNo} a.n ${rmb.bankAccountName})` : 'Menunggu otorisasi Direksi'
+        });
+      }
+
+      return {
+        type: 'REIMBURSE',
+        id: rmb.id,
+        title: rmb.itemName,
+        category: rmb.category,
+        subtotal: rmb.subtotal,
+        originalSubtotal: rmb.originalSubtotal,
+        quantity: rmb.quantity,
+        unitPrice: rmb.unitPrice,
+        purchaseDate: rmb.purchaseDate,
+        targetKitchen: rmb.targetKitchen,
+        bankName: rmb.bankName,
+        bankAccountNo: rmb.bankAccountNo,
+        bankAccountName: rmb.bankAccountName,
+        applicantEmail: rmb.applicantEmail || rmb.email || '',
+        requester: `${rmb.employeeName} (${rmb.department || rmb.employeeRole})`,
+        stage: rmb.stage,
+        status: rmb.status,
+        disbursementDetails: rmb.disbursementDetails,
         steps
       };
     }
@@ -6105,18 +6292,18 @@ class DatabaseManager {
     } else if (user.role === 'MANAGER_KEUANGAN') {
       count += prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && p.role !== 'FAT_OFFICER' && p.role !== 'STAFF_AHLI_KEUANGAN').length;
     } else if (user.role === 'FAT_OFFICER') {
-      count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
-      count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FAT_DISBURSEMENT').length;
-      count += prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED').length;
+      count += prs.filter(p => (p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION') || p.orderStatus === 'INVOICE_SUBMITTED').length;
+      count += cas.filter(c => (c.status === 'PENDING' && (c.stage === 'FINANCE_VERIFICATION' || c.stage === 'FAT_DISBURSEMENT')) || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
+      count += rmbs.filter(r => r.status === 'PENDING' && (r.stage === 'FINANCE_VERIFICATION' || r.stage === 'FAT_DISBURSEMENT')).length;
     } else if (user.role === 'STAFF_AHLI_KEUANGAN') {
       count += prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION').length;
       count += rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FINANCE_VERIFICATION').length;
+      count += cas.filter(c => c.status === 'PENDING' && c.stage === 'FINANCE_VERIFICATION').length;
     } else if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') {
       count += leaves.filter(l => l.status === 'PENDING').length;
-      count += prs.filter(p => p.status === 'PENDING').length;
-      count += cas.filter(c => (c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
+      count += prs.filter(p => p.status === 'PENDING' || p.orderStatus === 'INVOICE_SUBMITTED').length;
+      count += cas.filter(c => (c.status === 'PENDING' && (c.stage === 'FINANCE_VERIFICATION' || c.stage === 'DIRECTOR_REVIEW' || c.stage === 'FAT_DISBURSEMENT')) || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED')).length;
       count += rmbs.filter(r => r.status === 'PENDING').length;
-      count += prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED').length;
     }
 
     return count;
