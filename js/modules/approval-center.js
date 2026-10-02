@@ -9,7 +9,91 @@
 
 window.ApprovalCenterModule = {
   activeTab: 'PENDING', // 'PENDING' (Antrean) or 'HISTORY' (Riwayat Approval Saya)
-  activeFilter: 'ALL',   // 'ALL', 'LEAVE', 'TIMESHEET', 'PR', 'CA'
+  activeFilter: 'ALL',   // 'ALL', 'LEAVE', 'PR', 'CA', 'REIMBURSE', 'ORDER'
+  sortBy: 'DATE_DESC',   // 'DATE_DESC', 'DATE_ASC', 'AMOUNT_DESC', 'AMOUNT_ASC', 'NAME_ASC', 'NAME_DESC'
+  searchQuery: '',       // Search text query
+  filterDept: 'ALL',     // 'ALL' or specific department
+  filterKitchen: 'ALL',  // 'ALL' or specific kitchen
+  filterDateRange: 'ALL',// 'ALL', 'TODAY', '7_DAYS', 'THIS_MONTH', 'LAST_MONTH'
+  filterDecision: 'ALL', // 'ALL', 'APPROVED', 'ADJUSTED', 'REJECTED', 'FAILED' (History only)
+
+  // Helper: Format tanggal & jam ke format representasi Indonesia (WIB)
+  formatDisplayDateTime: function(str) {
+    if (!str || str === '-' || str === 'undefined' || str === 'null') return '-';
+    
+    // Format tanggal murni YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      const [y, m, d] = str.split('-');
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      const monthName = months[parseInt(m, 10) - 1] || m;
+      return `${parseInt(d, 10)} ${monthName} ${y}`;
+    }
+
+    // Format ISO / SQL Datetime
+    let dt;
+    if (typeof str === 'string' && str.includes(' ') && !str.includes('T')) {
+      dt = new Date(str.replace(' ', 'T'));
+    } else {
+      dt = new Date(str);
+    }
+
+    if (isNaN(dt.getTime())) return str;
+
+    const d = dt.getDate();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const monthName = months[dt.getMonth()];
+    const y = dt.getFullYear();
+    const hh = String(dt.getHours()).padStart(2, '0');
+    const mm = String(dt.getMinutes()).padStart(2, '0');
+
+    return `${d} ${monthName} ${y}, ${hh}:${mm} WIB`;
+  },
+
+  // Helper: Dapatkan angka epoch timestamp untuk sorting dan filter rentang waktu akurat
+  getTimestampNumber: function(str) {
+    if (!str || str === '-' || str === 'undefined' || str === 'null') return 0;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      const dt = new Date(str + 'T00:00:00');
+      return isNaN(dt.getTime()) ? 0 : dt.getTime();
+    }
+    let dt;
+    if (typeof str === 'string' && str.includes(' ') && !str.includes('T')) {
+      dt = new Date(str.replace(' ', 'T'));
+    } else {
+      dt = new Date(str);
+    }
+    return isNaN(dt.getTime()) ? 0 : dt.getTime();
+  },
+
+  // Helper: Pengecekan filter rentang waktu
+  isDateInSelectedRange: function(dateStr, range) {
+    if (!range || range === 'ALL') return true;
+    const ts = this.getTimestampNumber(dateStr);
+    if (!ts) return false;
+    
+    const itemDate = new Date(ts);
+    const now = new Date();
+    
+    if (range === 'TODAY') {
+      return itemDate.getFullYear() === now.getFullYear() &&
+             itemDate.getMonth() === now.getMonth() &&
+             itemDate.getDate() === now.getDate();
+    }
+    if (range === '7_DAYS') {
+      const diffMs = now.getTime() - ts;
+      return diffMs >= 0 && diffMs <= 7 * 24 * 60 * 60 * 1000;
+    }
+    if (range === 'THIS_MONTH') {
+      return itemDate.getFullYear() === now.getFullYear() &&
+             itemDate.getMonth() === now.getMonth();
+    }
+    if (range === 'LAST_MONTH') {
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      return itemDate.getFullYear() === lastMonth.getFullYear() &&
+             itemDate.getMonth() === lastMonth.getMonth();
+    }
+    return true;
+  },
 
   // Periksa apakah user memiliki hak akses fitur Export Data Pengajuan (Direksi & FAT)
   isExportAllowed: function(role) {
@@ -35,6 +119,56 @@ window.ApprovalCenterModule = {
   setFilter: function(filter) {
     this.activeFilter = filter;
     this.render(document.getElementById('main-content-area'));
+  },
+
+  setSortBy: function(val) {
+    this.sortBy = val;
+    this.renderList();
+  },
+
+  handleSearch: function(val) {
+    this.searchQuery = val || '';
+    this.renderList();
+  },
+
+  clearSearch: function() {
+    this.searchQuery = '';
+    const searchInput = document.getElementById('approval-search-input');
+    if (searchInput) searchInput.value = '';
+    this.render(document.getElementById('main-content-area'));
+  },
+
+  setFilterDept: function(val) {
+    this.filterDept = val;
+    this.renderList();
+  },
+
+  setFilterKitchen: function(val) {
+    this.filterKitchen = val;
+    this.renderList();
+  },
+
+  setFilterDateRange: function(val) {
+    this.filterDateRange = val;
+    this.renderList();
+  },
+
+  setFilterDecision: function(val) {
+    this.filterDecision = val;
+    this.renderList();
+  },
+
+  resetFilters: function() {
+    this.searchQuery = '';
+    this.sortBy = 'DATE_DESC';
+    this.filterDept = 'ALL';
+    this.filterKitchen = 'ALL';
+    this.filterDateRange = 'ALL';
+    this.filterDecision = 'ALL';
+    this.render(document.getElementById('main-content-area'));
+    if (window.App && App.showToast) {
+      App.showToast('Filter dan pengurutan telah direset ke default.', 'info');
+    }
   },
 
   // Mengumpulkan seluruh riwayat pengajuan yang telah diapprove / diproses secara spesifik oleh user aktif
@@ -273,66 +407,64 @@ window.ApprovalCenterModule = {
       }
     });
 
-    // Urutkan dari keputusan approval terbaru
-    return history.sort((a, b) => (b.decisionTimestamp || '').localeCompare(a.decisionTimestamp || ''));
+    return history;
   },
 
-  render: function(container) {
-    if (!container) return;
+  // Helper: Kumpulkan semua data antrean pending yang relevan dengan user aktif
+  getPendingItemsList: function(user) {
+    if (!user) return [];
 
-    const user = DB.getCurrentUser();
     const leaves = DB.getLeaves() || [];
     const prs = DB.getItemRequests() || [];
     const cas = DB.getCashAdvances() || [];
     const rmbs = DB.getReimbursements() || [];
 
-    // Filter Items Relevan sesuai Hak Akses Role (Antrean Pending)
     let relevantLeaves = [];
     let relevantPrs = [];
     let relevantCAs = [];
     let relevantRmbs = [];
     let relevantOrderInvoices = [];
 
-    // 1. Human Capital: Cuti tahap HC
+    // 1. Human Capital
     if (user.role === 'HUMAN_CAPITAL') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'HC_REVIEW' || l.stage === 'HC_FINAL'));
     }
-    // 2. Direktur Keuangan: Cuti Keuangan Tahap 1 + PR Tahap Direktur + Cash Advance Tahap Direktur + Reimburse Tahap Direktur
+    // 2. Direktur Keuangan
     else if (user.role === 'DIREKTUR_KEUANGAN') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_KEU_REVIEW' || l.stage === 'DIR_OPS_OR_KEU_REVIEW'));
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL');
       relevantCAs = cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW');
       relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'DIRECTOR_APPROVAL');
     }
-    // 3. Direktur Operasional: Cuti Manager/Keu + PR Tahap Direktur + Cash Advance Tahap Direktur + Reimburse Tahap Direktur
+    // 3. Direktur Operasional
     else if (user.role === 'DIREKTUR_OPERASIONAL') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING' && (l.stage === 'DIR_OPS_OR_KEU_REVIEW' || l.stage === 'DIR_KEU_REVIEW'));
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'DIRECTOR_APPROVAL');
       relevantCAs = cas.filter(c => c.status === 'PENDING' && c.stage === 'DIRECTOR_REVIEW');
       relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'DIRECTOR_APPROVAL');
     }
-    // 4. Manager Area: PR, Cuti & Reimburse Jalur 1 dari Surveyor, Perwakilan Yayasan, Staff Operasional, & Maker Dapur
+    // 4. Manager Area
     else if (user.role === 'MANAGER_AREA') {
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && (p.role === 'SURVEYOR' || p.role === 'PERWAKILAN_YAYASAN' || p.role === 'STAFF_OPERASIONAL' || p.role === 'MAKER_YAYASAN'));
       relevantLeaves = leaves.filter(l => l.status === 'PENDING' && l.stage === 'MANAGER_AREA_REVIEW' && (l.role === 'SURVEYOR' || l.role === 'PERWAKILAN_YAYASAN' || l.role === 'STAFF_OPERASIONAL' || l.role === 'MAKER_YAYASAN'));
       relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'MANAGER_APPROVAL' && r.workflowType === 'FIELD_JALUR_1');
     }
-    // 5. Manager Keuangan: PR dari area lain jika ada delegasi
+    // 5. Manager Keuangan
     else if (user.role === 'MANAGER_KEUANGAN') {
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'MANAGER_APPROVAL' && p.role !== 'FAT_OFFICER' && p.role !== 'STAFF_AHLI_KEUANGAN');
     }
-    // 6. FAT Officer: Pencairan Kasbon, Verifikasi LPJ Kasbon, Pencairan Reimbursement, & Settlement Invoice Vendor
+    // 6. FAT Officer
     else if (user.role === 'FAT_OFFICER') {
       relevantCAs = cas.filter(c => (c.status === 'PENDING' && c.stage === 'FAT_DISBURSEMENT') || (c.status === 'SETTLEMENT_PENDING' && c.stage === 'SETTLEMENT_SUBMITTED'));
       relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FAT_DISBURSEMENT');
       relevantOrderInvoices = prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED');
     }
-    // 7. Staff Ahli Keuangan: Verifikasi Anggaran PR & Verifikasi Reimburse Jalur 1
+    // 7. Staff Ahli Keuangan
     else if (user.role === 'STAFF_AHLI_KEUANGAN') {
       relevantPrs = prs.filter(p => p.status === 'PENDING' && p.stage === 'FINANCE_VERIFICATION');
       relevantRmbs = rmbs.filter(r => r.status === 'PENDING' && r.stage === 'FINANCE_VERIFICATION');
     }
-    // 8. Direktur Utama & Super Admin: Oversight Semua
+    // 8. Direktur Utama & Super Admin
     else if (user.role === 'DIREKTUR_UTAMA' || user.role === 'SUPER_ADMIN') {
       relevantLeaves = leaves.filter(l => l.status === 'PENDING');
       relevantPrs = prs.filter(p => p.status === 'PENDING');
@@ -341,18 +473,727 @@ window.ApprovalCenterModule = {
       relevantOrderInvoices = prs.filter(p => p.orderStatus === 'INVOICE_SUBMITTED');
     }
 
-    const totalPending = relevantLeaves.length + relevantPrs.length + relevantCAs.length + relevantRmbs.length + relevantOrderInvoices.length;
+    const items = [];
 
-    // Dapatkan data riwayat approval saya
-    const allHistory = this.getMyApprovalHistory(user);
-    const historyLeaves = allHistory.filter(h => h.type === 'LEAVE');
-    const historyPrs = allHistory.filter(h => h.type === 'PR');
-    const historyCAs = allHistory.filter(h => h.type === 'CA');
-    const historyRmbs = allHistory.filter(h => h.type === 'REIMBURSE');
-    const historyOrders = allHistory.filter(h => h.type === 'ORDER');
-    const totalHistory = allHistory.length;
+    // Normalisasi struktur item antrean
+    relevantLeaves.forEach(l => {
+      items.push({
+        _raw: l,
+        _type: 'LEAVE',
+        _id: l.id,
+        _dateStr: l.createdAt || l.startDate,
+        _timestamp: this.getTimestampNumber(l.createdAt || l.startDate),
+        _amount: 0,
+        _duration: Number(l.duration) || 0,
+        _employeeName: l.employeeName || '',
+        _department: l.department || l.role || '',
+        _targetKitchen: '',
+        _stage: l.stage || '',
+        _title: `${l.employeeName} — ${l.leaveType || l.type}`,
+        _searchKey: `${l.id} ${l.employeeName} ${l.leaveType || l.type} ${l.department || l.role} ${l.reason || ''} ${l.stage || ''}`.toLowerCase()
+      });
+    });
+
+    relevantPrs.forEach(p => {
+      items.push({
+        _raw: p,
+        _type: 'PR',
+        _id: p.id,
+        _dateStr: p.createdAt,
+        _timestamp: this.getTimestampNumber(p.createdAt),
+        _amount: Number(p.totalPrice) || 0,
+        _duration: 0,
+        _employeeName: p.employeeName || '',
+        _department: p.department || p.role || '',
+        _targetKitchen: p.targetKitchen || '',
+        _stage: p.stage || '',
+        _title: `${p.itemName} (${p.quantity} Unit)`,
+        _searchKey: `${p.id} ${p.employeeName} ${p.itemName} ${p.category || ''} ${p.department || p.role} ${p.targetKitchen || ''} ${p.reason || ''} ${p.stage || ''}`.toLowerCase()
+      });
+    });
+
+    relevantCAs.forEach(c => {
+      items.push({
+        _raw: c,
+        _type: 'CA',
+        _id: c.id,
+        _dateStr: c.createdAt,
+        _timestamp: this.getTimestampNumber(c.createdAt),
+        _amount: Number(c.amountApproved || c.amountRequested || c.amount) || 0,
+        _duration: 0,
+        _employeeName: c.employeeName || '',
+        _department: c.department || c.role || '',
+        _targetKitchen: c.targetLocation || c.targetExpense || '',
+        _stage: c.stage || '',
+        _title: `${c.title || c.purpose || 'Kasbon Operasional'}`,
+        _searchKey: `${c.id} ${c.employeeName} ${c.title || ''} ${c.purpose || ''} ${c.bankName || ''} ${c.department || c.role} ${c.targetLocation || c.targetExpense || ''} ${c.stage || ''}`.toLowerCase()
+      });
+    });
+
+    relevantRmbs.forEach(r => {
+      items.push({
+        _raw: r,
+        _type: 'REIMBURSE',
+        _id: r.id,
+        _dateStr: r.createdAt || r.purchaseDate,
+        _timestamp: this.getTimestampNumber(r.createdAt || r.purchaseDate),
+        _amount: Number(r.subtotal) || 0,
+        _duration: 0,
+        _employeeName: r.employeeName || '',
+        _department: r.department || r.employeeRole || r.role || '',
+        _targetKitchen: r.targetKitchen || '',
+        _stage: r.stage || '',
+        _title: `${r.itemName} (${r.quantity} Unit)`,
+        _searchKey: `${r.id} ${r.employeeName} ${r.itemName} ${r.category || ''} ${r.department || r.employeeRole || r.role} ${r.targetKitchen || ''} ${r.stage || ''}`.toLowerCase()
+      });
+    });
+
+    relevantOrderInvoices.forEach(p => {
+      items.push({
+        _raw: p,
+        _type: 'ORDER',
+        _id: p.id,
+        _dateStr: p.orderInvoice?.submittedAt || p.createdAt,
+        _timestamp: this.getTimestampNumber(p.orderInvoice?.submittedAt || p.createdAt),
+        _amount: Number(p.totalPrice) || 0,
+        _duration: 0,
+        _employeeName: p.employeeName || '',
+        _department: p.department || p.role || '',
+        _targetKitchen: p.targetKitchen || '',
+        _stage: 'SETTLEMENT',
+        _title: `Invoice: ${p.itemName}`,
+        _searchKey: `${p.id} ${p.employeeName} ${p.itemName} ${p.orderInvoice?.submittedBy || ''} ${p.orderInvoice?.fileName || ''} ${p.targetKitchen || ''}`.toLowerCase()
+      });
+    });
+
+    return items;
+  },
+
+  // Helper: Kumpulkan semua data riwayat approval dalam bentuk ternormalisasi
+  getNormalizedHistoryList: function(user) {
+    const rawHistory = this.getMyApprovalHistory(user);
+    return rawHistory.map(h => ({
+      _raw: h.raw,
+      _history: h,
+      _type: h.type,
+      _id: h.id,
+      _dateStr: h.decisionTimestamp || h.date,
+      _timestamp: this.getTimestampNumber(h.decisionTimestamp || h.date),
+      _amount: (function() {
+        if (h.type === 'PR' || h.type === 'ORDER') return Number(h.raw?.totalPrice) || 0;
+        if (h.type === 'CA') return Number(h.raw?.amountApproved || h.raw?.amountRequested || h.raw?.amount) || 0;
+        if (h.type === 'REIMBURSE') return Number(h.raw?.subtotal) || 0;
+        return 0;
+      })(),
+      _employeeName: h.employeeName || '',
+      _department: h.department || '',
+      _targetKitchen: (function() {
+        if (h.raw?.targetKitchen) return h.raw.targetKitchen;
+        if (h.raw?.targetLocation) return h.raw.targetLocation;
+        return '';
+      })(),
+      _stage: h.stage || '',
+      _decision: h.decision || h.status || '',
+      _title: h.title,
+      _searchKey: `${h.id} ${h.employeeName} ${h.title} ${h.summary || ''} ${h.department || ''} ${h.notes || ''} ${h.approverName || ''} ${h.stage || ''} ${h.decision || ''}`.toLowerCase()
+    }));
+  },
+
+  // Ekstraksi daftar opsi unik (Departemen & Dapur) untuk dropdown filter
+  getUniqueOptions: function(items) {
+    const depts = new Set();
+    const kitchens = new Set();
+    (items || []).forEach(item => {
+      if (item._department && item._department !== '-' && item._department !== 'undefined') {
+        depts.add(item._department);
+      }
+      if (item._targetKitchen && item._targetKitchen !== '-' && item._targetKitchen !== 'undefined' && item._targetKitchen !== 'Operasional') {
+        kitchens.add(item._targetKitchen);
+      }
+    });
+    return {
+      departments: Array.from(depts).sort(),
+      kitchens: Array.from(kitchens).sort()
+    };
+  },
+
+  // Universal Filter & Sort Engine
+  applyFilterAndSort: function(items, isHistory = false) {
+    let result = (items || []).slice();
+
+    // 1. Filter Sub-Pill Jenis Pengajuan
+    if (this.activeFilter !== 'ALL') {
+      result = result.filter(item => item._type === this.activeFilter);
+    }
+
+    // 2. Filter Keyword Search
+    if (this.searchQuery && this.searchQuery.trim()) {
+      const q = this.searchQuery.toLowerCase().trim();
+      result = result.filter(item => item._searchKey.includes(q));
+    }
+
+    // 3. Filter Departemen
+    if (this.filterDept && this.filterDept !== 'ALL') {
+      result = result.filter(item => item._department === this.filterDept);
+    }
+
+    // 4. Filter Dapur
+    if (this.filterKitchen && this.filterKitchen !== 'ALL') {
+      result = result.filter(item => item._targetKitchen === this.filterKitchen);
+    }
+
+    // 5. Filter Rentang Waktu
+    if (this.filterDateRange && this.filterDateRange !== 'ALL') {
+      result = result.filter(item => this.isDateInSelectedRange(item._dateStr, this.filterDateRange));
+    }
+
+    // 6. Filter Keputusan (Khusus History)
+    if (isHistory && this.filterDecision && this.filterDecision !== 'ALL') {
+      result = result.filter(item => {
+        const dec = item._decision;
+        const isFailed = (dec === 'GAGAL_PENGIRIMAN' || item._raw?.orderStatus === 'GAGAL_PENGIRIMAN');
+        const isAdjusted = (!isFailed && (dec === 'ADJUSTED_APPROVED' || item._raw?.hasAdjustment));
+        const isRejected = (!isFailed && (dec === 'REJECTED' || item._raw?.status === 'REJECTED'));
+        const isApproved = (!isFailed && !isRejected && !isAdjusted);
+
+        if (this.filterDecision === 'APPROVED') return isApproved;
+        if (this.filterDecision === 'ADJUSTED') return isAdjusted;
+        if (this.filterDecision === 'REJECTED') return isRejected;
+        if (this.filterDecision === 'FAILED') return isFailed;
+        return true;
+      });
+    }
+
+    // 7. Pengurutan (Sort By)
+    result.sort((a, b) => {
+      if (this.sortBy === 'DATE_DESC') {
+        return (b._timestamp || 0) - (a._timestamp || 0);
+      }
+      if (this.sortBy === 'DATE_ASC') {
+        return (a._timestamp || 0) - (b._timestamp || 0);
+      }
+      if (this.sortBy === 'AMOUNT_DESC') {
+        return (b._amount || 0) - (a._amount || 0);
+      }
+      if (this.sortBy === 'AMOUNT_ASC') {
+        return (a._amount || 0) - (b._amount || 0);
+      }
+      if (this.sortBy === 'NAME_ASC') {
+        return (a._employeeName || '').localeCompare(b._employeeName || '');
+      }
+      if (this.sortBy === 'NAME_DESC') {
+        return (b._employeeName || '').localeCompare(a._employeeName || '');
+      }
+      return 0;
+    });
+
+    return result;
+  },
+
+  // =========================================================================
+  // CARD RENDERERS (Clean Indonesian Datetime & Action Handlers)
+  // =========================================================================
+
+  renderPendingLeaveCard: function(l) {
+    const formattedDate = this.formatDisplayDateTime(l.createdAt || l.startDate);
+    const stageLabel = l.stage === 'DIR_KEU_REVIEW' ? 'Review Direktur Keuangan' 
+      : l.stage === 'DIR_OPS_OR_KEU_REVIEW' ? 'Review Direktur Ops/Keu' 
+      : l.stage === 'MANAGER_AREA_REVIEW' ? 'Review Manager Area' 
+      : 'Verifikasi Final HC';
+
+    return `
+      <div class="nalar-card aura-box-violet" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #8B5CF6; margin-bottom: 0;">
+        <div style="display: flex; align-items: flex-start; gap: 16px;">
+          <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.35); display: flex; align-items: center; justify-content: center; color: #A78BFA; flex-shrink: 0;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
+          </div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span class="text-mono-badge" style="color: #A78BFA;">CUTI / IZIN · ${l.id}</span>
+              <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${formattedDate}</span>
+              <span style="font-size: 10px; color: #C4B5FD; background: rgba(139,92,246,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                Tahap: ${stageLabel}
+              </span>
+            </div>
+
+            <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
+              ${l.employeeName} — <span style="color: #A78BFA;">${l.leaveType || l.type}</span> (${l.duration} Hari)
+            </h4>
+
+            <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
+              Periode: <strong>${this.formatDisplayDateTime(l.startDate)}</strong> s/d <strong>${this.formatDisplayDateTime(l.endDate)}</strong> · Departemen: <strong>${l.department || l.role}</strong>
+            </div>
+
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+              Alasan: "${l.reason || '-'}" · Kontak Darurat: <strong>${l.emergencyContact || '-'}</strong>
+            </div>
+
+            ${(l.attachmentUrl || l.attachmentName) ? `
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <button type="button" class="btn-preview-link" onclick="CutiModule.openAttachmentModal('${l.id}')" style="color: #A78BFA; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                  <span>📎 Lihat Lampiran Surat Dokter ↗</span>
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+
+        <!-- Action Buttons per Stage -->
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectLeave('${l.id}')">
+            ✕ Tolak
+          </button>
+          <button class="btn-nalar-primary" style="background: #A78BFA; color: #1E1B4B; font-weight: 600;" onclick="ApprovalCenterModule.approveLeave('${l.id}', '${l.stage}')">
+            ✓ Setujui Pengajuan
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  renderPendingPRCard: function(p) {
+    const formattedDate = this.formatDisplayDateTime(p.createdAt);
+    const isManagerStage = (p.stage === 'MANAGER_APPROVAL');
+    const isFinanceStage = (p.stage === 'FINANCE_VERIFICATION');
+    const isDirectorStage = (p.stage === 'DIRECTOR_APPROVAL');
+
+    const stageName = isManagerStage 
+      ? '1. Review Manager Area' 
+      : isFinanceStage 
+      ? '2. Verifikasi Anggaran Staf Ahli Keuangan' 
+      : '3. Otorisasi Direksi (Penerbitan PO)';
+
+    return `
+      <div class="nalar-card aura-box-amber" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #F59E0B; margin-bottom: 0;">
+        <div style="display: flex; align-items: flex-start; gap: 16px;">
+          <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); display: flex; align-items: center; justify-content: center; color: #FCD34D; flex-shrink: 0; font-size: 20px;">
+            🛒
+          </div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span class="text-mono-badge" style="color: #FCD34D;">PR · ${p.id}</span>
+              <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${formattedDate}</span>
+              <span style="font-size: 10px; color: #FDE68A; background: rgba(245,158,11,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                Tahap: ${stageName}
+              </span>
+            </div>
+
+            <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
+              ${p.itemName} (${p.quantity} Unit) — <span style="font-family: var(--font-mono); color: #FCD34D;">Rp ${(Number(p.totalPrice) || 0).toLocaleString('id-ID')}</span>
+            </h4>
+
+            <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
+              Pemohon: <strong>${p.employeeName}</strong> (${p.role}) · Kategori: <strong style="color: #60A5FA;">${p.category}</strong>
+            </div>
+
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+              Target Dapur: <strong>${p.targetKitchen || '-'}</strong> · Alasan: "${p.reason || '-'}"
+            </div>
+
+            ${(p.attachmentUrl || p.attachmentName) ? `
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <button type="button" class="btn-preview-link" onclick="PengajuanBarangModule.openLightbox('${p.id}', '${p.itemName}')" style="color: #60A5FA; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                  <span>📎 Lihat Foto Barang / Estimasi Harga ↗</span>
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+
+        <!-- Action Buttons per Stage -->
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectPR('${p.id}')">
+            ✕ Tolak
+          </button>
+
+          ${(isFinanceStage || isDirectorStage) ? `
+            <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustPRModal('${p.id}')">
+              ✏️ Setujui dgn Penyesuaian
+            </button>
+          ` : ''}
+
+          ${isManagerStage ? `
+            <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); border-color: #60A5FA; color: #fff; font-weight: 600;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
+              ✓ Setujui & Teruskan ke Staf Ahli Keu
+            </button>
+          ` : isFinanceStage ? `
+            <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
+              ✓ Verifikasi Sah & Teruskan ke Direksi
+            </button>
+          ` : `
+            <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 700;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
+              👑 Otorisasi & Terbitkan PO Resmi
+            </button>
+          `}
+        </div>
+      </div>
+    `;
+  },
+
+  renderPendingCACard: function(c) {
+    const formattedDate = this.formatDisplayDateTime(c.createdAt);
+    const isDirectorStage = (c.stage === 'DIRECTOR_REVIEW');
+    const isDisburseStage = (c.stage === 'FAT_DISBURSEMENT');
+    const isSettlementReviewStage = (c.stage === 'SETTLEMENT_SUBMITTED');
+
+    const stageName = isDirectorStage 
+      ? '1. Review & Otorisasi Direksi' 
+      : isDisburseStage 
+      ? '2. Pencairan Kasir FAT' 
+      : '3. Verifikasi LPJ Kasir FAT';
+
+    return `
+      <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #10B981; margin-bottom: 0;">
+        <div style="display: flex; align-items: flex-start; gap: 16px;">
+          <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; color: #34D399; flex-shrink: 0; font-size: 20px;">
+            💵
+          </div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span class="text-mono-badge" style="color: #34D399;">KASBON · ${c.id}</span>
+              <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${formattedDate}</span>
+              <span style="font-size: 10px; color: #A7F3D0; background: rgba(16,185,129,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                Tahap: ${stageName}
+              </span>
+            </div>
+
+            <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
+              ${c.title || c.purpose || 'Kasbon Operasional'} — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(Number(c.amountApproved || c.amountRequested || c.amount) || 0).toLocaleString('id-ID')}</span>
+            </h4>
+
+            <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
+              Pemohon: <strong>${c.employeeName}</strong> (${c.department || c.role}) · Target Lokasi: <strong style="color: #FCD34D;">${c.targetLocation || c.targetExpense || 'Operasional'}</strong>
+            </div>
+
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+              💳 Rekening Penerima: <strong>${c.bankName}</strong> (${c.bankAccountNo} a.n ${c.bankAccountName})
+            </div>
+
+            ${(c.attachmentUrl || c.attachmentName) ? `
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <button type="button" class="btn-preview-link" onclick="CashAdvanceModule.openLightbox('${c.id}')" style="color: #34D399; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                  <span>📎 Lihat Rincian Kasbon / LPJ ↗</span>
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+
+        <!-- Action Buttons per Stage -->
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          ${isDirectorStage ? `
+            <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectCA('${c.id}')">
+              ✕ Tolak
+            </button>
+            <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustCAModal('${c.id}')">
+              ✏️ Setujui dgn Penyesuaian
+            </button>
+            <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 600;" onclick="ApprovalCenterModule.approveCADirector('${c.id}')">
+              ✓ Setujui Kasbon
+            </button>
+          ` : isDisburseStage ? `
+            <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseCAModal('${c.id}')">
+              💸 Transfer & Cairkan Dana
+            </button>
+          ` : isSettlementReviewStage ? `
+            <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%); border-color: #60A5FA; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openVerifyCASettlementModal('${c.id}')">
+              🔍 Verifikasi LPJ & Tutup Kasbon
+            </button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  },
+
+  renderPendingRMBCard: function(r) {
+    const formattedDate = this.formatDisplayDateTime(r.createdAt);
+    const isManagerStage = (r.stage === 'MANAGER_APPROVAL');
+    const isFinanceStage = (r.stage === 'FINANCE_VERIFICATION');
+    const isDirectorStage = (r.stage === 'DIRECTOR_APPROVAL');
+    const isFATStage = (r.stage === 'FAT_DISBURSEMENT');
+
+    const stageName = isManagerStage 
+      ? '1. Review Manager Area' 
+      : isFinanceStage 
+      ? '2. Verifikasi Anggaran Keuangan' 
+      : isDirectorStage 
+      ? '3. Otorisasi Direksi' 
+      : '4. Pencairan Dana FAT';
+
+    return `
+      <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #10B981; margin-bottom: 0;">
+        <div style="display: flex; align-items: flex-start; gap: 16px;">
+          <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; color: #34D399; flex-shrink: 0; font-size: 20px;">
+            💸
+          </div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span class="text-mono-badge" style="color: #34D399;">REIMBURSE · ${r.id}</span>
+              <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${formattedDate}</span>
+              <span style="font-size: 10px; color: #A7F3D0; background: rgba(16,185,129,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                Tahap: ${stageName}
+              </span>
+            </div>
+
+            <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
+              ${r.itemName} (${r.quantity} Unit) — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(Number(r.subtotal) || 0).toLocaleString('id-ID')}</span>
+            </h4>
+
+            <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
+              Pemohon: <strong>${r.employeeName}</strong> (${r.department || r.employeeRole || r.role}) · Dapur: <strong style="color: #FCD34D;">${r.targetKitchen || '-'}</strong>
+            </div>
+
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+              💳 Rekening Transfer: <strong>${r.bankName || '-'}</strong> (${r.bankAccountNo || '-'} a.n ${r.bankAccountName || r.employeeName}) · Tgl Beli: <strong>${this.formatDisplayDateTime(r.purchaseDate) || '-'}</strong>
+            </div>
+
+            ${(r.attachmentUrl || r.attachmentName) ? `
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <button type="button" class="btn-preview-link" onclick="ReimburseModule.previewAttachment('${r.id}')" style="color: #34D399; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                  <span>📎 Lihat Bukti Struk/Nota Pembelian ↗</span>
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+
+        <!-- Action Buttons per Stage -->
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectReimburse('${r.id}')">
+            ✕ Tolak
+          </button>
+          
+          ${(isFinanceStage || isDirectorStage) ? `
+            <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustReimburseModal('${r.id}')">
+              ✏️ Setujui dgn Penyesuaian
+            </button>
+          ` : ''}
+
+          ${isManagerStage ? `
+            <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); border-color: #60A5FA; color: #fff; font-weight: 600;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
+              ✓ Setujui & Teruskan ke Staf Keuangan
+            </button>
+          ` : isFinanceStage ? `
+            <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
+              ✓ Verifikasi Sah & Teruskan ke Direksi
+            </button>
+          ` : isDirectorStage ? `
+            <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
+              👑 Otorisasi & Teruskan ke FAT
+            </button>
+          ` : isFATStage ? `
+            <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseReimburseModal('${r.id}')">
+              💸 Transfer Pembayaran Reimburse
+            </button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  },
+
+  renderPendingOrderCard: function(p) {
+    const formattedDate = this.formatDisplayDateTime(p.orderInvoice?.submittedAt || p.createdAt);
+
+    return `
+      <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #3B82F6; margin-bottom: 0;">
+        <div style="display: flex; align-items: flex-start; gap: 16px;">
+          <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); display: flex; align-items: center; justify-content: center; color: #60A5FA; flex-shrink: 0; font-size: 20px;">
+            📄
+          </div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span class="text-mono-badge" style="color: #60A5FA;">INVOICE PESANAN · ${p.id}</span>
+              <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${formattedDate}</span>
+              <span style="font-size: 10px; color: #93C5FD; background: rgba(59,130,246,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
+                Tahap: Settlement Transfer FAT ke Vendor
+              </span>
+            </div>
+
+            <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
+              Tagihan Invoice: ${p.itemName} (${p.quantity} Unit) — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(Number(p.totalPrice) || 0).toLocaleString('id-ID')}</span>
+            </h4>
+
+            <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
+              Pemohon PR: <strong>${p.employeeName}</strong> · Lokasi Dapur: <strong style="color: #FCD34D;">${p.targetKitchen || '-'}</strong>
+            </div>
+
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+              Pengunggah Tagihan: <strong style="color: #CBD5E1;">${p.orderInvoice?.submittedBy || 'Operator Pesanan'}</strong> · Berkas: <strong style="color: #60A5FA;">${p.orderInvoice?.fileName || 'Invoice/Kuitansi'}</strong>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+              <button type="button" class="btn-preview-link" onclick="ApprovalCenterModule.previewOrderInvoice('${p.id}')" style="color: #60A5FA; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                <span>📎 Pratinjau Berkas Invoice Vendor ↗</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseOrderInvoiceModal('${p.id}')">
+            💸 Bayar Vendor & Upload Bukti Transfer (Settlement)
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  renderHistoryCard: function(item, user) {
+    const isLeave = (item.type === 'LEAVE');
+    const isTS = (item.type === 'TIMESHEET');
+    const isPR = (item.type === 'PR');
+    const isCA = (item.type === 'CA');
+    const isRMB = (item.type === 'REIMBURSE');
+
+    const themeColor = isLeave ? '#A78BFA' : isTS ? '#60A5FA' : isPR ? '#FCD34D' : isCA ? '#34D399' : '#10B981';
+    const typeLabel = isLeave ? 'CUTI / IZIN' : isTS ? 'TIMESHEET' : isPR ? 'PENGADAAN BARANG (PR)' : isCA ? 'CASH ADVANCE (KASBON)' : 'KLAIM REIMBURSEMENT';
+
+    const isFailedDelivery = (item.decision === 'GAGAL_PENGIRIMAN' || item.status === 'GAGAL_PENGIRIMAN' || (item.raw && item.raw.orderStatus === 'GAGAL_PENGIRIMAN'));
+    const isApproved = !isFailedDelivery && (item.decision === 'APPROVED' || item.status === 'APPROVED' || item.status === 'COMPLETED' || item.status === 'SETTLED');
+    const isRejected = !isFailedDelivery && (item.decision === 'REJECTED' || item.status === 'REJECTED');
+    const isAdjusted = !isFailedDelivery && (item.decision === 'ADJUSTED_APPROVED');
+
+    const decisionBadgeBg = isFailedDelivery ? 'rgba(239, 68, 68, 0.18)' : isRejected ? 'rgba(239, 68, 68, 0.15)' : isAdjusted ? 'rgba(245, 158, 11, 0.15)' : 'rgba(52, 211, 153, 0.15)';
+    const decisionBadgeColor = isFailedDelivery ? '#F87171' : isRejected ? '#F87171' : isAdjusted ? '#FCD34D' : '#34D399';
+    const decisionBadgeBorder = isFailedDelivery ? 'rgba(239, 68, 68, 0.5)' : isRejected ? 'rgba(239, 68, 68, 0.35)' : isAdjusted ? 'rgba(245, 158, 11, 0.35)' : 'rgba(52, 211, 153, 0.35)';
+    const decisionText = isFailedDelivery ? '⚠️ Gagal Pengiriman' : isRejected ? '✕ Ditolak' : isAdjusted ? '✏️ Disetujui Dgn Penyesuaian' : '✓ Disetujui / Tervalidasi';
+
+    const formattedDecisionTime = this.formatDisplayDateTime(item.decisionTimestamp);
+    const formattedSubmitDate = this.formatDisplayDateTime(item.date);
+
+    return `
+      <div class="nalar-card" style="border-left: 3px solid ${isFailedDelivery ? '#EF4444' : themeColor}; padding: 18px 22px; margin-bottom: 0;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px;">
+          
+          <!-- Info Utama -->
+          <div style="flex: 1; min-width: 280px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+              <span class="text-mono-badge" style="color: ${themeColor}; font-size: 11px;">
+                ${typeLabel} · ${item.id}
+              </span>
+              
+              <!-- Badge Keputusan -->
+              <span style="font-size: 11px; font-weight: 700; color: ${decisionBadgeColor}; background: ${decisionBadgeBg}; border: 1px solid ${decisionBadgeBorder}; padding: 2px 8px; border-radius: 4px; font-family: var(--font-mono);">
+                ${decisionText}
+              </span>
+
+              <!-- Badge Tanggal & Jam Approval -->
+              <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: #34D399; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 10px; border-radius: 4px; font-family: var(--font-mono);">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span>Waktu Approval: <strong>${formattedDecisionTime}</strong></span>
+              </span>
+
+              ${item.date ? `
+                <span style="font-size: 10.5px; color: var(--text-muted); font-family: var(--font-mono);">
+                  (Diajukan: ${formattedSubmitDate})
+                </span>
+              ` : ''}
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px; margin: 4px 0 6px 0;">
+              <div style="width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                ${(item.employeeName || 'U').split(' ').map(n=>n[0]).join('').slice(0, 2)}
+              </div>
+              <h4 style="font-size: 15.5px; color: #fff; font-weight: 600; margin: 0;">
+                ${item.title}
+              </h4>
+            </div>
+
+            <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px;">
+              ${item.summary}
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+              <span style="background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px; color: #E2E8F0;">
+                👤 Pemohon: <strong style="color: #60A5FA;">${item.employeeName}</strong> (${item.department || '-'})
+              </span>
+              <span>·</span>
+              <span>Diproses oleh: <strong style="color: #FCD34D;">${item.approverName || user.name}</strong></span>
+              ${item.notes && item.notes !== '-' ? `
+                <span>·</span>
+                <span>Catatan: <em style="color: #94A3B8;">"${item.notes}"</em></span>
+              ` : ''}
+              ${isLeave && item.raw && (item.raw.attachmentName || item.raw.attachmentUrl) ? `
+                <span>·</span>
+                <button type="button" class="btn-preview-link" style="color: #A78BFA; background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="CutiModule.openAttachmentModal('${item.id}')">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                  <span>📎 Lihat Lampiran ↗</span>
+                </button>
+              ` : ''}
+              ${isRMB && item.raw && (item.raw.attachmentUrl || item.raw.attachmentName) ? `
+                <span>·</span>
+                <button type="button" class="btn-preview-link" style="color: #34D399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="ReimburseModule.previewAttachment('${item.id}')">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  <span>Lihat Struk ↗</span>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- Tombol Action Detail Tracker -->
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="btn-nalar-secondary" style="padding: 6px 12px; font-size: 11.5px; border-color: rgba(255,255,255,0.15);" onclick="${isRMB ? `ReimburseModule.openDetailModal('${item.id}')` : isCA ? `App.openApprovalTracker('CA', '${item.id}')` : `App.showApprovalTracker('${item.type.toLowerCase()}', '${item.id}')`}">
+              🔍 Cek Alur & Rincian
+            </button>
+          </div>
+
+        </div>
+      </div>
+    `;
+  },
+
+  // =========================================================================
+  // MAIN RENDER & DYNAMIC LIST UPDATE
+  // =========================================================================
+
+  render: function(container) {
+    if (!container) return;
+
+    const user = DB.getCurrentUser();
+    const pendingItems = this.getPendingItemsList(user);
+    const historyItems = this.getNormalizedHistoryList(user);
+
+    const totalPending = pendingItems.length;
+    const totalHistory = historyItems.length;
+
+    // Hitung count per sub-tipe untuk badge pill
+    const countPendingLeaves = pendingItems.filter(i => i._type === 'LEAVE').length;
+    const countPendingPrs = pendingItems.filter(i => i._type === 'PR').length;
+    const countPendingCAs = pendingItems.filter(i => i._type === 'CA').length;
+    const countPendingRmbs = pendingItems.filter(i => i._type === 'REIMBURSE').length;
+    const countPendingOrders = pendingItems.filter(i => i._type === 'ORDER').length;
+
+    const countHistoryLeaves = historyItems.filter(i => i._type === 'LEAVE').length;
+    const countHistoryPrs = historyItems.filter(i => i._type === 'PR').length;
+    const countHistoryCAs = historyItems.filter(i => i._type === 'CA').length;
+    const countHistoryRmbs = historyItems.filter(i => i._type === 'REIMBURSE').length;
+    const countHistoryOrders = historyItems.filter(i => i._type === 'ORDER').length;
+
+    // Dapatkan data yang aktif untuk tab saat ini
+    const currentBaseItems = this.activeTab === 'PENDING' ? pendingItems : historyItems;
+    const options = this.getUniqueOptions(currentBaseItems);
+    const filteredItems = this.applyFilterAndSort(currentBaseItems, this.activeTab === 'HISTORY');
 
     const showExportBtn = this.isExportAllowed(user.role);
+
+    // Cek apakah ada filter selain default yang aktif
+    const hasActiveFilters = Boolean(
+      this.searchQuery ||
+      this.sortBy !== 'DATE_DESC' ||
+      this.filterDept !== 'ALL' ||
+      this.filterKitchen !== 'ALL' ||
+      this.filterDateRange !== 'ALL' ||
+      (this.activeTab === 'HISTORY' && this.filterDecision !== 'ALL')
+    );
+
+    let activeFilterCount = 0;
+    if (this.searchQuery) activeFilterCount++;
+    if (this.sortBy !== 'DATE_DESC') activeFilterCount++;
+    if (this.filterDept !== 'ALL') activeFilterCount++;
+    if (this.filterKitchen !== 'ALL') activeFilterCount++;
+    if (this.filterDateRange !== 'ALL') activeFilterCount++;
+    if (this.activeTab === 'HISTORY' && this.filterDecision !== 'ALL') activeFilterCount++;
 
     container.innerHTML = `
       <div class="animate-blur-in">
@@ -409,7 +1250,7 @@ window.ApprovalCenterModule = {
           </div>
         </div>
 
-        <!-- Thematic Floating Filter Pills (Semua, Cuti, Timesheet, PR, Cash Advance) -->
+        <!-- Thematic Floating Filter Pills (Semua, Cuti, PR, Kasbon, Reimburse, Invoice) -->
         <div class="approval-filter-bar">
           <button class="approval-filter-pill pill-all ${this.activeFilter === 'ALL' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('ALL')">
             <span class="filter-dot dot-orange"></span>
@@ -420,494 +1261,230 @@ window.ApprovalCenterModule = {
           <button class="approval-filter-pill pill-leave ${this.activeFilter === 'LEAVE' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('LEAVE')">
             <span class="filter-dot dot-violet"></span>
             <span>Cuti & Izin</span>
-            <span class="filter-badge">${this.activeTab === 'PENDING' ? relevantLeaves.length : historyLeaves.length}</span>
+            <span class="filter-badge">${this.activeTab === 'PENDING' ? countPendingLeaves : countHistoryLeaves}</span>
           </button>
 
           <button class="approval-filter-pill pill-pr ${this.activeFilter === 'PR' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('PR')">
             <span class="filter-dot dot-amber"></span>
             <span>Pengadaan Barang (PR)</span>
-            <span class="filter-badge">${this.activeTab === 'PENDING' ? relevantPrs.length : historyPrs.length}</span>
+            <span class="filter-badge">${this.activeTab === 'PENDING' ? countPendingPrs : countHistoryPrs}</span>
           </button>
 
           <button class="approval-filter-pill pill-ca ${this.activeFilter === 'CA' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('CA')">
             <span class="filter-dot dot-emerald"></span>
             <span>Cash Advance (Kasbon)</span>
-            <span class="filter-badge">${this.activeTab === 'PENDING' ? relevantCAs.length : historyCAs.length}</span>
+            <span class="filter-badge">${this.activeTab === 'PENDING' ? countPendingCAs : countHistoryCAs}</span>
           </button>
 
           <button class="approval-filter-pill pill-rmb ${this.activeFilter === 'REIMBURSE' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('REIMBURSE')" style="${this.activeFilter === 'REIMBURSE' ? 'background: rgba(16, 185, 129, 0.2); border-color: #10B981; color: #34D399;' : ''}">
             <span class="filter-dot" style="background: #10B981;"></span>
             <span>Klaim Reimburse</span>
-            <span class="filter-badge" style="background: rgba(16, 185, 129, 0.3); color: #34D399;">${this.activeTab === 'PENDING' ? relevantRmbs.length : historyRmbs.length}</span>
+            <span class="filter-badge" style="background: rgba(16, 185, 129, 0.3); color: #34D399;">${this.activeTab === 'PENDING' ? countPendingRmbs : countHistoryRmbs}</span>
           </button>
 
-          ${(relevantOrderInvoices.length > 0 || historyOrders.length > 0 || user.role === 'FAT_OFFICER') ? `
+          ${(countPendingOrders > 0 || countHistoryOrders > 0 || user.role === 'FAT_OFFICER') ? `
             <button class="approval-filter-pill pill-order ${this.activeFilter === 'ORDER' ? 'active' : ''}" onclick="ApprovalCenterModule.setFilter('ORDER')" style="${this.activeFilter === 'ORDER' ? 'background: rgba(59, 130, 246, 0.2); border-color: #3B82F6; color: #60A5FA;' : ''}">
               <span class="filter-dot" style="background: #3B82F6;"></span>
               <span>Invoice Pesanan (FAT)</span>
-              <span class="filter-badge" style="background: rgba(59, 130, 246, 0.3); color: #60A5FA;">${this.activeTab === 'PENDING' ? relevantOrderInvoices.length : historyOrders.length}</span>
+              <span class="filter-badge" style="background: rgba(59, 130, 246, 0.3); color: #60A5FA;">${this.activeTab === 'PENDING' ? countPendingOrders : countHistoryOrders}</span>
             </button>
           ` : ''}
         </div>
 
-        <!-- TAB KONTEN 1: ANTREAN PERSETUJUAN (PENDING) -->
-        ${this.activeTab === 'PENDING' ? `
-          <div style="display: flex; flex-direction: column; gap: 16px;">
-            ${totalPending === 0 ? `
-              <div class="nalar-card" style="text-align: center; padding: 48px;">
-                <div style="font-size: 32px; margin-bottom: 8px;">🎉</div>
-                <h3 style="font-size: 18px; color: #fff; margin-bottom: 4px;">Tidak Ada Antrean Approval</h3>
-                <p style="font-size: 12.5px; color: var(--text-muted);">Seluruh pengajuan cuti, PR, atau kasbon yang membutuhkan wewenang Anda telah selesai diproses.</p>
+        <!-- Universal Sort & Filter Control Panel Bar -->
+        <div class="nalar-card" style="padding: 16px 20px; background: rgba(22, 22, 26, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(12px); border-radius: var(--radius-md); margin-bottom: 22px;">
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            
+            <!-- Top Row: Live Search Input + Sort By Selector + Reset Button -->
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+              
+              <!-- Search Input -->
+              <div style="position: relative; flex: 1; min-width: 260px;">
+                <svg style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input 
+                  type="text" 
+                  id="approval-search-input"
+                  class="form-control" 
+                  placeholder="Cari ID pengajuan, nama pemohon, barang, lokasi dapur, alasan..." 
+                  value="${this.searchQuery}" 
+                  oninput="ApprovalCenterModule.handleSearch(this.value)"
+                  style="padding-left: 40px; padding-right: ${this.searchQuery ? '36px' : '14px'}; background: rgba(0, 0, 0, 0.4); border-color: rgba(255, 255, 255, 0.12); height: 42px; border-radius: 8px; font-size: 13px;"
+                />
+                ${this.searchQuery ? `
+                  <button 
+                    type="button" 
+                    onclick="ApprovalCenterModule.clearSearch()"
+                    style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; font-size: 14px;"
+                    title="Hapus pencarian">✕</button>
+                ` : ''}
               </div>
-            ` : ''}
 
-            <!-- Pending Leaves -->
-            ${(this.activeFilter === 'ALL' || this.activeFilter === 'LEAVE') ? relevantLeaves.map(l => `
-              <div class="nalar-card aura-box-violet" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #8B5CF6; margin-bottom: 0;">
-                <div style="display: flex; align-items: flex-start; gap: 16px;">
-                  <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.35); display: flex; align-items: center; justify-content: center; color: #A78BFA; flex-shrink: 0;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
-                  </div>
-                  <div>
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                      <span class="text-mono-badge" style="color: #A78BFA;">CUTI / IZIN · ${l.id}</span>
-                      <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${l.createdAt || l.startDate}</span>
-                      <span style="font-size: 10px; color: #C4B5FD; background: rgba(139,92,246,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                        Tahap: ${l.stage === 'DIR_KEU_REVIEW' ? 'Review Direktur Keuangan' : l.stage === 'DIR_OPS_OR_KEU_REVIEW' ? 'Review Direktur Ops/Keu' : l.stage === 'MANAGER_AREA_REVIEW' ? 'Review Manager Area' : 'Verifikasi Final HC'}
-                      </span>
-                    </div>
-
-                    <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
-                      ${l.employeeName} — <span style="color: #A78BFA;">${l.leaveType || l.type}</span> (${l.duration} Hari)
-                    </h4>
-
-                    <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
-                      Periode: <strong>${l.startDate}</strong> s/d <strong>${l.endDate}</strong> · Departemen: <strong>${l.department || l.role}</strong>
-                    </div>
-
-                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
-                      Alasan: "${l.reason || '-'}" · Kontak Darurat: <strong>${l.emergencyContact || '-'}</strong>
-                    </div>
-
-                    ${(l.attachmentUrl || l.attachmentName) ? `
-                      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-                        <button type="button" class="btn-preview-link" onclick="CutiModule.openAttachmentModal('${l.id}')" style="color: #A78BFA; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                          <span>📎 Lihat Lampiran Surat Dokter ↗</span>
-                        </button>
-                      </div>
-                    ` : ''}
-                  </div>
-                </div>
-
-                <!-- Action Buttons per Stage -->
-                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                  <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectLeave('${l.id}')">
-                    ✕ Tolak
-                  </button>
-                  <button class="btn-nalar-primary" style="background: #A78BFA; color: #1E1B4B; font-weight: 600;" onclick="ApprovalCenterModule.approveLeave('${l.id}', '${l.stage}')">
-                    ✓ Setujui Pengajuan
-                  </button>
-                </div>
+              <!-- Sort By Dropdown -->
+              <div style="display: flex; align-items: center; gap: 8px; min-width: 220px;">
+                <span style="font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+                  Urutkan:
+                </span>
+                <select 
+                  class="form-control" 
+                  onchange="ApprovalCenterModule.setSortBy(this.value)"
+                  style="background: rgba(0, 0, 0, 0.4); border-color: rgba(255, 255, 255, 0.12); height: 42px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: #fff; cursor: pointer;">
+                  <option value="DATE_DESC" ${this.sortBy === 'DATE_DESC' ? 'selected' : ''}>⚡ Tanggal Terbaru</option>
+                  <option value="DATE_ASC" ${this.sortBy === 'DATE_ASC' ? 'selected' : ''}>⏳ Tanggal Terlama</option>
+                  <option value="AMOUNT_DESC" ${this.sortBy === 'AMOUNT_DESC' ? 'selected' : ''}>💰 Nominal Terbesar</option>
+                  <option value="AMOUNT_ASC" ${this.sortBy === 'AMOUNT_ASC' ? 'selected' : ''}>💵 Nominal Terkecil</option>
+                  <option value="NAME_ASC" ${this.sortBy === 'NAME_ASC' ? 'selected' : ''}>👤 Pemohon (A - Z)</option>
+                  <option value="NAME_DESC" ${this.sortBy === 'NAME_DESC' ? 'selected' : ''}>👤 Pemohon (Z - A)</option>
+                </select>
               </div>
-            `).join('') : ''}
 
-            <!-- Pending PRs -->
-            ${(this.activeFilter === 'ALL' || this.activeFilter === 'PR') ? relevantPrs.map(p => {
-              const isManagerStage = (p.stage === 'MANAGER_APPROVAL');
-              const isFinanceStage = (p.stage === 'FINANCE_VERIFICATION');
-              const isDirectorStage = (p.stage === 'DIRECTOR_APPROVAL');
+              <!-- Reset Filter Button (if any filter is active) -->
+              ${hasActiveFilters ? `
+                <button 
+                  type="button" 
+                  class="btn-nalar-secondary" 
+                  onclick="ApprovalCenterModule.resetFilters()"
+                  style="height: 42px; padding: 0 14px; font-size: 12px; border-color: rgba(248, 113, 113, 0.4); color: #FCA5A5; background: rgba(239, 68, 68, 0.08); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; border-radius: 8px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                  <span>Reset Filter</span>
+                  <span style="background: rgba(239, 68, 68, 0.25); color: #fff; padding: 1px 6px; border-radius: 10px; font-size: 10px; font-weight: 700;">${activeFilterCount}</span>
+                </button>
+              ` : ''}
 
-              const stageName = isManagerStage 
-                ? '1. Review Manager Area' 
-                : isFinanceStage 
-                ? '2. Verifikasi Anggaran Staf Ahli Keuangan' 
-                : '3. Otorisasi Direksi (Penerbitan PO)';
+            </div>
 
-              return `
-                <div class="nalar-card aura-box-amber" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #F59E0B; margin-bottom: 0;">
-                  <div style="display: flex; align-items: flex-start; gap: 16px;">
-                    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); display: flex; align-items: center; justify-content: center; color: #FCD34D; flex-shrink: 0; font-size: 20px;">
-                      🛒
-                    </div>
-                    <div>
-                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <span class="text-mono-badge" style="color: #FCD34D;">PR · ${p.id}</span>
-                        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${p.createdAt}</span>
-                        <span style="font-size: 10px; color: #FDE68A; background: rgba(245,158,11,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                          Tahap: ${stageName}
-                        </span>
-                      </div>
+            <!-- Bottom Row: Filter Dropdowns (Department, Kitchen, Date Range, Decision Status) -->
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+              
+              <span style="font-size: 11.5px; font-weight: 600; color: var(--text-muted); display: flex; align-items: center; gap: 4px; margin-right: 4px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                Filter by:
+              </span>
 
-                      <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
-                        ${p.itemName} (${p.quantity} Unit) — <span style="font-family: var(--font-mono); color: #FCD34D;">Rp ${(Number(p.totalPrice) || 0).toLocaleString('id-ID')}</span>
-                      </h4>
+              <!-- Department Filter -->
+              <select 
+                class="form-control" 
+                onchange="ApprovalCenterModule.setFilterDept(this.value)"
+                style="width: auto; min-width: 150px; background: rgba(0, 0, 0, 0.3); border-color: ${this.filterDept !== 'ALL' ? 'var(--brand-orange)' : 'rgba(255, 255, 255, 0.1)'}; height: 34px; padding: 4px 10px; border-radius: 6px; font-size: 12px; color: ${this.filterDept !== 'ALL' ? '#FDBA74' : 'var(--text-secondary)'};">
+                <option value="ALL">🏢 Semua Divisi</option>
+                ${options.departments.map(d => `<option value="${d}" ${this.filterDept === d ? 'selected' : ''}>${d}</option>`).join('')}
+              </select>
 
-                      <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
-                        Pemohon: <strong>${p.employeeName}</strong> (${p.role}) · Kategori: <strong style="color: #60A5FA;">${p.category}</strong>
-                      </div>
+              <!-- Kitchen / Location Filter -->
+              ${options.kitchens.length > 0 ? `
+                <select 
+                  class="form-control" 
+                  onchange="ApprovalCenterModule.setFilterKitchen(this.value)"
+                  style="width: auto; min-width: 150px; background: rgba(0, 0, 0, 0.3); border-color: ${this.filterKitchen !== 'ALL' ? '#F59E0B' : 'rgba(255, 255, 255, 0.1)'}; height: 34px; padding: 4px 10px; border-radius: 6px; font-size: 12px; color: ${this.filterKitchen !== 'ALL' ? '#FDE68A' : 'var(--text-secondary)'};">
+                  <option value="ALL">📍 Semua Lokasi Dapur</option>
+                  ${options.kitchens.map(k => `<option value="${k}" ${this.filterKitchen === k ? 'selected' : ''}>${k}</option>`).join('')}
+                </select>
+              ` : ''}
 
-                      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
-                        Target Dapur: <strong>${p.targetKitchen}</strong> · Alasan: "${p.reason || '-'}"
-                      </div>
+              <!-- Date Range Preset Filter -->
+              <select 
+                class="form-control" 
+                onchange="ApprovalCenterModule.setFilterDateRange(this.value)"
+                style="width: auto; min-width: 140px; background: rgba(0, 0, 0, 0.3); border-color: ${this.filterDateRange !== 'ALL' ? '#10B981' : 'rgba(255, 255, 255, 0.1)'}; height: 34px; padding: 4px 10px; border-radius: 6px; font-size: 12px; color: ${this.filterDateRange !== 'ALL' ? '#6EE7B7' : 'var(--text-secondary)'};">
+                <option value="ALL">📅 Semua Waktu</option>
+                <option value="TODAY" ${this.filterDateRange === 'TODAY' ? 'selected' : ''}>Hari Ini</option>
+                <option value="7_DAYS" ${this.filterDateRange === '7_DAYS' ? 'selected' : ''}>7 Hari Terakhir</option>
+                <option value="THIS_MONTH" ${this.filterDateRange === 'THIS_MONTH' ? 'selected' : ''}>Bulan Ini</option>
+                <option value="LAST_MONTH" ${this.filterDateRange === 'LAST_MONTH' ? 'selected' : ''}>Bulan Lalu</option>
+              </select>
 
-                      ${(p.attachmentUrl || p.attachmentName) ? `
-                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-                          <button type="button" class="btn-preview-link" onclick="PengajuanBarangModule.openLightbox('${p.id}', '${p.itemName}')" style="color: #60A5FA; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                            <span>📎 Lihat Foto Barang / Estimasi Harga ↗</span>
-                          </button>
-                        </div>
-                      ` : ''}
-                    </div>
-                  </div>
+              <!-- Decision Status Filter (For History Tab Only) -->
+              ${this.activeTab === 'HISTORY' ? `
+                <select 
+                  class="form-control" 
+                  onchange="ApprovalCenterModule.setFilterDecision(this.value)"
+                  style="width: auto; min-width: 150px; background: rgba(0, 0, 0, 0.3); border-color: ${this.filterDecision !== 'ALL' ? '#3B82F6' : 'rgba(255, 255, 255, 0.1)'}; height: 34px; padding: 4px 10px; border-radius: 6px; font-size: 12px; color: ${this.filterDecision !== 'ALL' ? '#93C5FD' : 'var(--text-secondary)'};">
+                  <option value="ALL">⚖️ Semua Keputusan</option>
+                  <option value="APPROVED" ${this.filterDecision === 'APPROVED' ? 'selected' : ''}>✓ Disetujui Penuh</option>
+                  <option value="ADJUSTED" ${this.filterDecision === 'ADJUSTED' ? 'selected' : ''}>✏️ Disetujui Dgn Penyesuaian</option>
+                  <option value="REJECTED" ${this.filterDecision === 'REJECTED' ? 'selected' : ''}>✕ Ditolak</option>
+                  <option value="FAILED" ${this.filterDecision === 'FAILED' ? 'selected' : ''}>⚠️ Gagal Pengiriman</option>
+                </select>
+              ` : ''}
 
-                  <!-- Action Buttons per Stage -->
-                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectPR('${p.id}')">
-                      ✕ Tolak
-                    </button>
+              <!-- Result Counter -->
+              <div id="approval-counter-container" style="margin-left: auto; font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); display: flex; align-items: center; gap: 6px;">
+                <span>Menampilkan <strong style="color: #fff;">${filteredItems.length}</strong> dari <strong>${currentBaseItems.length}</strong> ${this.activeTab === 'PENDING' ? 'antrean' : 'riwayat'}</span>
+              </div>
 
-                    ${(isFinanceStage || isDirectorStage) ? `
-                      <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustPRModal('${p.id}')">
-                        ✏️ Setujui dgn Penyesuaian
-                      </button>
-                    ` : ''}
+            </div>
 
-                    ${isManagerStage ? `
-                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); border-color: #60A5FA; color: #fff; font-weight: 600;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
-                        ✓ Setujui & Teruskan ke Staf Ahli Keu
-                      </button>
-                    ` : isFinanceStage ? `
-                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
-                        ✓ Verifikasi Sah & Teruskan ke Direksi
-                      </button>
-                    ` : `
-                      <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 700;" onclick="ApprovalCenterModule.advancePR('${p.id}', '${p.stage}')">
-                        👑 Otorisasi & Terbitkan PO Resmi
-                      </button>
-                    `}
-                  </div>
-                </div>
-              `;
-            }).join('') : ''}
-
-            <!-- Pending Cash Advances -->
-            ${(this.activeFilter === 'ALL' || this.activeFilter === 'CA') ? relevantCAs.map(c => {
-              const isDirectorStage = (c.stage === 'DIRECTOR_REVIEW');
-              const isDisburseStage = (c.stage === 'FAT_DISBURSEMENT');
-              const isSettlementReviewStage = (c.stage === 'SETTLEMENT_SUBMITTED');
-
-              const stageName = isDirectorStage 
-                ? '1. Review & Otorisasi Direksi' 
-                : isDisburseStage 
-                ? '2. Pencairan Kasir FAT' 
-                : '3. Verifikasi LPJ Kasir FAT';
-
-              return `
-                <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #10B981; margin-bottom: 0;">
-                  <div style="display: flex; align-items: flex-start; gap: 16px;">
-                    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; color: #34D399; flex-shrink: 0; font-size: 20px;">
-                      💵
-                    </div>
-                    <div>
-                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <span class="text-mono-badge" style="color: #34D399;">KASBON · ${c.id}</span>
-                        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${c.createdAt}</span>
-                        <span style="font-size: 10px; color: #A7F3D0; background: rgba(16,185,129,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                          Tahap: ${stageName}
-                        </span>
-                      </div>
-
-                      <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
-                        ${c.title || c.purpose || 'Kasbon Operasional'} — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(Number(c.amountApproved || c.amountRequested || c.amount) || 0).toLocaleString('id-ID')}</span>
-                      </h4>
-
-                      <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
-                        Pemohon: <strong>${c.employeeName}</strong> (${c.department || c.role}) · Target Lokasi: <strong style="color: #FCD34D;">${c.targetLocation || c.targetExpense || 'Operasional'}</strong>
-                      </div>
-
-                      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
-                        💳 Rekening Penerima: <strong>${c.bankName}</strong> (${c.bankAccountNo} a.n ${c.bankAccountName})
-                      </div>
-
-                      ${(c.attachmentUrl || c.attachmentName) ? `
-                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-                          <button type="button" class="btn-preview-link" onclick="CashAdvanceModule.openLightbox('${c.id}')" style="color: #34D399; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                            <span>📎 Lihat Rincian Kasbon / LPJ ↗</span>
-                          </button>
-                        </div>
-                      ` : ''}
-                    </div>
-                  </div>
-
-                  <!-- Action Buttons per Stage -->
-                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    ${isDirectorStage ? `
-                      <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectCA('${c.id}')">
-                        ✕ Tolak
-                      </button>
-                      <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustCAModal('${c.id}')">
-                        ✏️ Setujui dgn Penyesuaian
-                      </button>
-                      <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 600;" onclick="ApprovalCenterModule.approveCADirector('${c.id}')">
-                        ✓ Setujui Kasbon
-                      </button>
-                    ` : isDisburseStage ? `
-                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseCAModal('${c.id}')">
-                        💸 Transfer & Cairkan Dana
-                      </button>
-                    ` : isSettlementReviewStage ? `
-                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%); border-color: #60A5FA; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openVerifyCASettlementModal('${c.id}')">
-                        🔍 Verifikasi LPJ & Tutup Kasbon
-                      </button>
-                    ` : ''}
-                  </div>
-                </div>
-              `;
-            }).join('') : ''}
-
-            <!-- Pending Reimbursements (Klaim Biaya Operasional) -->
-            ${(this.activeFilter === 'ALL' || this.activeFilter === 'REIMBURSE') ? relevantRmbs.map(r => {
-              const isManagerStage = (r.stage === 'MANAGER_APPROVAL');
-              const isFinanceStage = (r.stage === 'FINANCE_VERIFICATION');
-              const isDirectorStage = (r.stage === 'DIRECTOR_APPROVAL');
-              const isFATStage = (r.stage === 'FAT_DISBURSEMENT');
-
-              const stageName = isManagerStage 
-                ? '1. Review Manager Area' 
-                : isFinanceStage 
-                ? '2. Verifikasi Anggaran Keuangan' 
-                : isDirectorStage 
-                ? '3. Otorisasi Direksi' 
-                : '4. Pencairan Dana FAT';
-
-              return `
-                <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #10B981; margin-bottom: 0;">
-                  <div style="display: flex; align-items: flex-start; gap: 16px;">
-                    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; color: #34D399; flex-shrink: 0; font-size: 20px;">
-                      💸
-                    </div>
-                    <div>
-                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <span class="text-mono-badge" style="color: #34D399;">REIMBURSE · ${r.id}</span>
-                        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${r.createdAt}</span>
-                        <span style="font-size: 10px; color: #A7F3D0; background: rgba(16,185,129,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                          Tahap: ${stageName}
-                        </span>
-                      </div>
-
-                      <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
-                        ${r.itemName} (${r.quantity} Unit) — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(Number(r.subtotal) || 0).toLocaleString('id-ID')}</span>
-                      </h4>
-
-                      <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
-                        Pemohon: <strong>${r.employeeName}</strong> (${r.department || r.employeeRole || r.role}) · Dapur: <strong style="color: #FCD34D;">${r.targetKitchen || '-'}</strong>
-                      </div>
-
-                      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
-                        💳 Rekening Transfer: <strong>${r.bankName || '-'}</strong> (${r.bankAccountNo || '-'} a.n ${r.bankAccountName || r.employeeName}) · Tgl Beli: <strong>${r.purchaseDate || '-'}</strong>
-                      </div>
-
-                      ${(r.attachmentUrl || r.attachmentName) ? `
-                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-                          <button type="button" class="btn-preview-link" onclick="ReimburseModule.previewAttachment('${r.id}')" style="color: #34D399; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                            <span>📎 Lihat Bukti Struk/Nota Pembelian ↗</span>
-                          </button>
-                        </div>
-                      ` : ''}
-                    </div>
-                  </div>
-
-                  <!-- Action Buttons per Stage -->
-                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button class="btn-nalar-secondary" style="border-color: rgba(248, 113, 113, 0.4); color: #F87171;" onclick="ApprovalCenterModule.rejectReimburse('${r.id}')">
-                      ✕ Tolak
-                    </button>
-                    
-                    ${(isFinanceStage || isDirectorStage) ? `
-                      <button class="btn-nalar-secondary" style="border-color: rgba(245, 158, 11, 0.5); color: #FCD34D; background: rgba(245, 158, 11, 0.1);" onclick="ApprovalCenterModule.openAdjustReimburseModal('${r.id}')">
-                        ✏️ Setujui dgn Penyesuaian
-                      </button>
-                    ` : ''}
-
-                    ${isManagerStage ? `
-                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%); border-color: #60A5FA; color: #fff; font-weight: 600;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
-                        ✓ Setujui & Teruskan ke Staf Keuangan
-                      </button>
-                    ` : isFinanceStage ? `
-                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); border-color: #FCD34D; color: #000; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
-                        ✓ Verifikasi Sah & Teruskan ke Direksi
-                      </button>
-                    ` : isDirectorStage ? `
-                      <button class="btn-nalar-primary" style="background: #34D399; color: #064E3B; font-weight: 700;" onclick="ApprovalCenterModule.advanceReimburse('${r.id}', '${r.stage}')">
-                        👑 Otorisasi & Teruskan ke FAT
-                      </button>
-                    ` : isFATStage ? `
-                      <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseReimburseModal('${r.id}')">
-                        💸 Transfer Pembayaran Reimburse
-                      </button>
-                    ` : ''}
-                  </div>
-                </div>
-              `;
-            }).join('') : ''}
-
-            <!-- Pending Invoices Pesanan (Settlement Pembayaran Vendor FAT) -->
-            ${(this.activeFilter === 'ALL' || this.activeFilter === 'PR' || this.activeFilter === 'ORDER') ? relevantOrderInvoices.map(p => {
-              return `
-                <div class="nalar-card aura-box-emerald" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 3px solid #3B82F6; margin-bottom: 0;">
-                  <div style="display: flex; align-items: flex-start; gap: 16px;">
-                    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); display: flex; align-items: center; justify-content: center; color: #60A5FA; flex-shrink: 0; font-size: 20px;">
-                      📄
-                    </div>
-                    <div>
-                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <span class="text-mono-badge" style="color: #60A5FA;">INVOICE PESANAN · ${p.id}</span>
-                        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${p.orderInvoice?.submittedAt || p.createdAt}</span>
-                        <span style="font-size: 10px; color: #93C5FD; background: rgba(59,130,246,0.2); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono);">
-                          Tahap: Settlement Transfer FAT ke Vendor
-                        </span>
-                      </div>
-
-                      <h4 style="font-size: 16px; color: #fff; margin: 4px 0 2px 0; font-weight: 600;">
-                        Tagihan Invoice: ${p.itemName} (${p.quantity} Unit) — <span style="font-family: var(--font-mono); color: #34D399;">Rp ${(Number(p.totalPrice) || 0).toLocaleString('id-ID')}</span>
-                      </h4>
-
-                      <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
-                        Pemohon PR: <strong>${p.employeeName}</strong> · Lokasi Dapur: <strong style="color: #FCD34D;">${p.targetKitchen}</strong>
-                      </div>
-
-                      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
-                        Pengunggah Tagihan: <strong style="color: #CBD5E1;">${p.orderInvoice?.submittedBy || 'Operator Pesanan'}</strong> · Berkas: <strong style="color: #60A5FA;">${p.orderInvoice?.fileName || 'Invoice/Kuitansi'}</strong>
-                      </div>
-
-                      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-                        <button type="button" class="btn-preview-link" onclick="ApprovalCenterModule.previewOrderInvoice('${p.id}')" style="color: #60A5FA; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                          <span>📎 Pratinjau Berkas Invoice Vendor ↗</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Action Buttons -->
-                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button class="btn-nalar-primary" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); border-color: #34D399; color: #fff; font-weight: 700;" onclick="ApprovalCenterModule.openDisburseOrderInvoiceModal('${p.id}')">
-                      💸 Bayar Vendor & Upload Bukti Transfer (Settlement)
-                    </button>
-                  </div>
-                </div>
-              `;
-            }).join('') : ''}
           </div>
-        ` : `
-          <!-- TAB KONTEN 2: RIWAYAT APPROVAL SAYA (APPROVED & PROCESSED AUDIT LOG) -->
-          <div style="display: flex; flex-direction: column; gap: 16px;">
-            ${(function() {
-              const filteredHistory = allHistory.filter(h => {
-                if (ApprovalCenterModule.activeFilter === 'ALL') return true;
-                return h.type === ApprovalCenterModule.activeFilter;
-              });
+        </div>
 
-              if (filteredHistory.length === 0) {
-                return `
-                  <div class="nalar-card" style="text-align: center; padding: 48px;">
-                    <div style="font-size: 32px; margin-bottom: 8px;">📂</div>
-                    <h3 style="font-size: 18px; color: #fff; margin-bottom: 4px;">Belum Ada Riwayat Persetujuan</h3>
-                    <p style="font-size: 12.5px; color: var(--text-muted);">Seluruh data pengajuan yang telah Anda setujui atau proses akan tercatat otomatis di sini lengkap dengan tanggal & jam keputusan.</p>
-                  </div>
-                `;
-              }
+        <!-- ITEMS LIST CONTAINER -->
+        <div id="approval-list-container" style="display: flex; flex-direction: column; gap: 16px;">
+          ${this.renderItemsListHTML(filteredItems, user)}
+        </div>
 
-              return filteredHistory.map(item => {
-                const isLeave = (item.type === 'LEAVE');
-                const isTS = (item.type === 'TIMESHEET');
-                const isPR = (item.type === 'PR');
-                const isCA = (item.type === 'CA');
-                const isRMB = (item.type === 'REIMBURSE');
+      </div>
+    `;
+  },
 
-                const themeColor = isLeave ? '#A78BFA' : isTS ? '#60A5FA' : isPR ? '#FCD34D' : isCA ? '#34D399' : '#10B981';
-                const typeLabel = isLeave ? 'CUTI / IZIN' : isTS ? 'TIMESHEET' : isPR ? 'PENGADAAN BARANG (PR)' : isCA ? 'CASH ADVANCE (KASBON)' : 'KLAIM REIMBURSEMENT';
+  // Helper untuk rendering isi list items
+  renderItemsListHTML: function(filteredItems, user) {
+    if (!filteredItems || filteredItems.length === 0) {
+      if (this.activeTab === 'PENDING') {
+        return `
+          <div class="nalar-card" style="text-align: center; padding: 48px;">
+            <div style="font-size: 32px; margin-bottom: 8px;">🎉</div>
+            <h3 style="font-size: 18px; color: #fff; margin-bottom: 4px;">Tidak Ada Antrean Approval yang Cocok</h3>
+            <p style="font-size: 12.5px; color: var(--text-muted);">Tidak ditemukan antrean persetujuan yang sesuai dengan filter atau kata kunci pencarian Anda.</p>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="nalar-card" style="text-align: center; padding: 48px;">
+            <div style="font-size: 32px; margin-bottom: 8px;">📂</div>
+            <h3 style="font-size: 18px; color: #fff; margin-bottom: 4px;">Tidak Ada Riwayat Approval yang Cocok</h3>
+            <p style="font-size: 12.5px; color: var(--text-muted);">Tidak ditemukan riwayat persetujuan yang sesuai dengan kriteria filter atau kata kunci Anda.</p>
+          </div>
+        `;
+      }
+    }
 
-                const isFailedDelivery = (item.decision === 'GAGAL_PENGIRIMAN' || item.status === 'GAGAL_PENGIRIMAN' || (item.raw && item.raw.orderStatus === 'GAGAL_PENGIRIMAN'));
-                const isApproved = !isFailedDelivery && (item.decision === 'APPROVED' || item.status === 'APPROVED' || item.status === 'COMPLETED' || item.status === 'SETTLED');
-                const isRejected = !isFailedDelivery && (item.decision === 'REJECTED' || item.status === 'REJECTED');
-                const isAdjusted = !isFailedDelivery && (item.decision === 'ADJUSTED_APPROVED');
+    if (this.activeTab === 'PENDING') {
+      return filteredItems.map(item => {
+        if (item._type === 'LEAVE') return this.renderPendingLeaveCard(item._raw);
+        if (item._type === 'PR') return this.renderPendingPRCard(item._raw);
+        if (item._type === 'CA') return this.renderPendingCACard(item._raw);
+        if (item._type === 'REIMBURSE') return this.renderPendingRMBCard(item._raw);
+        if (item._type === 'ORDER') return this.renderPendingOrderCard(item._raw);
+        return '';
+      }).join('');
+    } else {
+      return filteredItems.map(item => this.renderHistoryCard(item._history, user)).join('');
+    }
+  },
 
-                const decisionBadgeBg = isFailedDelivery ? 'rgba(239, 68, 68, 0.18)' : isRejected ? 'rgba(239, 68, 68, 0.15)' : isAdjusted ? 'rgba(245, 158, 11, 0.15)' : 'rgba(52, 211, 153, 0.15)';
-                const decisionBadgeColor = isFailedDelivery ? '#F87171' : isRejected ? '#F87171' : isAdjusted ? '#FCD34D' : '#34D399';
-                const decisionBadgeBorder = isFailedDelivery ? 'rgba(239, 68, 68, 0.5)' : isRejected ? 'rgba(239, 68, 68, 0.35)' : isAdjusted ? 'rgba(245, 158, 11, 0.35)' : 'rgba(52, 211, 153, 0.35)';
-                const decisionText = isFailedDelivery ? '⚠️ Gagal Pengiriman' : isRejected ? '✕ Ditolak' : isAdjusted ? '✏️ Disetujui Dgn Penyesuaian' : '✓ Disetujui / Tervalidasi';
+  // Update dinamis hanya list container tanpa reset focus input search
+  renderList: function() {
+    const listContainer = document.getElementById('approval-list-container');
+    const counterContainer = document.getElementById('approval-counter-container');
+    if (!listContainer) {
+      this.render(document.getElementById('main-content-area'));
+      return;
+    }
 
-                return `
-                  <div class="nalar-card" style="border-left: 3px solid ${isFailedDelivery ? '#EF4444' : themeColor}; padding: 18px 22px; margin-bottom: 0;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px;">
-                      
-                      <!-- Info Utama -->
-                      <div style="flex: 1; min-width: 280px;">
-                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-                          <span class="text-mono-badge" style="color: ${themeColor}; font-size: 11px;">
-                            ${typeLabel} · ${item.id}
-                          </span>
-                          
-                          <!-- Badge Keputusan -->
-                          <span style="font-size: 11px; font-weight: 700; color: ${decisionBadgeColor}; background: ${decisionBadgeBg}; border: 1px solid ${decisionBadgeBorder}; padding: 2px 8px; border-radius: 4px; font-family: var(--font-mono);">
-                            ${decisionText}
-                          </span>
+    const user = DB.getCurrentUser();
+    const currentBaseItems = this.activeTab === 'PENDING' 
+      ? this.getPendingItemsList(user) 
+      : this.getNormalizedHistoryList(user);
 
-                          <!-- Badge Tanggal & Jam Approval -->
-                          <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: #34D399; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 10px; border-radius: 4px; font-family: var(--font-mono);">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            <span>Waktu Approval: <strong>${item.decisionTimestamp || '-'}</strong></span>
-                          </span>
-                        </div>
+    const filteredItems = this.applyFilterAndSort(currentBaseItems, this.activeTab === 'HISTORY');
 
-                        <div style="display: flex; align-items: center; gap: 8px; margin: 4px 0 6px 0;">
-                          <div style="width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                            ${(item.employeeName || 'U').split(' ').map(n=>n[0]).join('').slice(0, 2)}
-                          </div>
-                          <h4 style="font-size: 15.5px; color: #fff; font-weight: 600; margin: 0;">
-                            ${item.title}
-                          </h4>
-                        </div>
-
-                        <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px;">
-                          ${item.summary}
-                        </div>
-
-                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-                          <span style="background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px; color: #E2E8F0;">
-                            👤 Pemohon: <strong style="color: #60A5FA;">${item.employeeName}</strong> (${item.department || '-'})
-                          </span>
-                          <span>·</span>
-                          <span>Diproses oleh: <strong style="color: #FCD34D;">${item.approverName || user.name}</strong></span>
-                          ${item.notes && item.notes !== '-' ? `
-                            <span>·</span>
-                            <span>Catatan: <em style="color: #94A3B8;">"${item.notes}"</em></span>
-                          ` : ''}
-                          ${isLeave && item.raw && (item.raw.attachmentName || item.raw.attachmentUrl) ? `
-                            <span>·</span>
-                            <button type="button" class="btn-preview-link" style="color: #A78BFA; background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="CutiModule.openAttachmentModal('${item.id}')">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                              <span>📎 Lihat Lampiran ↗</span>
-                            </button>
-                          ` : ''}
-                          ${isPR && item.raw && (item.raw.attachmentName || item.raw.attachmentUrl) ? `
-                          ` : ''}
-                          ${isRMB && item.raw && (item.raw.attachmentUrl || item.raw.attachmentName) ? `
-                            <span>·</span>
-                            <button type="button" class="btn-preview-link" style="color: #34D399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 8px; border-radius: 4px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="ReimburseModule.previewAttachment('${item.id}')">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                              <span>Lihat Struk ↗</span>
-                            </button>
-                          ` : ''}
-                        </div>
-                      </div>
-
-                      <!-- Tombol Action Detail Tracker -->
-                      <div style="display: flex; align-items: center; gap: 8px;">
-                        <button type="button" class="btn-nalar-secondary" style="padding: 6px 12px; font-size: 11.5px; border-color: rgba(255,255,255,0.15);" onclick="${isRMB ? `ReimburseModule.openDetailModal('${item.id}')` : isCA ? `App.openApprovalTracker('CA', '${item.id}')` : `App.showApprovalTracker('${item.type.toLowerCase()}', '${item.id}')`}">
-                          🔍 Cek Alur & Rincian
-                        </button>
-                      </div>
+    listContainer.innerHTML = this.renderItemsListHTML(filteredItems, user);
+    if (counterContainer) {
+      counterContainer.innerHTML = `<span>Menampilkan <strong style="color: #fff;">${filteredItems.length}</strong> dari <strong>${currentBaseItems.length}</strong> ${this.activeTab === 'PENDING' ? 'antrean' : 'riwayat'}</span>`;
+    }
+  },  </div>
 
                     </div>
                   </div>
@@ -1016,7 +1593,7 @@ window.ApprovalCenterModule = {
             <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 20px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span class="text-mono-badge" style="color: #FCD34D;">${pr.id}</span>
-                <span style="font-size: 11px; color: var(--text-muted);">${pr.createdAt}</span>
+                <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${ApprovalCenterModule.formatDisplayDateTime(pr.createdAt)}</span>
               </div>
               <div style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">
                 ${pr.itemName}
@@ -1233,7 +1810,7 @@ window.ApprovalCenterModule = {
             <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 18px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span class="text-mono-badge" style="color: #FCD34D;">${ca.id}</span>
-                <span style="font-size: 11px; color: var(--text-muted);">${ca.createdAt}</span>
+                <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${ApprovalCenterModule.formatDisplayDateTime(ca.createdAt)}</span>
               </div>
               <div style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">
                 ${ca.title}
@@ -1326,7 +1903,7 @@ window.ApprovalCenterModule = {
             <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 18px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span class="text-mono-badge" style="color: #34D399;">${ca.id}</span>
-                <span style="font-size: 11px; color: var(--text-muted);">${ca.createdAt}</span>
+                <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${ApprovalCenterModule.formatDisplayDateTime(ca.createdAt)}</span>
               </div>
               <div style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">
                 ${ca.title}
@@ -1618,7 +2195,7 @@ window.ApprovalCenterModule = {
             <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 18px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span class="text-mono-badge" style="color: #34D399;">${rmb.id}</span>
-                <span style="font-size: 11px; color: var(--text-muted);">${rmb.createdAt}</span>
+                <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${ApprovalCenterModule.formatDisplayDateTime(rmb.createdAt)}</span>
               </div>
               <div style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">
                 ${rmb.itemName}
@@ -1724,7 +2301,7 @@ window.ApprovalCenterModule = {
             <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 18px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span class="text-mono-badge" style="color: #34D399;">${rmb.id}</span>
-                <span style="font-size: 11px; color: var(--text-muted);">${rmb.createdAt}</span>
+                <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${ApprovalCenterModule.formatDisplayDateTime(rmb.createdAt)}</span>
               </div>
               <div style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">
                 ${rmb.itemName}
@@ -1875,7 +2452,7 @@ window.ApprovalCenterModule = {
             <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 18px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span class="text-mono-badge" style="color: #60A5FA;">${pr.id}</span>
-                <span style="font-size: 11px; color: var(--text-muted);">${pr.orderInvoice?.submittedAt || pr.createdAt}</span>
+                <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${ApprovalCenterModule.formatDisplayDateTime(pr.orderInvoice?.submittedAt || pr.createdAt)}</span>
               </div>
               <div style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">
                 ${pr.itemName} (${pr.quantity} Unit)
