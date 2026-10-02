@@ -574,9 +574,13 @@ window.CashAdvanceModule = {
 
               <!-- Upload Nota / Kwitansi Fisik / Dokumen PDF -->
               <div class="form-group" style="margin-bottom: 22px;">
-                <label class="form-label" style="font-size: 12px; margin-bottom: 8px; color: #fff;">
+                <label class="form-label" style="font-size: 12px; margin-bottom: 6px; color: #fff;">
                   Lampiran Foto Nota / Struk / Kwitansi Belanja (PDF / Gambar maks 3 MB) <span style="color: #F87171;">*</span>
                 </label>
+                <div style="font-size: 11.5px; color: #FCA5A5; margin-bottom: 10px; line-height: 1.4; display: flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); padding: 6px 12px; border-radius: var(--radius-sm);">
+                  <span style="font-size: 13px;">⚠️</span>
+                  <span>(Upload nota atau struk pembelian resmi, tidak bisa bukti transfer, apabila tidak sesuai akan langsung kami tolak)</span>
+                </div>
                 <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
                   <label class="btn-nalar-secondary" style="cursor: pointer; padding: 10px 18px; font-size: 13px; display: inline-flex; align-items: center; gap: 8px;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>

@@ -455,10 +455,14 @@ window.ReimburseModule = {
 
               <!-- Field 9: Attachment Bukti Bayar (PNG, Max 2 MB) -->
               <div class="form-group" style="margin-bottom: 16px;">
-                <label class="form-label" style="font-size: 12.5px; font-weight: 600; color: #CBD5E1; margin-bottom: 6px;">
+                <label class="form-label" style="font-size: 12.5px; font-weight: 600; color: #CBD5E1; margin-bottom: 4px;">
                   9. Attachment Bukti Bayar / Struk Nota <span style="color: #F87171;">*</span>
                   <span style="font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: 6px;">(Format PNG / JPG / PDF, Maks. 2 MB)</span>
                 </label>
+                <div style="font-size: 11.5px; color: #FCA5A5; margin-bottom: 8px; line-height: 1.4; display: flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); padding: 6px 12px; border-radius: var(--radius-sm);">
+                  <span style="font-size: 13px;">⚠️</span>
+                  <span>(Upload nota atau struk pembelian resmi, tidak bisa bukti transfer, apabila tidak sesuai akan langsung kami tolak)</span>
+                </div>
                 
                 <div style="border: 2px dashed rgba(255,255,255,0.15); border-radius: var(--radius-sm); padding: 16px; text-align: center; background: rgba(0,0,0,0.2); cursor: pointer; transition: all 0.2s;" onclick="document.getElementById('rmb-proof-input').click()" onmouseover="this.style.borderColor='var(--brand-orange)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.15)'">
                   <input type="file" id="rmb-proof-input" accept="image/png,image/jpeg,image/jpg,application/pdf,.pdf" style="display: none;" onchange="ReimburseModule.handleFileSelect(event)">
