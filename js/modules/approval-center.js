@@ -21,17 +21,33 @@ window.ApprovalCenterModule = {
   formatDisplayDateTime: function(str) {
     if (!str || str === '-' || str === 'undefined' || str === 'null') return '-';
     
+    if (str instanceof Date) {
+      if (isNaN(str.getTime())) return '-';
+      const d = str.getDate();
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      return `${d} ${months[str.getMonth()]} ${str.getFullYear()}, ${String(str.getHours()).padStart(2, '0')}:${String(str.getMinutes()).padStart(2, '0')} WIB`;
+    }
+
+    if (typeof str !== 'string') {
+      try {
+        str = String(str);
+      } catch (e) {
+        return '-';
+      }
+    }
+    str = str.trim();
+
     // Format tanggal murni YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-      const [y, m, d] = str.split('-');
+      const parts = str.split('-');
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-      const monthName = months[parseInt(m, 10) - 1] || m;
-      return `${parseInt(d, 10)} ${monthName} ${y}`;
+      const mIdx = parseInt(parts[1], 10) - 1;
+      return `${parseInt(parts[2], 10)} ${months[mIdx] || parts[1]} ${parts[0]}`;
     }
 
     // Format ISO / SQL Datetime
     let dt;
-    if (typeof str === 'string' && str.includes(' ') && !str.includes('T')) {
+    if (str.includes(' ') && !str.includes('T')) {
       dt = new Date(str.replace(' ', 'T'));
     } else {
       dt = new Date(str);
@@ -52,12 +68,20 @@ window.ApprovalCenterModule = {
   // Helper: Dapatkan angka epoch timestamp untuk sorting dan filter rentang waktu akurat
   getTimestampNumber: function(str) {
     if (!str || str === '-' || str === 'undefined' || str === 'null') return 0;
+    if (str instanceof Date) {
+      return isNaN(str.getTime()) ? 0 : str.getTime();
+    }
+    if (typeof str === 'number') return str;
+    if (typeof str !== 'string') {
+      try { str = String(str); } catch (e) { return 0; }
+    }
+    str = str.trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
       const dt = new Date(str + 'T00:00:00');
       return isNaN(dt.getTime()) ? 0 : dt.getTime();
     }
     let dt;
-    if (typeof str === 'string' && str.includes(' ') && !str.includes('T')) {
+    if (str.includes(' ') && !str.includes('T')) {
       dt = new Date(str.replace(' ', 'T'));
     } else {
       dt = new Date(str);
@@ -1040,6 +1064,9 @@ window.ApprovalCenterModule = {
   },
 
   renderHistoryCard: function(item, user) {
+    if (!item) return '';
+    user = user || (window.DB ? DB.getCurrentUser() : null) || {};
+
     const isLeave = (item.type === 'LEAVE');
     const isTS = (item.type === 'TIMESHEET');
     const isPR = (item.type === 'PR');
@@ -1062,6 +1089,8 @@ window.ApprovalCenterModule = {
     const formattedDecisionTime = this.formatDisplayDateTime(item.decisionTimestamp);
     const formattedSubmitDate = this.formatDisplayDateTime(item.date);
 
+    const empInitials = ((item.employeeName || 'U').trim().split(/\s+/).map(n => n ? n[0] : '').join('').slice(0, 2) || 'U').toUpperCase();
+
     return `
       <div class="nalar-card" style="border-left: 3px solid ${isFailedDelivery ? '#EF4444' : themeColor}; padding: 18px 22px; margin-bottom: 0;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px;">
@@ -1070,7 +1099,7 @@ window.ApprovalCenterModule = {
           <div style="flex: 1; min-width: 280px;">
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
               <span class="text-mono-badge" style="color: ${themeColor}; font-size: 11px;">
-                ${typeLabel} · ${item.id}
+                ${typeLabel} · ${item.id || '-'}
               </span>
               
               <!-- Badge Keputusan -->
@@ -1093,23 +1122,23 @@ window.ApprovalCenterModule = {
 
             <div style="display: flex; align-items: center; gap: 8px; margin: 4px 0 6px 0;">
               <div style="width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                ${(item.employeeName || 'U').split(' ').map(n=>n[0]).join('').slice(0, 2)}
+                ${empInitials}
               </div>
               <h4 style="font-size: 15.5px; color: #fff; font-weight: 600; margin: 0;">
-                ${item.title}
+                ${item.title || '-'}
               </h4>
             </div>
 
             <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px;">
-              ${item.summary}
+              ${item.summary || '-'}
             </div>
 
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
               <span style="background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px; color: #E2E8F0;">
-                👤 Pemohon: <strong style="color: #60A5FA;">${item.employeeName}</strong> (${item.department || '-'})
+                👤 Pemohon: <strong style="color: #60A5FA;">${item.employeeName || '-'}</strong> (${item.department || '-'})
               </span>
               <span>·</span>
-              <span>Diproses oleh: <strong style="color: #FCD34D;">${item.approverName || user.name}</strong></span>
+              <span>Diproses oleh: <strong style="color: #FCD34D;">${item.approverName || user.name || 'Approver'}</strong></span>
               ${item.notes && item.notes !== '-' ? `
                 <span>·</span>
                 <span>Catatan: <em style="color: #94A3B8;">"${item.notes}"</em></span>
@@ -1133,7 +1162,7 @@ window.ApprovalCenterModule = {
 
           <!-- Tombol Action Detail Tracker -->
           <div style="display: flex; align-items: center; gap: 8px;">
-            <button type="button" class="btn-nalar-secondary" style="padding: 6px 12px; font-size: 11.5px; border-color: rgba(255,255,255,0.15);" onclick="${isRMB ? `ReimburseModule.openDetailModal('${item.id}')` : isCA ? `App.openApprovalTracker('CA', '${item.id}')` : `App.showApprovalTracker('${item.type.toLowerCase()}', '${item.id}')`}">
+            <button type="button" class="btn-nalar-secondary" style="padding: 6px 12px; font-size: 11.5px; border-color: rgba(255,255,255,0.15);" onclick="${isRMB ? `ReimburseModule.openDetailModal('${item.id}')` : isCA ? `App.openApprovalTracker('CA', '${item.id}')` : `App.showApprovalTracker('${(item.type || '').toLowerCase()}', '${item.id}')`}">
               🔍 Cek Alur & Rincian
             </button>
           </div>
@@ -1150,7 +1179,7 @@ window.ApprovalCenterModule = {
   render: function(container) {
     if (!container) return;
 
-    const user = DB.getCurrentUser();
+    const user = (window.DB ? DB.getCurrentUser() : null) || {};
     const pendingItems = this.getPendingItemsList(user);
     const historyItems = this.getNormalizedHistoryList(user);
 
@@ -1226,7 +1255,7 @@ window.ApprovalCenterModule = {
               </div>
               <div>
                 <div style="font-size: 13px; font-weight: 500; color: #fff;">
-                  Wewenang Approval: <strong style="color: var(--brand-orange);">${user.name}</strong> (${user.roleLabel})
+                  Wewenang Approval: <strong style="color: var(--brand-orange);">${user.name || 'User'}</strong> (${user.roleLabel || user.role || 'Pejabat Approval'})
                 </div>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
                   Sistem secara otomatis menampilkan antrean yang memerlukan keputusan serta rekapitulasi audit log yang sudah Anda setujui.
@@ -1452,15 +1481,26 @@ window.ApprovalCenterModule = {
 
     if (this.activeTab === 'PENDING') {
       return filteredItems.map(item => {
-        if (item._type === 'LEAVE') return this.renderPendingLeaveCard(item._raw);
-        if (item._type === 'PR') return this.renderPendingPRCard(item._raw);
-        if (item._type === 'CA') return this.renderPendingCACard(item._raw);
-        if (item._type === 'REIMBURSE') return this.renderPendingRMBCard(item._raw);
-        if (item._type === 'ORDER') return this.renderPendingOrderCard(item._raw);
+        try {
+          if (item._type === 'LEAVE') return this.renderPendingLeaveCard(item._raw);
+          if (item._type === 'PR') return this.renderPendingPRCard(item._raw);
+          if (item._type === 'CA') return this.renderPendingCACard(item._raw);
+          if (item._type === 'REIMBURSE') return this.renderPendingRMBCard(item._raw);
+          if (item._type === 'ORDER') return this.renderPendingOrderCard(item._raw);
+        } catch (e) {
+          console.error('Error rendering pending card:', e, item);
+        }
         return '';
       }).join('');
     } else {
-      return filteredItems.map(item => this.renderHistoryCard(item._history, user)).join('');
+      return filteredItems.map(item => {
+        try {
+          return this.renderHistoryCard(item._history, user);
+        } catch (e) {
+          console.error('Error rendering history card:', e, item);
+          return '';
+        }
+      }).join('');
     }
   },
 
@@ -1473,7 +1513,7 @@ window.ApprovalCenterModule = {
       return;
     }
 
-    const user = DB.getCurrentUser();
+    const user = (window.DB ? DB.getCurrentUser() : null) || {};
     const currentBaseItems = this.activeTab === 'PENDING' 
       ? this.getPendingItemsList(user) 
       : this.getNormalizedHistoryList(user);
@@ -1484,17 +1524,6 @@ window.ApprovalCenterModule = {
     if (counterContainer) {
       counterContainer.innerHTML = `<span>Menampilkan <strong style="color: #fff;">${filteredItems.length}</strong> dari <strong>${currentBaseItems.length}</strong> ${this.activeTab === 'PENDING' ? 'antrean' : 'riwayat'}</span>`;
     }
-  },  </div>
-
-                    </div>
-                  </div>
-                `;
-              }).join('');
-            })()}
-          </div>
-        `}
-      </div>
-    `;
   },
 
   approveLeave: async function(id, currentStage) {
