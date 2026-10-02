@@ -269,7 +269,7 @@ window.CashAdvanceModule = {
                     <td style="padding: 14px 10px;">
                       <div style="font-weight: 600; color: #fff; font-size: 13px;">${ca.title}</div>
                       <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
-                        📍 ${ca.targetLocation || '-'} · 🏦 ${ca.bankName} (${ca.bankAccountNo})
+                        📍 ${ca.targetLocation || '-'} · 🏦 ${ca.bankName} (${ca.bankAccountNo}) · 📧 <span style="color: #93C5FD;">${ca.applicantEmail || ca.email || '-'}</span>
                       </div>
                     </td>
 
@@ -437,19 +437,19 @@ window.CashAdvanceModule = {
                 </div>
               </div>
 
-              <!-- Section 3: Rekening Bank Pemohon -->
+              <!-- Section 3: Rekening Bank & Email Pemohon -->
               <div style="background: rgba(14, 20, 32, 0.7); border: 1px solid rgba(96, 165, 250, 0.25); border-radius: var(--radius-md); padding: 18px 22px; margin-bottom: 22px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 15px;">💳</span>
-                    <span class="text-mono-badge" style="color: #60A5FA; font-size: 11px;">Rekening Bank Tujuan Transfer (Pemohon)</span>
+                    <span class="text-mono-badge" style="color: #60A5FA; font-size: 11px;">Rekening Bank & Email Tujuan Bukti Transfer (Pemohon)</span>
                   </div>
                   <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
-                    Data rekening penerima dana kasbon
+                    Data rekening & kontak bukti transfer pencairan
                   </span>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 14px;">
                   <div class="form-group" style="margin-bottom: 0;">
                     <label class="form-label" style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">Nama Bank</label>
                     <input type="text" id="ca-bank-name" class="form-control" value="${user.bankName || 'BCA (Bank Central Asia)'}" style="padding: 10px 14px; font-size: 13px;" required>
@@ -461,6 +461,19 @@ window.CashAdvanceModule = {
                   <div class="form-group" style="margin-bottom: 0;">
                     <label class="form-label" style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">Atas Nama Pemilik</label>
                     <input type="text" id="ca-bank-holder" class="form-control" value="${user.rekeningName || user.name}" style="padding: 10px 14px; font-size: 13px;" required>
+                  </div>
+                </div>
+
+                <!-- Email Wajib untuk Pengiriman Bukti Transfer -->
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 11.5px; font-weight: 600; color: #93C5FD; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>📧</span>
+                    <span>Email Pemohon (Wajib — Bukti Transfer Dikirim ke Email Ini) <span style="color: #F87171;">*</span></span>
+                  </label>
+                  <input type="email" id="ca-applicant-email" class="form-control" value="${user.email || ''}" placeholder="contoh: nama@domain.com" style="padding: 10px 14px; font-size: 13px; font-family: var(--font-mono);" required>
+                  <div style="font-size: 11px; color: #FCD34D; margin-top: 5px; line-height: 1.4; display: flex; align-items: center; gap: 5px;">
+                    <span>ℹ️</span>
+                    <span>Wajib diisi dengan email aktif. Notifikasi dan lampiran bukti transfer pencairan resmi dari FAT akan dikirimkan ke alamat email ini.</span>
                   </div>
                 </div>
               </div>
@@ -748,6 +761,8 @@ window.CashAdvanceModule = {
     if (bankNoEl && user) bankNoEl.value = user.rekeningNo || '-';
     const bankHolderEl = document.getElementById('ca-bank-holder');
     if (bankHolderEl && user) bankHolderEl.value = user.rekeningName || user.name;
+    const applicantEmailEl = document.getElementById('ca-applicant-email');
+    if (applicantEmailEl && user) applicantEmailEl.value = user.email || '';
 
     App.openModal('modal-cash-advance');
   },
@@ -815,6 +830,8 @@ window.CashAdvanceModule = {
     if (bankNoEl) bankNoEl.value = ca.bankAccountNo || '';
     const bankHolderEl = document.getElementById('ca-bank-holder');
     if (bankHolderEl) bankHolderEl.value = ca.bankAccountName || '';
+    const applicantEmailEl = document.getElementById('ca-applicant-email');
+    if (applicantEmailEl) applicantEmailEl.value = ca.applicantEmail || ca.email || '';
     const reasonEl = document.getElementById('ca-reason');
     if (reasonEl) reasonEl.value = ca.reason || '';
   },
@@ -851,10 +868,16 @@ window.CashAdvanceModule = {
     const bankName = (document.getElementById('ca-bank-name')?.value || '').trim();
     const bankAccountNo = (document.getElementById('ca-bank-no')?.value || '').trim();
     const bankAccountName = (document.getElementById('ca-bank-holder')?.value || '').trim();
+    const applicantEmail = (document.getElementById('ca-applicant-email')?.value || '').trim();
     const reason = (document.getElementById('ca-reason')?.value || '').trim();
 
     if (!title || !amountRequested || amountRequested <= 0) {
       App.showToast('Mohon lengkapi judul dan nominal kasbon yang valid!', 'warn');
+      return;
+    }
+
+    if (!applicantEmail || !applicantEmail.includes('@')) {
+      App.showToast('Mohon masukkan alamat email yang valid untuk bukti transfer!', 'warn');
       return;
     }
 
@@ -877,6 +900,8 @@ window.CashAdvanceModule = {
           bankName,
           bankAccountNo,
           bankAccountName,
+          applicantEmail,
+          email: applicantEmail,
           reason
         });
 
@@ -896,6 +921,8 @@ window.CashAdvanceModule = {
           bankName,
           bankAccountNo,
           bankAccountName,
+          applicantEmail,
+          email: applicantEmail,
           reason
         });
 

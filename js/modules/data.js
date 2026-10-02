@@ -3996,6 +3996,8 @@ class DatabaseManager {
       stage,
       status: 'PENDING',
       createdAt: realTimestamp,
+      applicantEmail: (prData.applicantEmail || prData.email || user.email || '').trim(),
+      email: (prData.applicantEmail || prData.email || user.email || '').trim(),
       approvalHistory: [
         {
           stage: 'SUBMISSION',
@@ -4266,6 +4268,10 @@ class DatabaseManager {
     if (updatedData.urgency !== undefined) pr.urgency = updatedData.urgency;
     if (updatedData.reason !== undefined) pr.reason = updatedData.reason;
     if (updatedData.targetKitchen !== undefined) pr.targetKitchen = updatedData.targetKitchen;
+    if (updatedData.applicantEmail !== undefined || updatedData.email !== undefined) {
+      pr.applicantEmail = (updatedData.applicantEmail || updatedData.email || '').trim();
+      pr.email = pr.applicantEmail;
+    }
     if (updatedData.attachmentUrl !== undefined) pr.attachmentUrl = updatedData.attachmentUrl;
     if (updatedData.attachmentName !== undefined) pr.attachmentName = updatedData.attachmentName;
 
@@ -4389,6 +4395,8 @@ class DatabaseManager {
       fileName: invoiceData.fileName,
       submittedBy: user ? user.name : 'Operator Pesanan',
       submittedById: user ? user.id : 'SA-002',
+      recipientEmail: (invoiceData.recipientEmail || invoiceData.email || user.email || pr.applicantEmail || pr.email || '').trim(),
+      email: (invoiceData.recipientEmail || invoiceData.email || user.email || pr.applicantEmail || pr.email || '').trim(),
       submittedAt: realTimestamp,
       notes: invoiceData.notes || 'Invoice vendor telah dilampirkan dan diteruskan ke FAT Officer untuk verifikasi pembayaran'
     };
@@ -4623,6 +4631,8 @@ class DatabaseManager {
       bankName: caData.bankName || user.bankName || 'Bank Mandiri',
       bankAccountNo: caData.bankAccountNo || user.rekeningNo || '-',
       bankAccountName: caData.bankAccountName || user.rekeningName || user.name,
+      applicantEmail: (caData.applicantEmail || caData.email || user.email || '').trim(),
+      email: (caData.applicantEmail || caData.email || user.email || '').trim(),
       reason: caData.reason || 'Kebutuhan dana tunai operasional mendesak',
       stage: 'DIRECTOR_REVIEW',
       status: 'PENDING',
@@ -4703,6 +4713,10 @@ class DatabaseManager {
     if (updatedData.bankName !== undefined) ca.bankName = updatedData.bankName;
     if (updatedData.bankAccountNo !== undefined) ca.bankAccountNo = updatedData.bankAccountNo;
     if (updatedData.bankAccountName !== undefined) ca.bankAccountName = updatedData.bankAccountName;
+    if (updatedData.applicantEmail !== undefined || updatedData.email !== undefined) {
+      ca.applicantEmail = (updatedData.applicantEmail || updatedData.email || '').trim();
+      ca.email = ca.applicantEmail;
+    }
     if (updatedData.reason !== undefined) ca.reason = updatedData.reason;
 
     ca.updatedAt = realTimestamp;
@@ -5069,6 +5083,8 @@ class DatabaseManager {
       bankName: rmbData.bankName || user.bankName || 'Bank Mandiri',
       bankAccountNo: rmbData.bankAccountNo || user.rekeningNo || '-',
       bankAccountName: rmbData.bankAccountName || user.rekeningName || user.name,
+      applicantEmail: (rmbData.applicantEmail || rmbData.email || user.email || '').trim(),
+      email: (rmbData.applicantEmail || rmbData.email || user.email || '').trim(),
       attachmentUrl: rmbData.attachmentUrl || null,
       attachmentName: rmbData.attachmentName || null,
       notes: rmbData.notes || '',
@@ -5159,6 +5175,10 @@ class DatabaseManager {
     if (updatedData.bankName !== undefined) rmb.bankName = updatedData.bankName;
     if (updatedData.bankAccountNo !== undefined) rmb.bankAccountNo = updatedData.bankAccountNo;
     if (updatedData.bankAccountName !== undefined) rmb.bankAccountName = updatedData.bankAccountName;
+    if (updatedData.applicantEmail !== undefined || updatedData.email !== undefined) {
+      rmb.applicantEmail = (updatedData.applicantEmail || updatedData.email || '').trim();
+      rmb.email = rmb.applicantEmail;
+    }
     if (updatedData.attachmentUrl !== undefined) rmb.attachmentUrl = updatedData.attachmentUrl;
     if (updatedData.attachmentName !== undefined) rmb.attachmentName = updatedData.attachmentName;
     if (updatedData.notes !== undefined) rmb.notes = updatedData.notes;
@@ -5781,6 +5801,7 @@ class DatabaseManager {
         adjustments: pr.adjustments || [],
         targetKitchen: pr.targetKitchen,
         requester: `${pr.employeeName} (${pr.department})`,
+        applicantEmail: pr.applicantEmail || pr.email || '',
         attachmentUrl: pr.attachmentUrl || null,
         attachmentName: pr.attachmentName || null,
         stage: (pr.orderStatus === 'GAGAL_PENGIRIMAN') ? 'GAGAL_PENGIRIMAN' : pr.stage,
@@ -6027,6 +6048,7 @@ class DatabaseManager {
         bankAccountNo: ca.bankAccountNo,
         bankAccountName: ca.bankAccountName,
         requester: `${ca.employeeName} (${ca.department})`,
+        applicantEmail: ca.applicantEmail || ca.email || '',
         reason: ca.reason,
         stage: ca.stage,
         status: ca.status,

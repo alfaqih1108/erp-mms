@@ -180,6 +180,7 @@ window.PengajuanBarangModule = {
                     <td>
                       <div style="font-weight: 500; color: #fff;">${p.employeeName}</div>
                       <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${p.department}</div>
+                      <div style="font-size: 10.5px; color: #93C5FD; margin-top: 2px;">📧 ${p.applicantEmail || p.email || '-'}</div>
                     </td>
                     <td>
                       <div style="display: flex; align-items: flex-start; gap: 12px;">
@@ -354,6 +355,11 @@ window.PengajuanBarangModule = {
       if (formEl) formEl.reset();
     }
 
+    const emailInput = document.getElementById('pr-email');
+    if (emailInput) {
+      emailInput.value = user.email || '';
+    }
+
     // Tampilkan pilihan Dapur Program / Kantor
     if (kitchenContainer && kitchenSelect) {
       kitchenContainer.style.display = 'block';
@@ -507,6 +513,7 @@ window.PengajuanBarangModule = {
     const priceEl = document.getElementById('pr-price');
     const urgencyEl = document.getElementById('pr-urgency');
     const reasonEl = document.getElementById('pr-reason');
+    const emailEl = document.getElementById('pr-email');
     const kitchenSelect = document.getElementById('pr-kitchen-select');
 
     if (nameEl) nameEl.value = pr.itemName || '';
@@ -515,6 +522,7 @@ window.PengajuanBarangModule = {
     if (priceEl) priceEl.value = pr.unitPrice || 0;
     if (urgencyEl) urgencyEl.value = pr.urgency || 'MEDIUM';
     if (reasonEl) reasonEl.value = pr.reason || '';
+    if (emailEl) emailEl.value = pr.applicantEmail || pr.email || (DB.getCurrentUser()?.email || '');
     if (kitchenSelect && pr.targetKitchen) {
       kitchenSelect.value = pr.targetKitchen;
     }
@@ -548,6 +556,7 @@ window.PengajuanBarangModule = {
     const unitPrice = Number(document.getElementById('pr-price').value) || 0;
     const urgency = document.getElementById('pr-urgency').value;
     const reason = document.getElementById('pr-reason').value;
+    const applicantEmail = (document.getElementById('pr-email')?.value || '').trim();
 
     const kitchenEl = document.getElementById('pr-kitchen-select');
     let targetKitchen = kitchenEl ? kitchenEl.value : '';
@@ -559,6 +568,11 @@ window.PengajuanBarangModule = {
 
     if (!itemName || !reason || unitPrice <= 0 || !targetKitchen) {
       App.showToast('Mohon lengkapi seluruh data pengajuan barang & pilih Dapur SPPG tujuan!', 'warn');
+      return;
+    }
+
+    if (!applicantEmail || !applicantEmail.includes('@')) {
+      App.showToast('Mohon isi alamat email pemohon yang valid untuk pengiriman bukti transfer & PO!', 'warn');
       return;
     }
 
@@ -582,6 +596,8 @@ window.PengajuanBarangModule = {
           urgency,
           reason,
           targetKitchen,
+          applicantEmail,
+          email: applicantEmail,
           attachmentUrl: this.currentAttachment.url,
           attachmentName: this.currentAttachment.name
         });
@@ -602,6 +618,8 @@ window.PengajuanBarangModule = {
           urgency,
           reason,
           targetKitchen,
+          applicantEmail,
+          email: applicantEmail,
           attachmentUrl: this.currentAttachment.url,
           attachmentName: this.currentAttachment.name
         });

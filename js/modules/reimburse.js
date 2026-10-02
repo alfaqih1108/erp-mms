@@ -237,6 +237,10 @@ window.ReimburseModule = {
                         <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
                           <span style="color: #FCD34D;">${rmb.category}</span> · ${rmb.quantity} Unit @ Rp ${(rmb.unitPrice || 0).toLocaleString('id-ID')}
                         </div>
+                        <div style="font-size: 11px; color: #93C5FD; margin-top: 2px; display: flex; align-items: center; gap: 4px;">
+                          <span>📧</span>
+                          <span>${rmb.applicantEmail || rmb.email || '-'}</span>
+                        </div>
                       </td>
                       <td style="padding: 12px 16px; font-size: 12px; color: var(--text-secondary);">
                         <div style="display: flex; align-items: center; gap: 6px;">
@@ -414,13 +418,13 @@ window.ReimburseModule = {
                 </div>
               </div>
 
-              <!-- Field 8: Informasi Rekening Bank (Auto-Prefilled dari Profil) -->
-              <div class="form-group" style="margin-bottom: 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-sm); padding: 12px 14px;">
+              <!-- Field 8: Informasi Rekening Bank & Email (Auto-Prefilled dari Profil) -->
+              <div class="form-group" style="margin-bottom: 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-sm); padding: 14px 16px;">
                 <label class="form-label" style="font-size: 12.5px; font-weight: 600; color: #93C5FD; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
                   <span>💳</span>
-                  <span>8. Informasi Rekening Bank Tujuan Transfer</span>
+                  <span>8. Informasi Rekening Bank & Email Tujuan Transfer</span>
                 </label>
-                <div style="display: grid; grid-template-columns: 1fr 1.2fr 1.2fr; gap: 10px;">
+                <div style="display: grid; grid-template-columns: 1fr 1.2fr 1.2fr; gap: 10px; margin-bottom: 10px;">
                   <div>
                     <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Nama Bank</label>
                     <input type="text" id="rmb-bank-name" class="form-control" value="${user.bankName || 'Bank Mandiri'}" required style="font-size: 12.5px;">
@@ -432,6 +436,19 @@ window.ReimburseModule = {
                   <div>
                     <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">Atas Nama (Pemilik)</label>
                     <input type="text" id="rmb-bank-account-name" class="form-control" value="${user.rekeningName || user.bankAccountName || user.name}" required style="font-size: 12.5px;">
+                  </div>
+                </div>
+
+                <!-- Email Wajib untuk Notifikasi Bukti Transfer Reimburse -->
+                <div>
+                  <label style="font-size: 11.5px; font-weight: 600; color: #93C5FD; display: flex; align-items: center; gap: 5px; margin-bottom: 4px;">
+                    <span>📧</span>
+                    <span>Email Penerima Bukti Transfer (Wajib) <span style="color: #F87171;">*</span></span>
+                  </label>
+                  <input type="email" id="rmb-applicant-email" class="form-control" value="${user.email || ''}" placeholder="contoh: nama@email.com" required style="font-family: var(--font-mono); font-size: 12.5px;">
+                  <div style="font-size: 11px; color: #34D399; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                    <span>ℹ️</span>
+                    <span>Bukti transfer pencairan pelunasan klaim reimburse dari FAT akan dikirimkan otomatis ke email ini.</span>
                   </div>
                 </div>
               </div>
@@ -597,6 +614,8 @@ window.ReimburseModule = {
     const kSelect = document.getElementById('rmb-target-kitchen-select');
     const kInput = document.getElementById('rmb-manual-kitchen-input');
     const pDate = document.getElementById('rmb-purchase-date');
+    const emailInput = document.getElementById('rmb-applicant-email');
+    const user = DB.getCurrentUser();
 
     if (itemName) itemName.value = '';
     if (unitPrice) unitPrice.value = '';
@@ -605,6 +624,7 @@ window.ReimburseModule = {
     if (kSelect) kSelect.value = '';
     if (kInput) kInput.value = '';
     if (pDate) pDate.value = getRealtimeDateStr();
+    if (emailInput) emailInput.value = user.email || '';
 
     this.handleKitchenSelectChange('');
     this.calculateSubtotal();
@@ -645,6 +665,7 @@ window.ReimburseModule = {
     const bankName = document.getElementById('rmb-bank-name');
     const bankNo = document.getElementById('rmb-bank-account-no');
     const bankHolder = document.getElementById('rmb-bank-account-name');
+    const emailInput = document.getElementById('rmb-applicant-email');
 
     if (itemName) itemName.value = rmb.itemName || '';
     if (unitPrice) unitPrice.value = rmb.unitPrice || 0;
@@ -655,6 +676,7 @@ window.ReimburseModule = {
     if (bankName) bankName.value = rmb.bankName || '';
     if (bankNo) bankNo.value = rmb.bankAccountNo || '';
     if (bankHolder) bankHolder.value = rmb.bankAccountName || '';
+    if (emailInput) emailInput.value = rmb.applicantEmail || rmb.email || (DB.getCurrentUser()?.email || '');
 
     if (kSelect) {
       if (rmb.isManualKitchen) {
@@ -792,10 +814,16 @@ window.ReimburseModule = {
     const bankName = (document.getElementById('rmb-bank-name')?.value || '').trim();
     const bankAccountNo = (document.getElementById('rmb-bank-account-no')?.value || '').trim();
     const bankAccountName = (document.getElementById('rmb-bank-account-name')?.value || '').trim();
+    const applicantEmail = (document.getElementById('rmb-applicant-email')?.value || '').trim();
     const notes = (document.getElementById('rmb-notes')?.value || '').trim();
 
     if (!itemName || unitPrice <= 0 || !bankAccountNo) {
       App.showToast('Mohon lengkapi semua field bertanda bintang (*)!', 'warn');
+      return;
+    }
+
+    if (!applicantEmail || !applicantEmail.includes('@')) {
+      App.showToast('Mohon isi alamat email yang valid untuk pengiriman bukti transfer!', 'warn');
       return;
     }
 
@@ -825,6 +853,8 @@ window.ReimburseModule = {
           bankName,
           bankAccountNo,
           bankAccountName,
+          applicantEmail,
+          email: applicantEmail,
           attachmentUrl: this.currentAttachment.url,
           attachmentName: this.currentAttachment.name,
           notes
@@ -848,6 +878,8 @@ window.ReimburseModule = {
           bankName,
           bankAccountNo,
           bankAccountName,
+          applicantEmail,
+          email: applicantEmail,
           attachmentUrl: this.currentAttachment.url,
           attachmentName: this.currentAttachment.name,
           notes
@@ -955,6 +987,10 @@ window.ReimburseModule = {
             <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
               Pemohon: <strong style="color: #CBD5E1;">${rmb.employeeName}</strong> (${rmb.employeeRoleLabel || rmb.employeeRole}) · Divisi: ${rmb.department}
             </div>
+            <div style="font-size: 11.5px; color: #93C5FD; margin-top: 3px; display: flex; align-items: center; gap: 5px;">
+              <span>📧</span>
+              <span>Email Notifikasi Transfer: <strong style="color: #6EE7B7; font-family: var(--font-mono);">${rmb.applicantEmail || rmb.email || '-'}</strong></span>
+            </div>
           </div>
           <div>
             ${this.renderStageBadge(rmb)}
@@ -985,7 +1021,7 @@ window.ReimburseModule = {
         </div>
 
         <div style="margin-top: 8px; font-size: 12px;">
-          <span style="color: var(--text-muted);">💳 Rekening Tujuan:</span> <strong>${rmb.bankName}</strong> — <code style="color: #93C5FD;">${rmb.bankAccountNo}</code> (a.n ${rmb.bankAccountName})
+          <span style="color: var(--text-muted);">💳 Rekening Tujuan:</span> <strong>${rmb.bankName}</strong> — <code style="color: #93C5FD;">${rmb.bankAccountNo}</code> (a.n ${rmb.bankAccountName}) · <span style="color: #6EE7B7;">📧 ${rmb.applicantEmail || rmb.email || '-'}</span>
         </div>
 
         ${rmb.notes ? `

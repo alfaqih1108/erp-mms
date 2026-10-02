@@ -441,6 +441,7 @@ window.PesananModule = {
                       <td style="padding: 14px; vertical-align: top; font-size: 12px;">
                         <div style="font-weight: 600; color: #fff;">${pr.employeeName}</div>
                         <div style="font-size: 11px; color: var(--text-muted);">${pr.department || pr.role}</div>
+                        <div style="font-size: 10.5px; color: #93C5FD; margin-top: 2px;">📧 ${pr.applicantEmail || pr.email || '-'}</div>
                       </td>
 
                       <!-- 5. Status Pesanan (Dropdown untuk Operator Syafiq/Syifa/Admin, Badge untuk Non-Operator) -->
@@ -621,6 +622,7 @@ window.PesananModule = {
                     <div>
                       <span style="color: var(--text-muted); font-size: 10.5px; display: block;">Pemohon:</span>
                       <strong>${pr.employeeName}</strong> <span style="font-size: 11px; color: var(--text-muted);">(${pr.department || pr.role})</span>
+                      <div style="font-size: 10.5px; color: #93C5FD; margin-top: 2px;">📧 ${pr.applicantEmail || pr.email || '-'}</div>
                     </div>
                   </div>
                 </div>
@@ -743,6 +745,19 @@ window.PesananModule = {
             <div class="modal-body">
               <div id="pesanan-invoice-info" style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 12.5px;">
                 <!-- PR brief filled here -->
+              </div>
+
+              <!-- Email Penerima Notifikasi Bukti Transfer FAT -->
+              <div class="form-group" style="margin-bottom: 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-sm); padding: 12px 14px;">
+                <label class="form-label" style="color: #93C5FD; display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; margin-bottom: 6px;">
+                  <span>📧</span>
+                  <span>Email Penerima Bukti Transfer FAT (Wajib) <span style="color: #F87171;">*</span></span>
+                </label>
+                <input type="email" id="pesanan-invoice-email" class="form-control" placeholder="contoh: vendor@email.com atau pemohon@email.com" required style="font-family: var(--font-mono); font-size: 12.5px;">
+                <div style="font-size: 11px; color: #34D399; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                  <span>ℹ️</span>
+                  <span>Bukti transfer pelunasan invoice tagihan dari FAT akan otomatis dikirimkan ke email ini.</span>
+                </div>
               </div>
 
               <div class="form-group" style="margin-bottom: 0;">
@@ -897,6 +912,11 @@ window.PesananModule = {
       `;
     }
 
+    const emailInput = document.getElementById('pesanan-invoice-email');
+    if (emailInput) {
+      emailInput.value = pr.applicantEmail || pr.email || (DB.getCurrentUser()?.email || '');
+    }
+
     const fileInput = document.getElementById('pesanan-invoice-file-input');
     const statusEl = document.getElementById('pesanan-invoice-file-status');
     if (fileInput) fileInput.value = '';
@@ -940,6 +960,12 @@ window.PesananModule = {
     const prId = this.activeModalPRId;
     if (!prId) return;
 
+    const recipientEmail = (document.getElementById('pesanan-invoice-email')?.value || '').trim();
+    if (!recipientEmail || !recipientEmail.includes('@')) {
+      App.showToast('Mohon isi alamat email yang valid untuk pengiriman bukti transfer FAT!', 'warn');
+      return;
+    }
+
     if (!this.currentInvoiceFile || !this.currentInvoiceFile.url) {
       App.showToast('Mohon lampirkan file invoice / kuitansi supplier!', 'warn');
       return;
@@ -955,7 +981,9 @@ window.PesananModule = {
     try {
       const success = await DB.submitOrderInvoice(prId, {
         fileUrl: this.currentInvoiceFile.url,
-        fileName: this.currentInvoiceFile.name
+        fileName: this.currentInvoiceFile.name,
+        recipientEmail,
+        email: recipientEmail
       });
 
       App.closeModal('modal-pesanan-invoice');
@@ -1038,6 +1066,10 @@ window.PesananModule = {
         <div style="font-weight: 700; color: #fff; font-size: 14px;">${pr.itemName} (${pr.quantity} Unit)</div>
         <div style="font-size: 12px; color: #FCD34D; font-family: var(--font-mono); margin-top: 2px;">
           Anggaran: Rp ${(Number(pr.totalPrice) || 0).toLocaleString('id-ID')} · Dapur: ${pr.targetKitchen}
+        </div>
+        <div style="font-size: 11.5px; color: #93C5FD; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+          <span>📧</span>
+          <span>Email Notifikasi Transfer & PO: <strong style="color: #6EE7B7; font-family: var(--font-mono);">${pr.orderInvoice?.recipientEmail || pr.applicantEmail || pr.email || '-'}</strong></span>
         </div>
       </div>
 

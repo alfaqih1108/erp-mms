@@ -1298,9 +1298,10 @@ window.App = {
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap;">
               <div>
                 <h4 style="font-size: 15.5px; color: #fff; font-weight: 600; margin: 0 0 4px 0;">${details.title}</h4>
-                <div style="font-size: 12px; color: var(--text-secondary);">
-                  Diajukan oleh: <strong>${details.requester}</strong>
-                  ${details.targetKitchen ? ` · <span style="color: ${details.targetKitchen === 'Kantor' || details.targetKitchen.startsWith('Kantor') ? '#93C5FD' : '#FCD34D'};">${details.targetKitchen === 'Kantor' || details.targetKitchen.startsWith('Kantor') ? '🏢 Untuk: Kantor Yayasan' : `🍲 Untuk: ${details.targetKitchen}`}</span>` : ''}
+                <div style="font-size: 12px; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                  <span>Diajukan oleh: <strong>${details.requester}</strong></span>
+                  ${details.applicantEmail ? `<span>· 📧 <strong style="color: #60A5FA;">${details.applicantEmail}</strong></span>` : ''}
+                  ${details.targetKitchen ? `<span>· <span style="color: ${details.targetKitchen === 'Kantor' || details.targetKitchen.startsWith('Kantor') ? '#93C5FD' : '#FCD34D'};">${details.targetKitchen === 'Kantor' || details.targetKitchen.startsWith('Kantor') ? '🏢 Untuk: Kantor Yayasan' : `🍲 Untuk: ${details.targetKitchen}`}</span></span>` : ''}
                 </div>
               </div>
               <div>
@@ -1451,6 +1452,10 @@ window.App = {
     `;
 
     this.openModal('modal-approval-tracker');
+  },
+
+  openApprovalTracker: function(type, id) {
+    return this.showApprovalTracker(type, id);
   },
 
   // Toast System

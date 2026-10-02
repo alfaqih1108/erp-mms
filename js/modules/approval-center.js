@@ -807,7 +807,7 @@ window.ApprovalCenterModule = {
             </h4>
 
             <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
-              Pemohon: <strong>${p.employeeName}</strong> (${p.role}) · Kategori: <strong style="color: #60A5FA;">${p.category}</strong>
+              Pemohon: <strong>${p.employeeName}</strong> (${p.role}) · <span style="color: #93C5FD; font-size: 11.5px;">📧 ${p.applicantEmail || p.email || '-'}</span> · Kategori: <strong style="color: #60A5FA;">${p.category}</strong>
             </div>
 
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
@@ -886,11 +886,11 @@ window.ApprovalCenterModule = {
             </h4>
 
             <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
-              Pemohon: <strong>${c.employeeName}</strong> (${c.department || c.role}) · Target Lokasi: <strong style="color: #FCD34D;">${c.targetLocation || c.targetExpense || 'Operasional'}</strong>
+              Pemohon: <strong>${c.employeeName}</strong> (${c.department || c.role}) · <span style="color: #93C5FD; font-size: 11.5px;">📧 ${c.applicantEmail || c.email || '-'}</span> · Target Lokasi: <strong style="color: #FCD34D;">${c.targetLocation || c.targetExpense || 'Operasional'}</strong>
             </div>
 
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
-              💳 Rekening Penerima: <strong>${c.bankName}</strong> (${c.bankAccountNo} a.n ${c.bankAccountName})
+              💳 Rekening Penerima: <strong>${c.bankName}</strong> (${c.bankAccountNo} a.n ${c.bankAccountName}) · <span style="color: #6EE7B7;">📧 ${c.applicantEmail || c.email || '-'}</span>
             </div>
 
             ${(c.attachmentUrl || c.attachmentName) ? `
@@ -964,11 +964,11 @@ window.ApprovalCenterModule = {
             </h4>
 
             <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
-              Pemohon: <strong>${r.employeeName}</strong> (${r.department || r.employeeRole || r.role}) · Dapur: <strong style="color: #FCD34D;">${r.targetKitchen || '-'}</strong>
+              Pemohon: <strong>${r.employeeName}</strong> (${r.department || r.employeeRole || r.role}) · <span style="color: #93C5FD; font-size: 11.5px;">📧 ${r.applicantEmail || r.email || '-'}</span> · Dapur: <strong style="color: #FCD34D;">${r.targetKitchen || '-'}</strong>
             </div>
 
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
-              💳 Rekening Transfer: <strong>${r.bankName || '-'}</strong> (${r.bankAccountNo || '-'} a.n ${r.bankAccountName || r.employeeName}) · Tgl Beli: <strong>${this.formatDisplayDateTime(r.purchaseDate) || '-'}</strong>
+              💳 Rekening Transfer: <strong>${r.bankName || '-'}</strong> (${r.bankAccountNo || '-'} a.n ${r.bankAccountName || r.employeeName}) · <span style="color: #6EE7B7;">📧 ${r.applicantEmail || r.email || '-'}</span> · Tgl Beli: <strong>${this.formatDisplayDateTime(r.purchaseDate) || '-'}</strong>
             </div>
 
             ${(r.attachmentUrl || r.attachmentName) ? `
@@ -1038,7 +1038,7 @@ window.ApprovalCenterModule = {
             </h4>
 
             <div style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 4px;">
-              Pemohon PR: <strong>${p.employeeName}</strong> · Lokasi Dapur: <strong style="color: #FCD34D;">${p.targetKitchen || '-'}</strong>
+              Pemohon PR: <strong>${p.employeeName}</strong> · 📧 <strong style="color: #93C5FD;">${p.orderInvoice?.recipientEmail || p.applicantEmail || p.email || '-'}</strong> · Lokasi Dapur: <strong style="color: #FCD34D;">${p.targetKitchen || '-'}</strong>
             </div>
 
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
@@ -1135,7 +1135,7 @@ window.ApprovalCenterModule = {
 
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
               <span style="background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px; color: #E2E8F0;">
-                👤 Pemohon: <strong style="color: #60A5FA;">${item.employeeName || '-'}</strong> (${item.department || '-'})
+                👤 Pemohon: <strong style="color: #60A5FA;">${item.employeeName || '-'}</strong> (${item.department || '-'}) · <span style="color: #93C5FD;">📧 ${item.applicantEmail || item.raw?.applicantEmail || item.raw?.email || item.raw?.orderInvoice?.recipientEmail || '-'}</span>
               </span>
               <span>·</span>
               <span>Diproses oleh: <strong style="color: #FCD34D;">${item.approverName || user.name || 'Approver'}</strong></span>
@@ -1945,11 +1945,15 @@ window.ApprovalCenterModule = {
               </div>
             </div>
 
-            <!-- Rekening Tujuan -->
+            <!-- Rekening Tujuan & Email Pemohon -->
             <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 16px; font-size: 12px;">
               <span class="text-mono-badge" style="color: #60A5FA; font-size: 10px;">Rekening Penerima Pemohon</span>
               <div style="color: #fff; font-weight: 600; margin-top: 4px;">
                 ${ca.bankName} — ${ca.bankAccountNo} a.n ${ca.bankAccountName}
+              </div>
+              <div style="margin-top: 6px; color: #93C5FD; font-size: 11.5px; display: flex; align-items: center; gap: 4px;">
+                <span>📧</span>
+                <span>Email Notifikasi Bukti Transfer: <strong style="color: #6EE7B7; font-family: var(--font-mono);">${ca.applicantEmail || ca.email || '-'}</strong></span>
               </div>
             </div>
 
@@ -2343,11 +2347,15 @@ window.ApprovalCenterModule = {
               </div>
             </div>
 
-            <!-- Rekening Penerima -->
+            <!-- Rekening Penerima & Email -->
             <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 16px; font-size: 12px;">
               <span class="text-mono-badge" style="color: #60A5FA; font-size: 10px;">Rekening Bank Tujuan Transfer</span>
               <div style="color: #fff; font-weight: 600; font-size: 13.5px; margin-top: 4px;">
                 ${rmb.bankName} — <code style="color: #93C5FD; font-size: 13px;">${rmb.bankAccountNo}</code> a.n ${rmb.bankAccountName}
+              </div>
+              <div style="margin-top: 6px; color: #93C5FD; font-size: 11.5px; display: flex; align-items: center; gap: 4px;">
+                <span>📧</span>
+                <span>Email Notifikasi Bukti Transfer: <strong style="color: #6EE7B7; font-family: var(--font-mono);">${rmb.applicantEmail || rmb.email || '-'}</strong></span>
               </div>
             </div>
 
@@ -2488,6 +2496,10 @@ window.ApprovalCenterModule = {
               </div>
               <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
                 Dapur: <strong>${pr.targetKitchen}</strong> · Pemohon: <strong>${pr.employeeName}</strong>
+              </div>
+              <div style="font-size: 11.5px; color: #93C5FD; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                <span>📧</span>
+                <span>Email Penerima Bukti Transfer: <strong style="color: #6EE7B7; font-family: var(--font-mono);">${pr.orderInvoice?.recipientEmail || pr.applicantEmail || pr.email || '-'}</strong></span>
               </div>
               <div style="font-size: 20px; font-family: var(--font-mono); font-weight: 700; color: #34D399; margin-top: 8px;">
                 Total Tagihan Invoice: Rp ${amountToDisburse.toLocaleString('id-ID')}

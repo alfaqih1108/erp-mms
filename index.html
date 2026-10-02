@@ -623,6 +623,19 @@
             </div>
           </div>
 
+          <!-- Email Pemohon (Wajib: Bukti PO / Konfirmasi Transfer akan dikirim via email) -->
+          <div class="form-group" style="background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-sm); padding: 12px 14px;">
+            <label class="form-label" style="color: #93C5FD; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+              <span>📧</span>
+              <span>Email Pemohon (Wajib) <span style="color: #F87171;">*</span></span>
+            </label>
+            <input type="email" id="pr-email" class="form-control" placeholder="contoh: nama@email.com" required style="font-family: var(--font-mono); font-size: 12.5px;">
+            <div style="font-size: 11px; color: #34D399; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+              <span>ℹ️</span>
+              <span>Email wajib diisi karena bukti transfer dan dokumen PO akan otomatis dikirimkan ke email ini.</span>
+            </div>
+          </div>
+
           <div class="form-group">
             <label class="form-label">Nama Barang / Deskripsi Permintaan <span style="color: #F87171;">*</span></label>
             <input type="text" id="pr-name" class="form-control" placeholder="Contoh: Blender Komersial Heavy Duty 2L" required>
