@@ -952,7 +952,22 @@ window.DapurYayasanModule = {
                              style="font-size: 12px; color: #fff;">
                     </div>
                   </div>
-                  <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px; font-style: italic;">
+
+                  <!-- Suggestion Insentif (Total Porsi x Rp 2.000) -->
+                  <div id="kr-incentive-suggestion-box" style="margin-top: 8px; padding: 7px 12px; background: rgba(192, 132, 252, 0.08); border: 1px dashed rgba(192, 132, 252, 0.35); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <div style="font-size: 11.5px; color: #E9D5FF; display: flex; align-items: center; gap: 6px;">
+                      <span style="font-size: 14px;">💡</span>
+                      <div>
+                        <span>Saran Insentif Yayasan: <strong id="kr-suggested-incentive-text" style="color: #FCD34D; font-family: var(--font-mono); font-size: 12.5px;">Rp 0</strong></span>
+                        <span id="kr-suggested-incentive-calc" style="color: #DDD6FE; font-size: 10.5px; margin-left: 4px;">(0 porsi × Rp 2.000)</span>
+                      </div>
+                    </div>
+                    <button type="button" class="btn-nalar-secondary" onclick="DapurYayasanModule.applySuggestedIncentive()" style="padding: 3px 10px; font-size: 11px; font-weight: 600; color: #E879F9; border-color: rgba(232, 121, 249, 0.4); background: rgba(232, 121, 249, 0.12); border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                      <span>⚡ Gunakan Saran</span>
+                    </button>
+                  </div>
+
+                  <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 6px; font-style: italic;">
                     *Tuliskan rentang tanggal periode insentif yang dibayarkan atau catatan khusus lainnya.
                   </div>
                 </div>
@@ -1168,7 +1183,41 @@ window.DapurYayasanModule = {
     if (budgetEl) {
       budgetEl.innerHTML = `Target Anggaran Bahan: <strong style="color: #FCD34D;">Rp ${targetBudget.toLocaleString('id-ID')}</strong> (${pBesar} Besar + ${pKecil} Kecil)`;
     }
+    this.updateIncentiveSuggestion();
     this.recalculateLiveTotals();
+  },
+
+  updateIncentiveSuggestion: function() {
+    const pBesar = Number(document.getElementById('kr-porsi-besar')?.value) || 0;
+    const pKecil = Number(document.getElementById('kr-porsi-kecil')?.value) || 0;
+    const totalInput = Number(document.getElementById('kr-beneficiaries')?.value) || 0;
+    const totalPorsi = (pBesar + pKecil > 0) ? (pBesar + pKecil) : totalInput;
+    const suggestedIncentive = totalPorsi * 2000;
+
+    const textEl = document.getElementById('kr-suggested-incentive-text');
+    const calcEl = document.getElementById('kr-suggested-incentive-calc');
+
+    if (textEl) {
+      textEl.textContent = `Rp ${suggestedIncentive.toLocaleString('id-ID')}`;
+    }
+    if (calcEl) {
+      calcEl.textContent = `(${totalPorsi.toLocaleString('id-ID')} porsi × Rp 2.000)`;
+    }
+  },
+
+  applySuggestedIncentive: function() {
+    const pBesar = Number(document.getElementById('kr-porsi-besar')?.value) || 0;
+    const pKecil = Number(document.getElementById('kr-porsi-kecil')?.value) || 0;
+    const totalInput = Number(document.getElementById('kr-beneficiaries')?.value) || 0;
+    const totalPorsi = (pBesar + pKecil > 0) ? (pBesar + pKecil) : totalInput;
+    const suggestedIncentive = totalPorsi * 2000;
+
+    const incEl = document.getElementById('kr-foundation-incentive');
+    if (incEl) {
+      incEl.value = suggestedIncentive;
+      this.recalculateLiveTotals();
+      App.showToast(`Saran insentif Rp ${suggestedIncentive.toLocaleString('id-ID')} (${totalPorsi.toLocaleString('id-ID')} porsi × Rp 2.000) berhasil diterapkan!`, 'success');
+    }
   },
 
   recalculateLiveTotals: function() {
@@ -1330,6 +1379,7 @@ window.DapurYayasanModule = {
       if (driveUrlEl) driveUrlEl.value = '';
       this.removeSPMUpload();
       this.updateTargetBudgetDisplay();
+      this.updateIncentiveSuggestion();
       this.recalculateLiveTotals();
     }
 
@@ -1445,6 +1495,7 @@ window.DapurYayasanModule = {
     }
 
     this.updateTargetBudgetDisplay();
+    this.updateIncentiveSuggestion();
     this.recalculateLiveTotals();
 
     App.closeModal('modal-kitchen-detail-view');
