@@ -3108,7 +3108,21 @@ class DatabaseManager {
   }
 
   async addKitchenReport(report) {
-    const id = `KR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-0${this.getKitchenReports().length + 1}`;
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    let maxNum = 0;
+    const allKrs = this.getKitchenReports() || [];
+    allKrs.forEach(r => {
+      if (r && r.id && typeof r.id === 'string') {
+        const m = r.id.match(/KR-\d+-0*(\d+)/i);
+        if (m) {
+          const n = parseInt(m[1], 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+      }
+    });
+    const nextSeq = Math.max(maxNum + 1, allKrs.length + 1);
+    const randSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const id = `KR-${todayStr}-${String(nextSeq).padStart(4, '0')}-${randSuffix}`;
     const porsiBesar = Number(report.porsiBesar) || 0;
     const porsiKecil = Number(report.porsiKecil) || 0;
     const beneficiariesCount = (porsiBesar + porsiKecil > 0) ? (porsiBesar + porsiKecil) : (report.beneficiariesCount !== undefined ? (Number(report.beneficiariesCount) || 0) : 0);
@@ -3138,7 +3152,8 @@ class DatabaseManager {
       targetBudget,
       costPerPortion,
       costPerPortionAllIn,
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+      isPendingSync: true,
+      createdAt: new Date().toISOString()
     };
 
     if (!Array.isArray(this.data.kitchenReports)) this.data.kitchenReports = [];
@@ -3186,31 +3201,39 @@ class DatabaseManager {
     newReport.spmAttachmentUrl = cleanSpmUrl;
     newReport.spmFileName = cleanSpmFileName;
 
-    await this.syncToSupabase('kitchen_reports', {
-      id: newReport.id,
-      kitchen_id: validKitchenId,
-      kitchen_name: newReport.kitchenName,
-      date: newReport.date || new Date().toISOString().slice(0, 10),
-      reporter_id: validReporterId,
-      reporter_name: newReport.reporterName || this.getCurrentUser().name,
-      raw_material_cost: Number(newReport.rawMaterialCost) || 0,
-      operational_cost: Number(newReport.operationalCost) || 0,
-      car_rental_cost: Number(newReport.carRentalCost) || 0,
-      foundation_incentive: Number(newReport.foundationIncentive) || 0,
-      incentive_notes: newReport.incentiveNotes || '',
-      total_daily_expense: Number(newReport.totalDailyExpense) || 0,
-      porsi_besar: Number(newReport.porsiBesar) || 0,
-      porsi_kecil: Number(newReport.porsiKecil) || 0,
-      beneficiaries_count: Number(newReport.beneficiariesCount) || 0,
-      target_budget: Number(newReport.targetBudget) || 0,
-      cost_per_portion: Number(newReport.costPerPortion) || 0,
-      cost_per_portion_all_in: Number(newReport.costPerPortionAllIn) || 0,
-      spm_file_name: cleanSpmFileName,
-      spm_attachment_url: cleanSpmUrl,
-      va_bank_name: newReport.vaBankName || 'Bank Mandiri',
-      va_balance: Number(newReport.vaBalance) || 0,
-      notes: newReport.notes || ''
-    }).catch(e => console.warn('Sync add kitchen_reports to Supabase warning:', e));
+    try {
+      const syncRes = await this.syncToSupabase('kitchen_reports', {
+        id: newReport.id,
+        kitchen_id: validKitchenId,
+        kitchen_name: newReport.kitchenName,
+        date: newReport.date || new Date().toISOString().slice(0, 10),
+        reporter_id: validReporterId,
+        reporter_name: newReport.reporterName || this.getCurrentUser().name,
+        raw_material_cost: Number(newReport.rawMaterialCost) || 0,
+        operational_cost: Number(newReport.operationalCost) || 0,
+        car_rental_cost: Number(newReport.carRentalCost) || 0,
+        foundation_incentive: Number(newReport.foundationIncentive) || 0,
+        incentive_notes: newReport.incentiveNotes || '',
+        total_daily_expense: Number(newReport.totalDailyExpense) || 0,
+        porsi_besar: Number(newReport.porsiBesar) || 0,
+        porsi_kecil: Number(newReport.porsiKecil) || 0,
+        beneficiaries_count: Number(newReport.beneficiariesCount) || 0,
+        target_budget: Number(newReport.targetBudget) || 0,
+        cost_per_portion: Number(newReport.costPerPortion) || 0,
+        cost_per_portion_all_in: Number(newReport.costPerPortionAllIn) || 0,
+        spm_file_name: cleanSpmFileName,
+        spm_attachment_url: cleanSpmUrl,
+        va_bank_name: newReport.vaBankName || 'Bank Mandiri',
+        va_balance: Number(newReport.vaBalance) || 0,
+        notes: newReport.notes || ''
+      });
+      if (syncRes && syncRes.success) {
+        newReport.isPendingSync = false;
+        this.save();
+      }
+    } catch (e) {
+      console.warn('Sync add kitchen_reports to Supabase warning:', e);
+    }
 
     return newReport;
   }
@@ -3831,15 +3854,17 @@ class DatabaseManager {
     const allTs = this.getTimesheets() || [];
     let maxNum = 0;
     allTs.forEach(t => {
-      if (t.id) {
-        const m = t.id.match(/\d+$/);
+      if (t && t.id) {
+        const m = t.id.match(/^TS-2026-(\d+)/);
         if (m) {
-          const n = parseInt(m[0], 10);
+          const n = parseInt(m[1], 10);
           if (!isNaN(n) && n > maxNum) maxNum = n;
         }
       }
     });
-    const id = `TS-2026-${String(maxNum + 1).padStart(3, '0')}`;
+    const nextSeq = Math.max(maxNum + 1, allTs.length + 1);
+    const randSuffix = Math.random().toString(36).substring(2, 5).toUpperCase();
+    const id = `TS-2026-${String(nextSeq).padStart(4, '0')}-${randSuffix}`;
     const realTimestamp = getRealtimeTimestamp();
     
     const status = 'RECORDED';
@@ -3853,6 +3878,7 @@ class DatabaseManager {
       department: user.department,
       status,
       approver,
+      isPendingSync: true,
       createdAt: realTimestamp,
       approvalHistory: [
         {
@@ -3873,19 +3899,27 @@ class DatabaseManager {
     this.addLog(`${user.name} mencatat log kerja: ${tsData.activityPreset || 'Aktivitas'} (${tsData.hours} Jam) [RECORDED] pada ${realTimestamp}`, 'timesheet');
     this.save();
 
-    await this.syncToSupabase('timesheets', {
-      id: newTs.id,
-      employee_id: newTs.employeeId,
-      employee_name: newTs.employeeName,
-      role: newTs.role,
-      date: newTs.date || new Date().toISOString().slice(0, 10),
-      start_time: newTs.startTime,
-      end_time: newTs.endTime,
-      activity: newTs.activity || newTs.activityPreset || 'Log Kehadiran',
-      activity_preset: newTs.activityPreset || null,
-      category: newTs.category || 'Operasional',
-      status: 'RECORDED'
-    });
+    try {
+      const syncRes = await this.syncToSupabase('timesheets', {
+        id: newTs.id,
+        employee_id: newTs.employeeId,
+        employee_name: newTs.employeeName,
+        role: newTs.role,
+        date: newTs.date || new Date().toISOString().slice(0, 10),
+        start_time: newTs.startTime,
+        end_time: newTs.endTime,
+        activity: newTs.activity || newTs.activityPreset || 'Log Kehadiran',
+        activity_preset: newTs.activityPreset || null,
+        category: newTs.category || 'Operasional',
+        status: 'RECORDED'
+      });
+      if (syncRes && syncRes.success) {
+        newTs.isPendingSync = false;
+        this.save();
+      }
+    } catch (e) {
+      console.warn('Sync add timesheet notice:', e);
+    }
 
     return newTs;
   }
@@ -7203,7 +7237,7 @@ class DatabaseManager {
         const krs = await krRes.value.json();
         if (Array.isArray(krs)) {
           const existingKRs = this.data.kitchenReports || [];
-          this.data.kitchenReports = krs.map(kr => {
+          const remoteKRs = krs.map(kr => {
             const local = existingKRs.find(item => item.id === kr.id);
 
             // Clean legacy mock unsplash URLs
@@ -7247,6 +7281,54 @@ class DatabaseManager {
               createdAt: kr.created_at || (local ? local.createdAt : '')
             };
           });
+
+          // Two-Way Smart Merge: Jaga data lokal yang baru diinput agar tidak terhapus oleh latency
+          const unsyncedKRs = existingKRs.filter(local => {
+            if (!local || !local.id) return false;
+            if (krs.some(remote => remote.id === local.id)) return false;
+            const isRecent = local.createdAt && (Date.now() - new Date(local.createdAt).getTime()) < 5 * 60 * 1000;
+            return local.isPendingSync === true || isRecent;
+          });
+
+          this.data.kitchenReports = [...remoteKRs, ...unsyncedKRs];
+
+          // Upload aman jika ada laporan lokal yang pending sync (misal sempat offline)
+          const pendingUploadKRs = unsyncedKRs.filter(item => item && item.isPendingSync === true);
+          if (pendingUploadKRs.length > 0) {
+            console.log(`⚡ [Safe-Push KR] Mengunggah ${pendingUploadKRs.length} laporan dapur lokal pending ke Supabase...`);
+            for (const item of pendingUploadKRs) {
+              this.syncToSupabase('kitchen_reports', {
+                id: item.id,
+                kitchen_id: item.kitchenId,
+                kitchen_name: item.kitchenName,
+                date: item.date,
+                reporter_id: item.reporterId,
+                reporter_name: item.reporterName,
+                raw_material_cost: Number(item.rawMaterialCost) || 0,
+                operational_cost: Number(item.operationalCost) || 0,
+                car_rental_cost: Number(item.carRentalCost) || 0,
+                foundation_incentive: Number(item.foundationIncentive) || 0,
+                incentive_notes: item.incentiveNotes || '',
+                total_daily_expense: Number(item.totalDailyExpense) || 0,
+                porsi_besar: Number(item.porsiBesar) || 0,
+                porsi_kecil: Number(item.porsiKecil) || 0,
+                beneficiaries_count: Number(item.beneficiariesCount) || 0,
+                target_budget: Number(item.targetBudget) || 0,
+                cost_per_portion: Number(item.costPerPortion) || 0,
+                cost_per_portion_all_in: Number(item.costPerPortionAllIn) || 0,
+                spm_file_name: item.spmFileName || null,
+                spm_attachment_url: item.spmAttachmentUrl || null,
+                va_bank_name: item.vaBankName || 'Bank Mandiri VA',
+                va_balance: Number(item.vaBalance) || 0,
+                notes: item.notes || ''
+              }).then(res => {
+                if (res && res.success) {
+                  item.isPendingSync = false;
+                  this.save();
+                }
+              }).catch(err => console.warn('Safe-push KR notice:', err));
+            }
+          }
         }
       }
 
@@ -7298,7 +7380,7 @@ class DatabaseManager {
             };
           });
 
-          // Two-Way Smart Merge: Gabungkan remote dari Supabase dengan data lokal yang belum sempat terunggah
+          // Two-Way Smart Merge: Gabungkan remote dari Supabase dengan data lokal
           const existingTS = this.data.timesheets || [];
           const unsyncedTS = existingTS.filter(local => 
             local && local.id && !tss.some(remote => remote.id === local.id)
@@ -7306,10 +7388,11 @@ class DatabaseManager {
 
           this.data.timesheets = [...remoteTS, ...unsyncedTS];
 
-          // Auto-push record lokal yang belum terkirim ke Supabase
-          if (unsyncedTS.length > 0) {
-            console.log(`⚡ [Auto-Push TS] Mengunggah ${unsyncedTS.length} data timesheet lokal ke Supabase...`);
-            for (const item of unsyncedTS) {
+          // HENTIKAN INFINITE LOOP: HANYA unggah timesheet yang secara eksplisit berstatus pending sync
+          const pendingTS = unsyncedTS.filter(item => item && item.isPendingSync === true);
+          if (pendingTS.length > 0) {
+            console.log(`⚡ [Safe-Push TS] Mengunggah ${pendingTS.length} data timesheet lokal pending ke Supabase...`);
+            for (const item of pendingTS) {
               this.syncToSupabase('timesheets', {
                 id: item.id,
                 employee_id: item.employeeId,
@@ -7322,7 +7405,12 @@ class DatabaseManager {
                 activity_preset: item.activityPreset || null,
                 category: item.category || 'Operasional',
                 status: item.status || 'RECORDED'
-              }).catch(err => console.warn('Auto-push TS notice:', err));
+              }).then(res => {
+                if (res && res.success) {
+                  item.isPendingSync = false;
+                  this.save();
+                }
+              }).catch(err => console.warn('Safe-push TS notice:', err));
             }
           }
         }
@@ -7440,10 +7528,11 @@ class DatabaseManager {
           // 3. Gabungkan remote dan unsynced local agar data di laptop tidak hilang
           this.data.kitchenDailyStatuses = [...remoteKDS, ...unsyncedLocal];
 
-          // 4. Otomatis push record lokal yang belum sinkron ke database cloud Supabase
-          if (unsyncedLocal.length > 0) {
-            console.log(`⚡ [Auto-Push KDS] Mengunggah ${unsyncedLocal.length} data status dapur lokal ke Supabase...`);
-            for (const item of unsyncedLocal) {
+          // 4. Otomatis push record lokal HANYA jika berstatus pending sync (mencegah loop traffic tinggi)
+          const pendingUploadKDS = unsyncedLocal.filter(item => item && item.isPendingSync === true);
+          if (pendingUploadKDS.length > 0) {
+            console.log(`⚡ [Safe-Push KDS] Mengunggah ${pendingUploadKDS.length} data status dapur lokal pending ke Supabase...`);
+            for (const item of pendingUploadKDS) {
               this.syncToSupabase('kitchen_daily_statuses', {
                 id: item.id,
                 date: item.date,
@@ -7454,7 +7543,12 @@ class DatabaseManager {
                 reported_by_id: item.reportedById,
                 reported_by_name: item.reportedByName,
                 updated_at: item.updatedAt
-              }).catch(err => console.warn('Auto-push KDS notice:', err));
+              }).then(res => {
+                if (res && res.success) {
+                  item.isPendingSync = false;
+                  this.save();
+                }
+              }).catch(err => console.warn('Safe-push KDS notice:', err));
             }
           }
         }
@@ -7668,7 +7762,7 @@ class DatabaseManager {
           }
         }
       } else if (table === 'timesheets') {
-        const res = await fetch(`${url}/rest/v1/timesheets?select=id,employee_id,employee_name,role,date,start_time,end_time,activity,activity_preset,category,status,created_at&order=created_at.desc&limit=500&offset=0`, { headers });
+        const res = await fetch(`${url}/rest/v1/timesheets?select=id,employee_id,employee_name,role,date,start_time,end_time,activity,activity_preset,category,status,created_at&order=created_at.desc&limit=1500&offset=0`, { headers });
         if (res.ok) {
           const tss = await res.json();
           if (Array.isArray(tss)) {
@@ -7757,12 +7851,12 @@ class DatabaseManager {
           }
         }
       } else if (table === 'kitchen_reports') {
-        const res = await fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,spm_attachment_url,va_bank_name,va_balance,notes,created_at&order=created_at.desc&limit=500&offset=0`, { headers });
+        const res = await fetch(`${url}/rest/v1/kitchen_reports?select=id,kitchen_id,kitchen_name,date,reporter_id,reporter_name,raw_material_cost,operational_cost,car_rental_cost,foundation_incentive,incentive_notes,total_daily_expense,porsi_besar,porsi_kecil,beneficiaries_count,target_budget,cost_per_portion,cost_per_portion_all_in,spm_file_name,spm_attachment_url,va_bank_name,va_balance,notes,created_at&order=created_at.desc&limit=1000&offset=0`, { headers });
         if (res.ok) {
           const krs = await res.json();
           if (Array.isArray(krs)) {
             const existingKRs = this.data.kitchenReports || [];
-            this.data.kitchenReports = krs.map(kr => {
+            const remoteKRs = krs.map(kr => {
               const local = existingKRs.find(item => item.id === kr.id);
               let cleanRemoteUrl = (kr.spm_attachment_url && !kr.spm_attachment_url.includes('unsplash.com')) ? kr.spm_attachment_url : null;
               let cleanLocalUrl = (local && local.spmAttachmentUrl && !local.spmAttachmentUrl.includes('unsplash.com')) ? local.spmAttachmentUrl : null;
@@ -7796,6 +7890,14 @@ class DatabaseManager {
                 createdAt: kr.created_at || ''
               };
             });
+            // Two-Way Smart Merge: Jaga data lokal yang baru diinput agar tidak terhapus oleh latency
+            const unsyncedKRs = existingKRs.filter(local => {
+              if (!local || !local.id) return false;
+              if (krs.some(remote => remote.id === local.id)) return false;
+              const isRecent = local.createdAt && (Date.now() - new Date(local.createdAt).getTime()) < 5 * 60 * 1000;
+              return local.isPendingSync === true || isRecent;
+            });
+            this.data.kitchenReports = [...remoteKRs, ...unsyncedKRs];
             this.save();
           }
         }
