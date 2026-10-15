@@ -2488,33 +2488,38 @@ class DatabaseManager {
 
   save(data) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data || this.data));
-    } catch (e) {
-      console.warn('Gagal menyimpan ke localStorage (kemungkinan ukuran attachment besar), mencoba fallback tanpa binary data:', e);
-      try {
-        const copy = JSON.parse(JSON.stringify(data || this.data));
-        const stripHeavy = (obj) => {
-          if (!obj) return;
-          if (Array.isArray(obj)) {
-            obj.forEach(item => stripHeavy(item));
-          } else if (typeof obj === 'object') {
-            for (const k in obj) {
-              if (typeof obj[k] === 'string' && obj[k].length > 30000 && (k === 'fileData' || k === 'attachmentUrl' || k === 'spmAttachmentUrl' || obj[k].startsWith('data:image/'))) {
-                obj[k] = null;
+      const payload = data || this.data;
+      if (!payload) return;
+
+      // Sanitasi data dari string binary / Base64 berukuran besar sebelum disimpan ke localStorage browser (kuota 5MB).
+      // Seluruh file dokumen asli tersimpan aman di cloud Supabase. Cache lokal hanya memerlukan metadata & angka.
+      const copy = JSON.parse(JSON.stringify(payload));
+      const cleanHeavy = (target) => {
+        if (!target) return;
+        if (Array.isArray(target)) {
+          target.forEach(item => cleanHeavy(item));
+        } else if (typeof target === 'object') {
+          for (const k in target) {
+            const val = target[k];
+            if (typeof val === 'string') {
+              // Hapus Base64 data URI (data:image/..., data:application/pdf, dsb.)
+              if (val.startsWith('data:')) {
+                target[k] = null;
+              } else if (val.length > 5000 && !k.toLowerCase().includes('json') && !k.toLowerCase().includes('history') && !k.toLowerCase().includes('notes') && !k.toLowerCase().includes('reason')) {
+                // Hapus string lampiran binary berukuran besar (>5KB)
+                target[k] = null;
               }
+            } else if (typeof val === 'object') {
+              cleanHeavy(val);
             }
           }
-        };
-        if (Array.isArray(copy.guidelineDocuments)) stripHeavy(copy.guidelineDocuments);
-        if (Array.isArray(copy.itemRequests)) stripHeavy(copy.itemRequests);
-        if (Array.isArray(copy.leaves)) stripHeavy(copy.leaves);
-        if (Array.isArray(copy.cashAdvances)) stripHeavy(copy.cashAdvances);
-        if (Array.isArray(copy.reimbursements)) stripHeavy(copy.reimbursements);
-        if (Array.isArray(copy.kitchenReports)) stripHeavy(copy.kitchenReports);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
-      } catch (err2) {
-        console.error('Penyimpanan database fallback juga gagal:', err2);
-      }
+        }
+      };
+
+      cleanHeavy(copy);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
+    } catch (e) {
+      console.warn('Penyimpanan cache localStorage gagal:', e);
     }
   }
 

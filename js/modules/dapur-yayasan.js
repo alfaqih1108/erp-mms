@@ -19,16 +19,25 @@ window.DapurYayasanModule = {
   pageSize: 5,
   uploadedSPMUrl: '',
   uploadedSPMName: '',
-  statusCalYear: 2026,
-  statusCalMonth: 8, // September (0-indexed: 0=Jan, 8=Sep)
-  statusSelectedDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : '2026-09-11'),
+  statusCalYear: (new Date()).getFullYear(),
+  statusCalMonth: (new Date()).getMonth(),
+  statusSelectedDate: (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10)),
 
   render: function(container) {
     if (!container) return;
 
     const todayStr = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10));
-    const currentMonthStr = todayStr.slice(0, 7);
     const nowD = new Date();
+
+    // Inisialisasi awal kalender agar selalu berada di bulan & tanggal hari ini
+    if (!this._statusInitialized) {
+      this._statusInitialized = true;
+      this.statusCalYear = nowD.getFullYear();
+      this.statusCalMonth = nowD.getMonth();
+      this.statusSelectedDate = todayStr;
+    }
+
+    const currentMonthStr = todayStr.slice(0, 7);
     const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     const monthsFull = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     const todayFormatted = `${nowD.getDate()} ${monthsShort[nowD.getMonth()]} ${nowD.getFullYear()}`;
@@ -2029,10 +2038,10 @@ window.DapurYayasanModule = {
   },
 
   setStatusToday: function() {
-    const todayStr = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : '2026-09-11');
+    const todayStr = (typeof getRealtimeDateStr === 'function' ? getRealtimeDateStr() : new Date().toISOString().slice(0, 10));
     const parts = todayStr.split('-').map(Number);
-    this.statusCalYear = parts[0] || 2026;
-    this.statusCalMonth = parts[1] ? (parts[1] - 1) : 8;
+    this.statusCalYear = parts[0] || (new Date()).getFullYear();
+    this.statusCalMonth = parts[1] ? (parts[1] - 1) : (new Date()).getMonth();
     this.statusSelectedDate = todayStr;
     this.render(document.getElementById('main-content-area'));
   },
